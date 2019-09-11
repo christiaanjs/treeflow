@@ -17,6 +17,8 @@ jc_eigendecomposition = [np.array(x) for x in [
     ]
 ]]
 
+jc_frequencies = np.array([0.25, 0.25, 0.25, 0.25])
+
 def transition_probs(eigendecomposition, t):
     U, lambd, Vt = [np.array(x) for x in eigendecomposition]
     diag = tf.linalg.diag(tf.exp(tf.expand_dims(t, 1) * tf.expand_dims(lambd, 0)))

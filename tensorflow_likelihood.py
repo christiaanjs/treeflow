@@ -3,6 +3,7 @@ import numpy as np
 import re
 from collections import Counter
 from base_likelihood import BaseLikelihood
+import substitution_model
 
 init_partials_dict = {
     'A':[1.,0.,0.,0.],
@@ -51,7 +52,6 @@ class TensorflowLikelihood(BaseLikelihood):
         super(TensorflowLikelihood, self).__init__(fasta_file=fasta_file, *args, **kwargs)
         self.child_indices = self.get_child_indices()
         self.postorder_node_indices = self.get_postorder_node_traversal_indices()
-        print(self.postorder_node_indices)
 
         self.init_partials(fasta_file)
 
@@ -67,5 +67,26 @@ class TensorflowLikelihood(BaseLikelihood):
             for pattern_index in range(len(self.pattern_counts)):
                 self.partials[leaf_index][pattern_index] = init_partials_dict[pattern_dict[leaf_names[leaf_index]][pattern_index]]
 
+    def compute_postorder_partials(self, transition_probs):
+        for node_index in self.postorder_node_indices:
+            child_indices = self.child_indices[node_index]
+            child_partials = tf.stack([self.partials[child_index] for child_index in child_indices], axis=1) 
+            child_transition_probs = tf.gather(transition_probs, child_indices)
+            self.partials[node_index] = tf.reduce_prod(tf.reduce_sum(tf.expand_dims(child_transition_probs, 0) * tf.expand_dims(child_partials, 2), axis=3), axis=1)
+
+    @tf.function
+    def compute_likelihood_tf(self, branch_lengths):
+        transition_probs = substitution_model.transition_probs(substitution_model.jc_eigendecomposition, branch_lengths)
+        self.compute_postorder_partials(transition_probs)
+        pattern_probs = tf.reduce_sum(tf.expand_dims(substitution_model.jc_frequencies, 0) * self.partials[-1], axis=1)
+        return tf.reduce_sum(tf.math.log(pattern_probs) * self.pattern_counts)
+
     def compute_likelihood(self, branch_lengths):
-        raise NotImplementedError()
+        return self.compute_likelihood_tf(branch_lengths).numpy()
+    
+    @tf.function
+    def compute_gradient_tf(self, branch_lengths):
+        return tf.gradients(self.compute_likelihood_tf(branch_lengths), branch_lengths)
+
+    def compute_gradient(self, branch_lengths):
+        return self.compute_gradient_tf(branch_lengths)[0].numpy()
