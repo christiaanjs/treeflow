@@ -32,6 +32,19 @@ class BaseLikelihood:
             current_child[parent] += 1
         return child_indices
 
+    def get_sibling_indices(self):
+        child_indices = self.get_child_indices()
+        sibling_indices = np.full(child_indices.shape[0] - 1, -1)
+
+        def is_leaf(node_index):
+            return child_indices[node_index, 0] == -1
+
+        for i in range(child_indices.shape[0]):
+            if not is_leaf(i):
+                left, right = child_indices[i]
+                sibling_indices[left] = right
+                sibling_indices[right] = left
+
     def get_postorder_node_traversal_indices(self):
         child_indices = self.get_child_indices()
 
@@ -46,8 +59,25 @@ class BaseLikelihood:
                 if not is_leaf(child_index):
                     stack.append(child_index)
             visited.append(node_index)
-        return visited[::-1]
-                
+        return visited
+
+    def get_preorder_traversal_indices(self):
+        child_indices = self.get_child_indices()
+        
+        def is_leaf(node_index):
+            return child_indices[node_index, 0] == -1
+        
+        stack = [len(child_indices) - 1]
+        visited = [] 
+        while len(stack) > 0:
+            node_index = stack.pop()
+            if not is_leaf(node_index):
+                for child_index in child_indices[node_index][::-1]:
+                    stack.append(child_index)
+            visited.append(node_index)
+        return visited
+
+
     def compute_likelihood(self, branch_lengths):
         raise NotImplementedError()
 
