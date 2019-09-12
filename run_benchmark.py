@@ -1,15 +1,16 @@
 from beagle_likelihood import BeagleLikelihood
 from tensorflow_likelihood import TensorflowLikelihood
+#from pylo_likelihood import PyloLikelihood
 import numpy as np
 import time
 
 FASTA_FILE = 'data/sim-seq.fasta'
 NEWICK_FILE = 'data/analysis-tree.nwk'
 
-likelihood_classes = [BeagleLikelihood, TensorflowLikelihood]
+likelihood_classes = [BeagleLikelihood, TensorflowLikelihood]#, PyloLikelihood]
 
-n_points = 2
-delta = 1e-3
+n_points = 50
+delta = 0.001
 rate = 0.03
 
 def init_likelihood(cls):
@@ -35,7 +36,8 @@ reference_gradient = reference.compute_gradient(reference_branch_lengths)
 def benchmark_likelihood(cls):
     print('Benchmarking ' + str(cls))
     likelihood = init_likelihood(cls)
-    likelihood_correct = np.allclose(reference_likelihood, likelihood.compute_likelihood(reference_branch_lengths))
+    likelihood_value = likelihood.compute_likelihood(reference_branch_lengths)
+    likelihood_correct = np.allclose(reference_likelihood, likelihood_value)
     gradient_correct = np.allclose(reference_gradient, likelihood.compute_gradient(reference_branch_lengths))
 
     likelihood_values = np.zeros(branch_values.shape[0]) 
@@ -54,10 +56,13 @@ def benchmark_likelihood(cls):
 
     return {
         'name': str(cls),
+        'instance': likelihood,
+        'likelihood_value': likelihood_value,
         'likelihood_correct': likelihood_correct,
         'gradient_correct': gradient_correct,
         'likelihood_time': likelihood_time,
-        'gradient_time': gradient_time
+        'gradient_time': gradient_time,
+        'likelihood_values': likelihood_values
     }
 
 results = [benchmark_likelihood(cls) for cls in likelihood_classes]
