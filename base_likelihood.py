@@ -45,6 +45,8 @@ class BaseLikelihood:
                 sibling_indices[left] = right
                 sibling_indices[right] = left
 
+        return sibling_indices
+
     def get_postorder_node_traversal_indices(self):
         child_indices = self.get_child_indices()
 
@@ -59,7 +61,7 @@ class BaseLikelihood:
                 if not is_leaf(child_index):
                     stack.append(child_index)
             visited.append(node_index)
-        return visited
+        return visited[::-1]
 
     def get_preorder_traversal_indices(self):
         child_indices = self.get_child_indices()

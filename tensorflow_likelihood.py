@@ -94,13 +94,21 @@ class TensorflowLikelihood(BaseLikelihood):
 class TensorflowTwoPassLikelihood(TensorflowLikelihood):
     def __init__(self, *args, **kwargs):
         super(TensorflowTwoPassLikelihood, self).__init__(*args, **kwargs)
+        self.preorder_indices = self.get_preorder_traversal_indices()
+        self.parent_indices = self.get_parent_indices()
+        self.sibling_indices = self.get_sibling_indices()
         self.init_preorder_partials(substitution_model.jc_frequencies)
 
     def init_preorder_partials(self, frequencies):
-        pass
+        self.preorder_partials = [None] * self.get_vertex_count()
+        self.preorder_partials[-1] = tf.broadcast_to(tf.expand_dims(frequencies, 0), (len(self.pattern_counts), 4))
 
     def compute_preorder_partials(self, transition_probs):
-        pass
+        for node_index in self.preorder_indices[1:]:
+            sibling_index = self.sibling_indices[node_index]
+            sibling_sum = tf.reduce_sum(tf.expand_dims(transition_probs[sibling_index], 0) * tf.expand_dims(self.postorder_partials[sibling_index], 1), axis=2) # TODO: Cache this in preorder traversal?
+            parent_prod = self.preorder_partials[self.parent_indices[node_index]] * sibling_sum
+            self.preorder_partials[node_index] = tf.reduce_sum(tf.expand_dims(transition_probs[node_index], 0) * tf.expand_dims(parent_prod, 1), axis=2)
 
     @tf.function
     def compute_gradient_tf(self, branch_lengths):
