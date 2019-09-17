@@ -74,14 +74,12 @@ class TensorflowLikelihood(BaseLikelihood):
             child_transition_probs = tf.gather(transition_probs, child_indices)
             self.postorder_partials[node_index] = tf.reduce_prod(tf.reduce_sum(tf.expand_dims(child_transition_probs, 0) * tf.expand_dims(child_partials, 2), axis=3), axis=1)
 
-    def partials_to_site_likelihoods(self):
-        return tf.reduce_sum(tf.expand_dims(substitution_model.jc_frequencies, 0) * self.postorder_partials[-1], axis=1)
-
     @tf.function
     def compute_likelihood_tf(self, branch_lengths):
         transition_probs = substitution_model.transition_probs(substitution_model.jc_eigendecomposition, branch_lengths)
         self.compute_postorder_partials(transition_probs)
-        return tf.reduce_sum(tf.math.log(self.partials_to_site_likelihoods()) * self.pattern_counts)
+        site_likelihoods = tf.reduce_sum(tf.expand_dims(substitution_model.jc_frequencies, 0) * self.postorder_partials[-1], axis=1)
+        return tf.reduce_sum(tf.math.log(site_likelihoods) * self.pattern_counts)
 
     def compute_likelihood(self, branch_lengths):
         return self.compute_likelihood_tf(branch_lengths).numpy()
@@ -113,24 +111,22 @@ class TensorflowTwoPassLikelihood(TensorflowLikelihood):
             self.parent_prods[node_index] = self.preorder_partials[self.parent_indices[node_index]] * sibling_sum
             self.preorder_partials[node_index] = tf.reduce_sum(tf.expand_dims(transition_probs[node_index], 0) * tf.expand_dims(self.parent_prods[node_index], 2), axis=1)
     
-    @tf.custom_gradient 
-    def likelihood_from_probs(self, transition_probs):
-        self.compute_postorder_partials(transition_probs)
-        self.compute_preorder_partials(transition_probs)
-        site_likelihoods = tf.math.log(self.partials_to_site_likelihoods())
-        likelihood = tf.reduce_sum(self.pattern_counts * site_likelihoods)
-        def grad(dlikelihood):
-            parent_prods = tf.stack(self.parent_prods[:-1], axis=0)
-            preorder_partials = tf.stack(self.preorder_partials[:-1], axis=0)
-            site_grads =  parent_prods * tf.expand_dims(preorder_partials, axis=2)
-            grads = tf.reduce_sum(tf.reshape(self.pattern_counts / site_likelihoods, [1, -1, 1, 1]) * site_grads, axis=1)
-            return dlikelihood * grads
-        return likelihood, grad 
-
-    @tf.function
-    def compute_gradient_tf(self, branch_lengths):
+    def compute_likelihood_tf(self, branch_lengths):
         transition_probs = substitution_model.transition_probs(substitution_model.jc_eigendecomposition, branch_lengths)
-        return tf.gradients(self.likelihood_from_probs(transition_probs), branch_lengths)
+        @tf.custom_gradient
+        def site_likelihoods(transition_probs):
+            self.compute_postorder_partials(transition_probs)
+            site_likelihoods = tf.reduce_sum(tf.expand_dims(substitution_model.jc_frequencies, 0) * self.postorder_partials[-1], axis=1)
+            def grad(dsite_likelihoods):
+                self.compute_preorder_partials(transition_probs) 
+                parent_prods = tf.stack(self.parent_prods[:-1], axis=1)
+                postorder_partials = tf.stack(self.postorder_partials[:-1], axis=1)
+                grads = tf.expand_dims(parent_prods, axis=3) * tf.expand_dims(postorder_partials, axis=2)
+                return tf.reduce_sum(tf.reshape(dsite_likelihoods, [-1, 1, 1, 1]) * grads, axis=0)
+            return site_likelihoods, grad
+        
+        return tf.reduce_sum(tf.math.log(site_likelihoods(transition_probs)) * self.pattern_counts)
+
 
          
 
