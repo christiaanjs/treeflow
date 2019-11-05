@@ -75,21 +75,21 @@ class TensorflowLikelihood(BaseLikelihood):
             self.postorder_partials[node_index] = tf.reduce_prod(tf.reduce_sum(tf.expand_dims(child_transition_probs, 0) * tf.expand_dims(child_partials, 2), axis=3), axis=1)
 
     @tf.function
-    def compute_likelihood_tf(self, branch_lengths):
-        transition_probs = substitution_model.transition_probs(substitution_model.jc_eigendecomposition, branch_lengths)
+    def compute_likelihood_tf(self, branch_lengths, freqs, eigendecomp):
+        transition_probs = substitution_model.transition_probs(eigendecomp, branch_lengths)
         self.compute_postorder_partials(transition_probs)
-        site_likelihoods = tf.reduce_sum(tf.expand_dims(substitution_model.jc_frequencies, 0) * self.postorder_partials[-1], axis=1)
+        site_likelihoods = tf.reduce_sum(tf.expand_dims(freqs, 0) * self.postorder_partials[-1], axis=1)
         return tf.reduce_sum(tf.math.log(site_likelihoods) * self.pattern_counts)
 
-    def compute_likelihood(self, branch_lengths):
-        return self.compute_likelihood_tf(branch_lengths).numpy()
+    def compute_likelihood(self, branch_lengths, freqs, eigendecomp):
+        return self.compute_likelihood_tf(branch_lengths, freqs, eigendecomp).numpy()
     
     @tf.function
-    def compute_gradient_tf(self, branch_lengths):
-        return tf.gradients(self.compute_likelihood_tf(branch_lengths), branch_lengths)
+    def compute_gradient_tf(self, branch_lengths, freqs, eigendecomp, *wrt):
+        return tf.gradients(self.compute_likelihood_tf(branch_lengths, freqs, eigendecomp), [branch_lengths] + list(wrt))
 
-    def compute_gradient(self, branch_lengths):
-        return self.compute_gradient_tf(branch_lengths)[0].numpy()
+    def compute_gradient(self, branch_lengths, freqs, eigendecomp, *wrt):
+        return [x.numpy() for x in self.compute_gradient_tf(branch_lengths, freqs, eigendecomp, *wrt)]
 
 class TensorflowTwoPassLikelihood(TensorflowLikelihood):
     def __init__(self, *args, **kwargs):
@@ -111,6 +111,7 @@ class TensorflowTwoPassLikelihood(TensorflowLikelihood):
             self.parent_prods[node_index] = self.preorder_partials[self.parent_indices[node_index]] * sibling_sum
             self.preorder_partials[node_index] = tf.reduce_sum(tf.expand_dims(transition_probs[node_index], 0) * tf.expand_dims(self.parent_prods[node_index], 2), axis=1)
     
+    @tf.function
     def compute_likelihood_tf(self, branch_lengths):
         transition_probs = substitution_model.transition_probs(substitution_model.jc_eigendecomposition, branch_lengths)
         @tf.custom_gradient

@@ -1,11 +1,11 @@
-import sbn
+import libsbn
 import numpy as np
 
 class BaseLikelihood:
     def __init__(self, newick_file, fasta_file):
         self.newick_file = newick_file
         self.fasta_file = fasta_file
-        self.inst = sbn.instance('sbninstance')
+        self.inst = libsbn.instance('sbninstance')
         self.inst.read_fasta_file(fasta_file)
         self.inst.read_newick_file(newick_file)
         self.inst.print_status()
@@ -80,10 +80,10 @@ class BaseLikelihood:
         return visited
 
 
-    def compute_likelihood(self, branch_lengths):
+    def compute_likelihood(self, branch_lengths, freqs, eigendecomp):
         raise NotImplementedError()
 
-    def compute_gradient(self, branch_lengths):
+    def compute_gradient(self, branch_lengths, freqs, eigendecomp, *wrt):
         raise NotImplementedError()
 
 
