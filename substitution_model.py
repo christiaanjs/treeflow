@@ -58,6 +58,14 @@ def hky_q_matrix(pi, kappa):
         [pi[A], kappa*pi[C], pi[G], -(pi[A] + kappa*pi[C] + pi[G])]
     ])
 
+def hky_kappa_differential(pi):
+    return tf.stack([
+        [-pi[G], 0.0, pi[G], 0.0],
+        [0.0, -pi[T], 0.0, pi[T]],
+        [pi[A], 0.0, -pi[A], 0.0],
+        [0.0, pi[C], 0.0, -pi[C]]
+    ])
+
 def gtr_q_matrix(pi, rates):
     return tf.stack([
         [-(rates[0]*pi[1] + rates[1]*pi[2] + rates[2]*pi[3]), rates[0]*pi[1], rates[1]*pi[2], rates[2]*pi[3]],
@@ -71,6 +79,10 @@ def normalising_constant(q, pi):
 
 def normalise(q, pi):
     return q / normalising_constant(q, pi)
+
+def normalised_differential(q_diff, q_norm, norm_const, pi):
+    norm_grad = normalising_constant(q_diff, pi)
+    return (q_diff - q_norm * norm_grad) / norm_const
 
 def transition_probs(eigendecomposition, t):
     U, lambd, Vt = eigendecomposition
