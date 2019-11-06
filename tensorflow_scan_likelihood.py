@@ -48,4 +48,16 @@ class TensorflowScanLikelihood(TensorflowLikelihood):
             node_partials = tf.reduce_sum(tf.expand_dims(node_transition_probs, 0) * tf.expand_dims(parent_prods, 2), axis=1)
             return tf.tensor_scatter_nd_update(partials, node_index, tf.expand_dims(node_partials, axis=0))
         self.preorder_partials = tf.scan(do_integration, (node_indices, sibling_sums, preorder_transition_probs, self.preorder_parent_indices_tensor), self.preorder_partials)[-1]
-            
+
+    def compute_edge_derivatives(self, differential_matrices):
+        site_likelihoods = tf.reduce_sum(self.postorder_partials[-1] * self.preorder_partials[-1], axis=1)
+        site_derivatives = tf.reduce_sum(
+            tf.expand_dims(self.postorder_partials[:-1], 3) *
+                tf.expand_dims(differential_matrices, 1) *
+                tf.expand_dims(self.preorder_partials[:-1], 2),
+            axis=[2,3]
+        )
+        return tf.reduce_sum(tf.expand_dims(self.pattern_counts / site_likelihoods, 0) * site_derivatives, axis=1)
+    
+    def compute_branch_length_derivatives(self, q):
+        return self.compute_edge_derivatives(tf.expand_dims(tf.transpose(q), 0))

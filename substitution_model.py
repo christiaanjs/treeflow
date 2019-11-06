@@ -50,6 +50,28 @@ def hky_eigendecomposition(pi, kappa):
 
 	return [tf.dtypes.cast(x, tf.dtypes.float64) for x in [U, lambd, Vt]]
 
+def hky_q_matrix(pi, kappa):
+    return tf.stack([
+        [-(pi[C] + kappa*pi[G] + pi[T]), pi[C], kappa*pi[G], pi[T]],
+        [pi[A], -(pi[A] + pi[G] + kappa*pi[T]) , pi[G], kappa*pi[T]],
+        [kappa*pi[A], pi[C], -(kappa*pi[A] + pi[C] + pi[T]), pi[T]],
+        [pi[A], kappa*pi[C], pi[G], -(pi[A] + kappa*pi[C] + pi[G])]
+    ])
+
+def gtr_q_matrix(pi, rates):
+    return tf.stack([
+        [-(rates[0]*pi[1] + rates[1]*pi[2] + rates[2]*pi[3]), rates[0]*pi[1], rates[1]*pi[2], rates[2]*pi[3]],
+        [rates[0]*pi[0], -(rates[0]*pi[0] + rates[3]*pi[2] + rates[4]*pi[3]), rates[3]*pi[2], rates[4]*pi[3]],
+        [rates[1]*pi[0], rates[3]*pi[1], -(rates[1]*pi[0] + rates[3]*pi[1] + rates[5]*pi[3]), rates[5]*pi[3]],
+        [rates[2]*pi[0], rates[4]*pi[1], rates[5]*pi[2], -(rates[2]*pi[0] + rates[4]*pi[1] + rates[5]*pi[2])]     
+    ])
+
+def normalising_constant(q, pi):
+    return -tf.reduce_sum(tf.linalg.diag_part(q) * pi)
+
+def normalise(q, pi):
+    return q / normalising_constant(q, pi)
+
 def transition_probs(eigendecomposition, t):
     U, lambd, Vt = eigendecomposition
     diag = tf.linalg.diag(tf.exp(tf.expand_dims(t, 1) * tf.expand_dims(lambd, 0)))
