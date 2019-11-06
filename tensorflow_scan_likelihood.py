@@ -50,10 +50,11 @@ class TensorflowScanLikelihood(TensorflowLikelihood):
         self.preorder_partials = tf.scan(do_integration, (node_indices, sibling_sums, preorder_transition_probs, self.preorder_parent_indices_tensor), self.preorder_partials)[-1]
 
     def compute_edge_derivatives(self, differential_matrices):
+        differential_transpose = tf.transpose(differential_matrices, perm=[0, 2, 1])
         site_likelihoods = tf.reduce_sum(self.postorder_partials[-1] * self.preorder_partials[-1], axis=1)
         site_derivatives = tf.reduce_sum(
             tf.expand_dims(self.postorder_partials[:-1], 3) *
-                tf.expand_dims(differential_matrices, 1) *
+                tf.expand_dims(differential_transpose, 1) *
                 tf.expand_dims(self.preorder_partials[:-1], 2),
             axis=[2,3]
         )
