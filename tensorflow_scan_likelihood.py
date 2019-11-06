@@ -40,7 +40,7 @@ class TensorflowScanLikelihood(TensorflowLikelihood):
         preorder_transition_probs = tf.gather(transition_probs, self.preorder_node_indices_tensor)
         sibling_transition_probs = tf.gather(transition_probs, self.preorder_sibling_indices_tensor)
         sibling_postorder_partials = tf.gather(self.postorder_partials, self.preorder_sibling_indices_tensor)
-        sibling_sums = tf.reduce_sum(tf.expand_dims(sibling_transition_probs, 1) * tf.expand_dims(sibling_postorder_partials, 2), axis=2)
+        sibling_sums = tf.reduce_sum(tf.expand_dims(sibling_transition_probs, 1) * tf.expand_dims(sibling_postorder_partials, 2), axis=3)
         def do_integration(partials, elems):
             node_index, node_sibling_sums, node_transition_probs, node_parent_index = elems
             parent_partials = partials[node_parent_index]
