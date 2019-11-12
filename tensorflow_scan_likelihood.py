@@ -59,6 +59,19 @@ class TensorflowScanLikelihood(TensorflowLikelihood):
             axis=[2,3]
         )
         return tf.reduce_sum(tf.expand_dims(self.pattern_counts / site_likelihoods, 0) * site_derivatives, axis=1)
+
+    def compute_frequency_derivatives(self, differential_matrices, frequency_index):
+        differential_transpose = tf.transpose(differential_matrices, perm=[0, 2, 1])
+        site_likelihoods = tf.reduce_sum(self.postorder_partials[-1] * self.preorder_partials[-1], axis=1)
+        site_derivatives = tf.reduce_sum(
+            tf.expand_dims(self.postorder_partials[:-1], 3) *
+                tf.expand_dims(differential_transpose, 1) *
+                tf.expand_dims(self.preorder_partials[:-1], 2),
+            axis=[2,3]
+        )
+        site_coefficients = self.pattern_counts / site_likelihoods
+        return tf.reduce_sum(tf.expand_dims(site_coefficients, 0) * site_derivatives) + tf.reduce_sum(site_coefficients * self.postorder_partials[-1, :, frequency_index])
+        
     
     def compute_branch_length_derivatives(self, q):
         return self.compute_edge_derivatives(tf.expand_dims(tf.transpose(q), 0))
