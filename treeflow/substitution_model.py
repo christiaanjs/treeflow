@@ -4,26 +4,29 @@ import numpy as np
 A, C, G, T = list(range(4))
 
 class SubstitutionModel:
-    def q(frequencies, **kwargs):
+    def q(self, frequencies, **kwargs):
         raise NotImplementedError()
 
-    def eigen(frequencies, **kwargs):
+    def q_norm(self, frequencies, **kwargs):
+        return normalise(self.q(frequencies, **kwargs), frequencies)
+
+    def eigen(self, frequencies, **kwargs):
         raise NotImplementedError()
 
-    def q_frequency_differentials(frequencies, **kwargs):
+    def q_frequency_differentials(self, frequencies, **kwargs):
         raise NotImplementedError()
 
-    def q_param_differentials(frequencies, **kwargs):
+    def q_param_differentials(self, frequencies, **kwargs):
         raise NotImplementedError()
 
-    def param_keys():
+    def param_keys(self):
         raise NotImplementedError()
 
 class JC(SubstitutionModel):
-    def q(*args, **kwargs):
+    def frequencies(self, *args, **kwargs):
         return tf.convert_to_tensor(np.array([0.25, 0.25, 0.25, 0.25]))
 
-    def eigen(*args, **kwargs):
+    def eigen(self, *args, **kwargs):
         return [tf.convert_to_tensor(np.array(x)) for x in [
             [
                 [1.0, 2.0, 0.0, 0.5],
@@ -40,9 +43,17 @@ class JC(SubstitutionModel):
             ]
         ]]
 
+    def q(self, *args, **kwargs):
+        return tf.convert_to_tensor(np.array([
+            [-1, 1/3, 1/3, 1/3],
+            [1/3, -1, 1/3, 1/3],
+            [1/3, 1/3, -1, 1/3],
+            [1/3, 1/3, 1/3, -1]
+        ]))
+
 
 class HKY(SubstitutionModel):
-    def eigen(frequencies, kappa):
+    def eigen(self, frequencies, kappa):
         pi = frequencies
         piY = pi[T] + pi[C]
         piR = pi[A] + pi[G]
@@ -72,7 +83,7 @@ class HKY(SubstitutionModel):
 
         return [tf.dtypes.cast(x, tf.dtypes.float64) for x in [evec, eval, ivec]]
 
-    def q(frequencies, kappa):
+    def q(self, frequencies, kappa):
         pi = frequencies
         return tf.stack([
             [-(pi[C] + kappa*pi[G] + pi[T]), pi[C], kappa*pi[G], pi[T]],
@@ -81,7 +92,7 @@ class HKY(SubstitutionModel):
             [pi[A], kappa*pi[C], pi[G], -(pi[A] + kappa*pi[C] + pi[G])]
         ])
 
-    def q_param_differentials(frequencies, kappa):
+    def q_param_differentials(self, frequencies, kappa):
         pi = frequencies
         return tf.stack([
             [-pi[G], 0.0, pi[G], 0.0],
@@ -90,7 +101,7 @@ class HKY(SubstitutionModel):
             [0.0, pi[C], 0.0, -pi[C]]
         ])
 
-    def q_frequency_differentials(frequencies, kappa):
+    def q_frequency_differentials(self, frequencies, kappa):
         return tf.stack([
             [
                 [0.0, 0.0, 0.0, 0.0],
@@ -119,7 +130,7 @@ class HKY(SubstitutionModel):
         ])
 
 class GTR(SubstitutionModel):
-    def q(frequencies, rates):
+    def q(self, frequencies, rates):
         pi = frequencies
         return tf.stack([
             [-(rates[0]*pi[1] + rates[1]*pi[2] + rates[2]*pi[3]), rates[0]*pi[1], rates[1]*pi[2], rates[2]*pi[3]],
@@ -128,7 +139,7 @@ class GTR(SubstitutionModel):
             [rates[2]*pi[0], rates[4]*pi[1], rates[5]*pi[2], -(rates[2]*pi[0] + rates[4]*pi[1] + rates[5]*pi[2])]     
         ])
 
-    def eigen(frequencies, rates):
+    def eigen(self, frequencies, rates):
         q = q(frequencies, rates)
         eval, evec = tf.linalg.eigh(q)
         ivec = tf.linalg.inv(evec)
