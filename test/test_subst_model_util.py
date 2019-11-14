@@ -23,8 +23,9 @@ def test_normalisation_gradient(hky_params, param_key):
     assert_allclose(tf_diffs, norm_diffs)
 
 @pytest.mark.parametrize('param_key', HKY().param_keys() + ['frequencies'])
-def test_transition_prob_differential(hky_params, param_key):
-    branch_lengths = tf.convert_to_tensor(np.array([0.1, 0.9, 2.2]))
+@pytest.mark.parametrize('inv_mult', ['True', 'False'])
+def test_transition_prob_differential(hky_params, param_key, inv_mult):
+    branch_lengths = tf.convert_to_tensor(np.array([0.1]))#, 0.9, 2.2]))
     subst_model = HKY()
     params = hky_params
     with tf.GradientTape() as t:
@@ -36,11 +37,12 @@ def test_transition_prob_differential(hky_params, param_key):
 
     if param_key != 'frequencies':
         q_diffs = subst_model.q_norm_param_differentials(**params)[param_key]
-        diffs = transition_probs_differential(q_diffs, eigen,  branch_lengths)
-        tf_diffs = transition_probs_inv @ tf_jacs
+        diffs = transition_probs_differential(q_diffs, eigen,  branch_lengths, inv_mult=inv_mult)
+        tf_diffs = (transition_probs_inv @ tf_jacs) if inv_mult else tf_jacs
     else:
+        freq_index = 2
         q_diffs = subst_model.q_norm_frequency_differentials(**params)
-        diffs = tf.stack([transition_probs_differential(q_diffs[i], eigen, branch_lengths) for i in range(4)])
-        tf_diffs = tf.expand_dims(transition_probs_inv, 0) @ tf.transpose(tf_jacs, perm=[3, 0, 1, 2])
+        diffs = transition_probs_differential(q_diffs[freq_index], eigen, branch_lengths, inv_mult=inv_mult)
+        tf_diffs = (transition_probs_inv @ tf_jacs[:, :, :, freq_index]) if inv_mult else tf_jacs[:, :, :, freq_index]
     assert_allclose(tf_diffs.numpy(), diffs.numpy())
 

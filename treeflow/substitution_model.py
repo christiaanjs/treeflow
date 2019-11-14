@@ -181,14 +181,19 @@ def transition_probs(eigendecomposition, t):
     diag = tf.linalg.diag(tf.exp(tf.expand_dims(t, 1) * tf.expand_dims(lambd, 0)))
     return tf.reduce_sum(tf.reshape(U, [1, 4, 4, 1, 1]) * tf.reshape(diag, [-1, 1, 4, 4, 1]) * tf.reshape(Vt, [1, 1, 1, 4, 4]), axis=[2, 3])
 
-def transition_probs_differential(q_diff, eigendecomposition, t):
+def transition_probs_differential(q_diff, eigendecomposition, t, inv_mult=True):
     evec, eval, ivec = eigendecomposition
     g = tf.linalg.matmul(tf.linalg.matmul(ivec, q_diff), evec)
-    G_diag = tf.expand_dims(tf.linalg.diag_part(g), 1) * tf.expand_dims(t, 0)
     eval_i = tf.reshape(eval, [-1, 1, 1])
     eval_j = tf.reshape(eval, [1, -1, 1])
     t_b = tf.reshape(t, [1, 1, -1])
-    G_non_diag = tf.expand_dims(g, 2) * (1.0 - tf.math.exp((eval_j - eval_i)*t_b)) / (eval_i - eval_j)
+    if inv_mult:
+        G_diag = tf.expand_dims(tf.linalg.diag_part(g), 1) * tf.expand_dims(t, 0)
+        G_non_diag = tf.expand_dims(g, 2) * (1.0 - tf.math.exp((eval_j - eval_i)*t_b)) / (eval_i - eval_j)
+    else:
+        t_d = tf.expand_dims(t, 0)
+        G_diag = tf.expand_dims(tf.linalg.diag_part(g), 1) * t_d * tf.math.exp(tf.expand_dims(eval, 1) * t_d)
+        G_non_diag = tf.expand_dims(g, 2) * (tf.math.exp(eval_i * t_b) - tf.math.exp(eval_j * t_b)) / (eval_i - eval_j)
     indices = tf.range(4)
     diag_indices = tf.stack([indices, indices], axis=1)
     G = tf.transpose(tf.tensor_scatter_nd_update(G_non_diag, diag_indices, G_diag), perm=[2, 0, 1])
