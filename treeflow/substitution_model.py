@@ -16,8 +16,20 @@ class SubstitutionModel:
     def q_frequency_differentials(self, frequencies, **kwargs):
         raise NotImplementedError()
 
+    def q_norm_frequency_differentials(self, frequencies, **kwargs): 
+        q = self.q(frequencies, **kwargs)
+        q_norm, norm_const = normalise_and_constant(q, frequencies)
+        diffs = self.q_frequency_differentials(frequencies, **kwargs)
+        return tf.stack([normalised_differential(diffs[i], q_norm, norm_const, frequencies, frequency_index=i, q=q) for i in range(4)])                
+
     def q_param_differentials(self, frequencies, **kwargs):
         raise NotImplementedError()
+
+    def q_norm_param_differentials(self, frequencies, **kwargs):
+        q = self.q(frequencies, **kwargs)
+        q_norm, norm_const = normalise_and_constant(q, frequencies)
+        diffs = self.q_param_differentials(frequencies, **kwargs) 
+        return { key: normalised_differential(diff, q_norm, norm_const, frequencies) for key, diff in diffs.items() }
 
     def param_keys(self):
         raise NotImplementedError()
@@ -153,6 +165,10 @@ def normalising_constant(q, pi):
 
 def normalise(q, pi):
     return q / normalising_constant(q, pi)
+
+def normalise_and_constant(q, pi):
+    norm_const = normalising_constant(q, pi)
+    return q / norm_const, norm_const
 
 def normalised_differential(q_diff, q_norm, norm_const, pi, frequency_index=None, q=None):
     norm_grad = normalising_constant(q_diff, pi)
