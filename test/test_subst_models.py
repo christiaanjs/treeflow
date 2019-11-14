@@ -33,14 +33,10 @@ def assert_param_differentials(subst_model, param_key, **params):
     with tf.GradientTape() as t:
         t.watch(params[param_key])
         q = subst_model.q(**params)
-    tf_jac = t.jacobian(q, params[param_key])
+    tf_jac = t.jacobian(q, params[param_key]).numpy()
     diffs = subst_model.q_param_differentials(**params)[param_key]
-    if tf.rank(diffs) > 2:
-        tf_diffs = tf.transpose(tf_jac, perm=[2, 0, 1]).numpy()
-    else:
-        tf_diffs = tf_jac.numpy()
 
-    assert_allclose(tf_diffs, diffs)
+    assert_allclose(tf_jac, diffs)
         
 @pytest.mark.parametrize("param_key", HKY().param_keys())
 def test_hky_param_differentials(hky_params, param_key):

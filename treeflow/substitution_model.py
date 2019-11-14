@@ -94,12 +94,12 @@ class HKY(SubstitutionModel):
 
     def q_param_differentials(self, frequencies, kappa):
         pi = frequencies
-        return tf.stack([
+        return { 'kappa': tf.stack([
             [-pi[G], 0.0, pi[G], 0.0],
             [0.0, -pi[T], 0.0, pi[T]],
             [pi[A], 0.0, -pi[A], 0.0],
             [0.0, pi[C], 0.0, -pi[C]]
-        ])
+        ])}
 
     def q_frequency_differentials(self, frequencies, kappa):
         return tf.stack([
@@ -129,6 +129,9 @@ class HKY(SubstitutionModel):
             ]
         ])
 
+    def param_keys(self):
+        return ['kappa']
+
 class GTR(SubstitutionModel):
     def q(self, frequencies, rates):
         pi = frequencies
@@ -151,8 +154,10 @@ def normalising_constant(q, pi):
 def normalise(q, pi):
     return q / normalising_constant(q, pi)
 
-def normalised_differential(q_diff, q_norm, norm_const, pi):
+def normalised_differential(q_diff, q_norm, norm_const, pi, frequency_index=None, q=None):
     norm_grad = normalising_constant(q_diff, pi)
+    if frequency_index is not None:
+        norm_grad = norm_grad - q[frequency_index, frequency_index]
     return (q_diff - q_norm * norm_grad) / norm_const
 
 def transition_probs(eigendecomposition, t):
