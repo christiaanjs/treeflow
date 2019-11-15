@@ -176,10 +176,16 @@ def normalised_differential(q_diff, q_norm, norm_const, pi, frequency_index=None
         norm_grad = norm_grad - q[frequency_index, frequency_index]
     return (q_diff - q_norm * norm_grad) / norm_const
 
-def transition_probs(eigendecomposition, t):
-    U, lambd, Vt = eigendecomposition
-    diag = tf.linalg.diag(tf.exp(tf.expand_dims(t, 1) * tf.expand_dims(lambd, 0)))
-    return tf.reduce_sum(tf.reshape(U, [1, 4, 4, 1, 1]) * tf.reshape(diag, [-1, 1, 4, 4, 1]) * tf.reshape(Vt, [1, 1, 1, 4, 4]), axis=[2, 3])
+def transition_probs(eigendecomposition, category_rates, t):
+    evec, eval, ivec = eigendecomposition
+    t_b = tf.reshape(t, [-1, 1, 1])
+    rates_b = tf.reshape(category_rates, [1, -1, 1])
+    eval_b = tf.reshape(eval, [1, 1, -1])
+    diag = tf.linalg.diag(tf.exp(eval_b * rates_b * t_b))
+
+    evec_b, ivec_b = [tf.reshape(x, [1, 1, 4, 4]) for x in (evec, ivec)]
+
+    return evec_b @ diag @ ivec_b
 
 def transition_probs_differential(q_diff, eigendecomposition, t, inv_mult=True):
     evec, eval, ivec = eigendecomposition

@@ -1,8 +1,36 @@
 import pytest
-from treeflow.substitution_model import HKY, normalising_constant, normalised_differential, transition_probs, transition_probs_differential
+from treeflow.substitution_model import JC, HKY, normalising_constant, normalised_differential, transition_probs, transition_probs_differential
 import numpy as np
 from numpy.testing import assert_allclose
 import tensorflow as tf
+
+def get_transition_probs_vals(subst_model, branch_lengths, category_rates, **params):
+    branch_lengths_ = tf.convert_to_tensor(branch_lengths)
+    rates_ = tf.convert_to_tensor(category_rates)
+    eigen = subst_model.eigen(**params)
+    return transition_probs(eigen, rates_, branch_lengths_).numpy()
+
+def test_transition_probs_hky_rowsum(hky_params, branch_lengths, category_rates):
+    transition_prob_vals = get_transition_probs_vals(JC(), branch_lengths, category_rates, **hky_params)
+    row_sums = np.sum(transition_prob_vals, axis=3)
+    assert_allclose(1.0, row_sums)
+
+def test_transition_probs_jc(branch_lengths, category_rates):
+    transition_prob_vals = get_transition_probs_vals(JC(), branch_lengths, category_rates)
+
+    diag_mask = np.eye(4, dtype=bool)
+    diag_i, diag_j = np.where(diag_mask)
+    non_diag_i, non_diag_j = np.where(~diag_mask)
+
+    for rate_index, rate in enumerate(category_rates):
+        for branch_index, branch_length in enumerate(branch_lengths):
+            d = rate * branch_length
+            print(d)
+            probs = transition_prob_vals[branch_index, rate_index]
+            print(probs)
+            assert_allclose(0.25 + 0.75*np.exp(-4*d/3), probs[diag_i, diag_j])
+            assert_allclose(0.25 - 0.25*np.exp(-4*d/3), probs[non_diag_i, non_diag_j])
+
 
 @pytest.mark.parametrize('param_key', HKY().param_keys() + ['frequencies'])
 def test_normalisation_gradient(hky_params, param_key):
