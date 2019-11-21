@@ -143,14 +143,8 @@ class TensorflowLikelihood(BaseLikelihood):
     def compute_branch_length_derivatives(self, q, category_weights):
         return self.compute_edge_derivatives(tf.reshape(q, [1, 1, 4, 4]), category_weights)
 
-    def compute_frequency_derivatives(self, differential_matrices, frequency_index, category_weights):
+    def compute_frequency_derivative(self, differential_matrices, frequency_index, category_weights):
         site_likelihoods = self.compute_site_likelihoods(category_weights)
-        cat_derivatives = tf.reduce_sum(
-            tf.expand_dims(self.postorder_partials[:-1], 4) *
-                tf.expand_dims(differential_transpose, 1) *
-                tf.expand_dims(self.preorder_partials[:-1], 3),
-            axis=[0, 3, 4]
-        )
+        cat_derivatives = self.compute_cat_derivatives(differential_matrices, sum_branches=True)
         site_coefficients = self.pattern_counts / site_likelihoods
-        return tf.reduce_sum(site_coefficients * tf.reduce_sum((site_derivatives + self.postorder_partials[-1, :, frequency_index]) * category_weights, axis=-1))
-    
+        return tf.reduce_sum(site_coefficients * tf.reduce_sum((cat_derivatives + self.postorder_partials[-1, :, frequency_index]) * category_weights, axis=-1))
