@@ -187,22 +187,24 @@ def transition_probs(eigendecomposition, category_rates, t):
 
     return evec_b @ diag @ ivec_b
 
-def transition_probs_differential(q_diff, eigendecomposition, t, inv_mult=True):
+def transition_probs_differential(q_diff, eigendecomposition, branch_lengths, category_rates, inv_mult=True):
     evec, eval, ivec = eigendecomposition
     g = tf.linalg.matmul(tf.linalg.matmul(ivec, q_diff), evec)
-    eval_i = tf.reshape(eval, [-1, 1, 1])
-    eval_j = tf.reshape(eval, [1, -1, 1])
-    t_b = tf.reshape(t, [1, 1, -1])
+    eval_i = tf.reshape(eval, [-1, 1, 1, 1])
+    eval_j = tf.reshape(eval, [1, -1, 1, 1])
+    branch_lengths_b = tf.expand_dims(branch_lengths, 1)
+    rates_b = tf.expand_dims(category_rates, 0)
+    t_b = tf.expand_dims(branch_lengths_b * rates_b, 0)
+    t_b2 = tf.expand_dims(t_b, 0)
     if inv_mult:
-        G_diag = tf.expand_dims(tf.linalg.diag_part(g), 1) * tf.expand_dims(t, 0)
-        G_non_diag = tf.expand_dims(g, 2) * (1.0 - tf.math.exp((eval_j - eval_i)*t_b)) / (eval_i - eval_j)
+        G_diag = tf.reshape(tf.linalg.diag_part(g), [-1, 1, 1]) * t_b
+        G_non_diag = tf.reshape(g, [4, 4, 1, 1]) * (1.0 - tf.math.exp((eval_j - eval_i)*t_b2)) / (eval_i - eval_j)
     else:
-        t_d = tf.expand_dims(t, 0)
-        G_diag = tf.expand_dims(tf.linalg.diag_part(g), 1) * t_d * tf.math.exp(tf.expand_dims(eval, 1) * t_d)
-        G_non_diag = tf.expand_dims(g, 2) * (tf.math.exp(eval_i * t_b) - tf.math.exp(eval_j * t_b)) / (eval_i - eval_j)
+        G_diag = tf.reshape(tf.linalg.diag_part(g), [-1, 1, 1]) * t_b * tf.math.exp(tf.reshape(eval, [-1, 1, 1]) * t_b)
+        G_non_diag = tf.reshape(g, [4, 4, 1, 1]) * (tf.math.exp(eval_i * t_b2) - tf.math.exp(eval_j * t_b2)) / (eval_i - eval_j)
     indices = tf.range(4)
     diag_indices = tf.stack([indices, indices], axis=1)
-    G = tf.transpose(tf.tensor_scatter_nd_update(G_non_diag, diag_indices, G_diag), perm=[2, 0, 1])
+    G = tf.transpose(tf.tensor_scatter_nd_update(G_non_diag, diag_indices, G_diag), perm=[2, 3, 0, 1])
     return tf.linalg.matmul(tf.linalg.matmul(evec, G), ivec)
     
      
