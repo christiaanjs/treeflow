@@ -71,13 +71,13 @@ class HKY(SubstitutionModel):
         piR = pi[A] + pi[G]
 
         beta = -1.0 / (2.0 * (piR*piY + kappa * (pi[A]*pi[G] + pi[C]*pi[T])))
-        A_R = 1.0 + piR * (kappa - 1)
-        A_Y = 1.0 + piY * (kappa - 1)
+        #A_R = 1.0 + piR * (kappa - 1)
+        #A_Y = 1.0 + piY * (kappa - 1)
         eval = tf.stack([ # Eigenvalues 
             0.0,
             beta,
-            beta * A_Y,
-            beta * A_R
+            beta * (piY * kappa + piR),
+            beta * (piY + piR * kappa)
         ])
         evec = tf.transpose(tf.stack([ # Right eigenvectors as columns (rows of transpose)
             [1.0, 1.0, 1.0, 1.0],
@@ -155,7 +155,7 @@ class GTR(SubstitutionModel):
         ])
 
     def eigen(self, frequencies, rates):
-        q = q(frequencies, rates)
+        q = self.q(frequencies, rates)
         eval, evec = tf.linalg.eigh(q)
         ivec = tf.linalg.inv(evec)
         return (evec, eval, ivec)
@@ -205,6 +205,7 @@ def transition_probs_differential(q_diff, eigendecomposition, branch_lengths, ca
     indices = tf.range(4)
     diag_indices = tf.stack([indices, indices], axis=1)
     G = tf.transpose(tf.tensor_scatter_nd_update(G_non_diag, diag_indices, G_diag), perm=[2, 3, 0, 1])
+
     return tf.linalg.matmul(tf.linalg.matmul(evec, G), ivec)
     
      

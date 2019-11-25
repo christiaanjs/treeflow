@@ -3,10 +3,14 @@ import tensorflow as tf
 from numpy.testing import assert_allclose
 from treeflow.substitution_model import JC, HKY
 
+def undecomp(eigen):
+    evec, eval, ivec = eigen
+    return evec @ tf.linalg.diag(eval) @ ivec
+
 def assert_eigen(subst_model, **params):
-    evec, eval, ivec = subst_model.eigen(**params)
+    eigen = subst_model.eigen(**params)
     q = subst_model.q_norm(**params)
-    assert_allclose(q.numpy(), (evec @ tf.linalg.diag(eval) @ ivec).numpy())
+    assert_allclose(q.numpy(), undecomp(eigen).numpy())
 
 def test_jc_eigen():
     jc = JC()
@@ -14,6 +18,21 @@ def test_jc_eigen():
 
 def test_hky_eigen(hky_params):
     assert_eigen(HKY(), **hky_params)
+
+def test_hky_eigen_q_freq_jacobian(hky_params):
+    subst_model = HKY()
+    frequencies = hky_params['frequencies']
+    with tf.GradientTape() as t:
+        t.watch(frequencies)
+        q_norm_eig = undecomp(subst_model.eigen(**hky_params))
+    eig_jac = t.jacobian(q_norm_eig, frequencies)
+
+    with tf.GradientTape() as t:
+        t.watch(frequencies)
+        q_norm = subst_model.q_norm(**hky_params)
+    jac = t.jacobian(q_norm, frequencies)
+    assert_allclose(eig_jac, jac)
+    
 
 # TODO: test_gtr_eigen
 
