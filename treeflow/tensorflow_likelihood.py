@@ -152,4 +152,4 @@ class TensorflowLikelihood(BaseLikelihood):
         site_likelihoods = self.compute_site_likelihoods(category_weights)
         cat_derivatives = self.compute_cat_derivatives(differential_matrices, sum_branches=True)
         site_coefficients = self.pattern_counts / site_likelihoods
-        return tf.reduce_sum(site_coefficients * tf.reduce_sum((cat_derivatives + self.postorder_partials[-1, :, frequency_index]) * category_weights, axis=-1))
+        return tf.reduce_sum(site_coefficients * tf.reduce_sum((cat_derivatives + self.postorder_partials[-1, :, :, frequency_index]) * category_weights, axis=-1))

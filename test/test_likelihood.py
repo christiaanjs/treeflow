@@ -28,14 +28,16 @@ def test_hky_1cat_beast_kappa_gradient(single_hky_params, single_rates, single_w
     transition_prob_differential = treeflow.substitution_model.transition_probs_differential(q_diff, eigendecomp, branch_lengths, single_rates)
     assert_allclose(tf_likelihood.compute_derivative(transition_prob_differential, single_weights).numpy(), 0.12373298571565322)
 
-@pytest.mark.skip(reason="BEAST vakue is wrong")
+#@pytest.mark.skip(reason="BEAST vakue is wrong")
 def test_hky_1cat_freqA_gradient_beast(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
     freq_index = 0
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, single_rates, single_weights, **single_hky_params)
     q_diff = subst_model.q_norm_frequency_differentials(**single_hky_params)[freq_index]
     transition_prob_differential = treeflow.substitution_model.transition_probs_differential(q_diff, eigendecomp, branch_lengths, single_rates)
-    grad = tf_likelihood.compute_frequency_derivative(transition_prob_differential, freq_index, single_weights)
+    #grad = tf_likelihood.compute_frequency_derivative(transition_prob_differential, freq_index, single_weights)
+    grad = tf_likelihood.compute_derivative(transition_prob_differential, single_weights)
+
     assert_allclose(grad.numpy(), 12.658386297868352) # TODO: Correct once BEAST is corrected
     
 def test_hky_1cat_freqA_gradient_num(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
@@ -57,7 +59,7 @@ def test_hky_1cat_freqA_gradient_num(single_hky_params, single_rates, single_wei
 
     assert_allclose(grad.numpy(), num_grad)
 
-def test_hky_1cat_freqA_gradient_tf(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
+def test_hky_1cat_freqA_gradient_tf(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file, freq_index):
     freq_index = 0
 
     subst_model = treeflow.substitution_model.HKY()
@@ -72,7 +74,6 @@ def test_hky_1cat_freqA_gradient_tf(single_hky_params, single_rates, single_weig
     q_diff = subst_model.q_norm_frequency_differentials(**single_hky_params)[freq_index]
     transition_prob_differential = treeflow.substitution_model.transition_probs_differential(q_diff, eigendecomp, branch_lengths, single_rates)
     grad = tf_likelihood.compute_frequency_derivative(transition_prob_differential, freq_index, single_weights)
-
     assert_allclose(grad.numpy(), tf_grad.numpy())
 
 def test_hky_1cat_tf_branch_gradient(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):

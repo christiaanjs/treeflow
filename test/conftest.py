@@ -23,6 +23,11 @@ def single_hky_params():
 def hky_params(request):
     return request.param
 
+@pytest.fixture(params=list(range(4)))
+def freq_index(request):
+    return request.param
+
+
 @pytest.fixture
 def branch_lengths():
     return np.array([0.4, 2.2])
@@ -49,6 +54,3 @@ def single_rates():
 @pytest.fixture
 def single_weights():
     return tf.convert_to_tensor(np.array([1.0]))
-
-
-    

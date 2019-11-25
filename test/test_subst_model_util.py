@@ -75,7 +75,6 @@ def test_transition_prob_differential_tf_hky_kappa(hky_params, single_rates, inv
     assert_allclose(tf_diffs.numpy(), diffs.numpy())
 
 @pytest.mark.parametrize('inv_mult', [False, True])
-@pytest.mark.parametrize('freq_index', list(range(4)))
 def test_transition_prob_differential_tf_hky_frequencies(hky_params, single_rates, inv_mult, freq_index):
     branch_lengths = tf.convert_to_tensor(np.array([0.9, 2.2]))
     subst_model = HKY()
