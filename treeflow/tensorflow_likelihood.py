@@ -145,8 +145,11 @@ class TensorflowLikelihood(BaseLikelihood):
         site_derivatives = self.compute_site_derivatives(differential_matrices, category_weights)
         return tf.reduce_sum(self.pattern_counts / site_likelihoods * site_derivatives, axis=-1)
 
-    def compute_branch_length_derivatives(self, q, category_weights):
-        return self.compute_edge_derivatives(tf.reshape(q, [1, 1, 4, 4]), category_weights)
+    def compute_branch_length_derivatives(self, q, category_rates, category_weights):
+        site_coefficients = self.pattern_counts / self.compute_site_likelihoods(category_weights)
+        cat_derivatives = self.compute_cat_derivatives(tf.reshape(q, [1, 1, 4, 4])) * tf.reshape(category_rates, [1, -1])
+        site_derivatives = tf.reduce_sum(cat_derivatives * category_weights, axis=-1)
+        return tf.reduce_sum(site_coefficients * site_derivatives, axis=-1) 
 
     def compute_frequency_derivative(self, differential_matrices, frequency_index, category_weights):
         site_likelihoods = self.compute_site_likelihoods(category_weights)

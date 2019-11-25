@@ -54,7 +54,7 @@ def test_normalisation_gradient(hky_params, param_key):
     assert_allclose(tf_diffs, norm_diffs)
 
 @pytest.mark.parametrize('inv_mult', [False, True])
-def test_transition_prob_differential_tf_hky_kappa(hky_params, single_rates, inv_mult):
+def test_transition_prob_differential_tf_hky_kappa(hky_params, category_rates, inv_mult):
     param_key = 'kappa'
     branch_lengths = tf.convert_to_tensor(np.array([0.9, 2.2]))
     subst_model = HKY()
@@ -62,20 +62,20 @@ def test_transition_prob_differential_tf_hky_kappa(hky_params, single_rates, inv
     with tf.GradientTape(persistent=True) as t:
         t.watch(params[param_key])
         q_norm = subst_model.q_norm(**params)
-        transition_probs_vals = transition_probs_expm(q_norm, single_rates, branch_lengths)
+        transition_probs_vals = transition_probs_expm(q_norm, category_rates, branch_lengths)
     tf_jacs = t.jacobian(transition_probs_vals, params[param_key], experimental_use_pfor=False) 
     transition_probs_inv = tf.linalg.inv(transition_probs_vals)
     
     eigen = subst_model.eigen(**params)
 
     q_diffs = subst_model.q_norm_param_differentials(**params)[param_key]
-    diffs = transition_probs_differential(q_diffs, eigen, branch_lengths, single_rates, inv_mult=inv_mult)
+    diffs = transition_probs_differential(q_diffs, eigen, branch_lengths, category_rates, inv_mult=inv_mult)
     tf_diffs = (transition_probs_inv @ tf_jacs) if inv_mult else tf_jacs
     
     assert_allclose(tf_diffs.numpy(), diffs.numpy())
 
 @pytest.mark.parametrize('inv_mult', [False, True])
-def test_transition_prob_differential_tf_hky_frequencies(hky_params, single_rates, inv_mult, freq_index):
+def test_transition_prob_differential_tf_hky_frequencies(hky_params, category_rates, inv_mult, freq_index):
     branch_lengths = tf.convert_to_tensor(np.array([0.9, 2.2]))
     subst_model = HKY()
     params = hky_params
@@ -83,14 +83,14 @@ def test_transition_prob_differential_tf_hky_frequencies(hky_params, single_rate
     with tf.GradientTape(persistent=True) as t:
         t.watch(params[param_key])
         q_norm = subst_model.q_norm(**params)
-        transition_probs_vals = transition_probs_expm(q_norm, single_rates, branch_lengths)
+        transition_probs_vals = transition_probs_expm(q_norm, category_rates, branch_lengths)
     tf_jacs = t.jacobian(transition_probs_vals, params[param_key], experimental_use_pfor=False) 
     transition_probs_inv = tf.linalg.inv(transition_probs_vals)
     
     eigen = subst_model.eigen(**params)
     
     q_diffs = subst_model.q_norm_frequency_differentials(**params)[freq_index]
-    diffs = transition_probs_differential(q_diffs, eigen, branch_lengths, single_rates, inv_mult=inv_mult)
+    diffs = transition_probs_differential(q_diffs, eigen, branch_lengths, category_rates, inv_mult=inv_mult)
     tf_diffs = (transition_probs_inv @ tf_jacs[:, :, :, :, freq_index]) if inv_mult else tf_jacs[:, :, :, :, freq_index] 
 
     assert_allclose(tf_diffs.numpy(), diffs.numpy())

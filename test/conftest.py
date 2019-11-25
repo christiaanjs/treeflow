@@ -27,15 +27,6 @@ def hky_params(request):
 def freq_index(request):
     return request.param
 
-
-@pytest.fixture
-def branch_lengths():
-    return np.array([0.4, 2.2])
-
-@pytest.fixture
-def category_rates():
-    return np.array([1.1, 0.9])
-
 data_dir = Path('data')
 
 @pytest.fixture
@@ -46,11 +37,28 @@ def hello_newick_file():
 def hello_fasta_file():
     return str(data_dir / 'hello.fasta')
 
+@pytest.fixture(params=[tf.convert_to_tensor(np.array([0.1])), tf.convert_to_tensor(np.array([0.4, 2.2]))])
+def branch_lengths(request):
+    return request.param
+
+def single_rates_():
+    return tf.convert_to_tensor(np.array([1.0]))
 
 @pytest.fixture
 def single_rates():
+    return single_rates_()
+
+@pytest.fixture(params=[single_rates_(), tf.convert_to_tensor(np.array([0.9, 1.1]))])
+def category_rates(request):
+    return request.param
+
+def single_weights_():
     return tf.convert_to_tensor(np.array([1.0]))
 
 @pytest.fixture
 def single_weights():
-    return tf.convert_to_tensor(np.array([1.0]))
+    return single_weights_()
+
+@pytest.fixture(params=[single_weights_(), tf.convert_to_tensor(np.array([0.6, 0.4]))])
+def category_weights(request):
+    return request.param
