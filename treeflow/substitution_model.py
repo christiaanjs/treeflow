@@ -187,6 +187,12 @@ def transition_probs(eigendecomposition, category_rates, t):
 
     return evec_b @ diag @ ivec_b
 
+def transition_probs_expm(q, category_rates, t):
+    t_b = tf.reshape(t, [-1, 1, 1, 1])
+    rates_b = tf.reshape(category_rates, [1, -1, 1, 1])
+    q_b = tf.reshape(q, [1, 1, 4, 4])
+    return tf.linalg.expm(q_b * rates_b * t_b)
+
 def transition_probs_differential(q_diff, eigendecomposition, branch_lengths, category_rates, inv_mult=True):
     evec, eval, ivec = eigendecomposition
     g = tf.linalg.matmul(tf.linalg.matmul(ivec, q_diff), evec)

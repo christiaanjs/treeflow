@@ -42,4 +42,13 @@ def hello_fasta_file():
     return str(data_dir / 'hello.fasta')
 
 
+@pytest.fixture
+def single_rates():
+    return tf.convert_to_tensor(np.array([1.0]))
+
+@pytest.fixture
+def single_weights():
+    return tf.convert_to_tensor(np.array([1.0]))
+
+
     

@@ -93,6 +93,11 @@ class TensorflowLikelihood(BaseLikelihood):
         self.compute_postorder_partials(transition_probs)
         return self.compute_likelihood_from_partials(freqs, category_weights)
 
+    def compute_likelihood_expm(self, branch_lengths, category_rates, category_weights, freqs, q):
+        transition_probs = treeflow.substitution_model.transition_probs_expm(q, category_rates, branch_lengths)
+        self.compute_postorder_partials(transition_probs)
+        return self.compute_likelihood_from_partials(freqs, category_weights)
+
     def init_preorder_partials(self, frequencies):
         zeros = tf.zeros([self.get_vertex_count(), len(self.pattern_counts), self.category_count, 4], dtype=tf.float64)
         self.preorder_partials = tf.tensor_scatter_nd_update(

@@ -16,14 +16,6 @@ def prep_likelihood(newick_file, fasta_file, subst_model, rates, weights, freque
     tf_likelihood.compute_preorder_partials(transition_probs)
     return tf_likelihood, branch_lengths, eigendecomp
 
-@pytest.fixture
-def single_rates():
-    return tf.convert_to_tensor(np.array([1.0]))
-
-@pytest.fixture
-def single_weights():
-    return tf.convert_to_tensor(np.array([1.0]))
-
 def test_hky_1cat_likelihood(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, single_rates, single_weights, **single_hky_params)[0]
@@ -58,8 +50,8 @@ def test_hky_1cat_freqA_gradient_num(single_hky_params, single_rates, single_wei
     freqA_val = freq_vals[freq_index]
     def like_func(freqA):
         freq_vals[freq_index] = freqA
-        eigendecomp = subst_model.eigen(freq_vals, single_hky_params['kappa'])
-        return tf_likelihood.compute_likelihood(branch_lengths, single_rates, single_weights, freq_vals, eigendecomp).numpy()
+        q = subst_model.q_norm(freq_vals, kappa=single_hky_params['kappa'])
+        return tf_likelihood.compute_likelihood_expm(branch_lengths, single_rates, single_weights, freq_vals, q).numpy()
 
     num_grad = numdifftools.Derivative(like_func)(freqA_val)
 
@@ -72,8 +64,8 @@ def test_hky_1cat_freqA_gradient_tf(single_hky_params, single_rates, single_weig
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, single_rates, single_weights, **single_hky_params)
     with tf.GradientTape() as t:
         t.watch(single_hky_params['frequencies'])
-        eigendecomp = subst_model.eigen(**single_hky_params)
-        likelihood = tf_likelihood.compute_likelihood(branch_lengths, single_rates, single_weights, single_hky_params['frequencies'], eigendecomp)
+        q = subst_model.q_norm(**single_hky_params)
+        likelihood = tf_likelihood.compute_likelihood_expm(branch_lengths, single_rates, single_weights, single_hky_params['frequencies'], q)
 
     tf_grad = t.gradient(likelihood, single_hky_params['frequencies'])[freq_index]
 
