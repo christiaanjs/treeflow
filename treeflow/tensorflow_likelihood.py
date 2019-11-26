@@ -147,9 +147,15 @@ class TensorflowLikelihood(BaseLikelihood):
 
     def compute_branch_length_derivatives(self, q, category_rates, category_weights):
         site_coefficients = self.pattern_counts / self.compute_site_likelihoods(category_weights)
-        cat_derivatives = self.compute_cat_derivatives(tf.reshape(q, [1, 1, 4, 4])) * tf.reshape(category_rates, [1, -1])
+        cat_derivatives = self.compute_cat_derivatives(tf.reshape(q, [1, 1, 4, 4])) * category_rates # TODO: Should we multiply differential matrices by rates?
         site_derivatives = tf.reduce_sum(cat_derivatives * category_weights, axis=-1)
-        return tf.reduce_sum(site_coefficients * site_derivatives, axis=-1) 
+        return tf.reduce_sum(site_coefficients * site_derivatives, axis=-1)
+
+    def compute_rate_derivatives(self, q, branch_lengths, category_weights):
+        site_coefficients = self.pattern_counts / self.compute_site_likelihoods(category_weights)
+        dist_derivatives = self.compute_cat_derivatives(tf.reshape(q, [1, 1, 4, 4]))
+        site_derivatives = tf.reduce_sum(dist_derivatives * tf.reshape(branch_lengths, [-1, 1, 1]), axis=0)
+        return tf.reduce_sum(site_derivatives * tf.expand_dims(site_coefficients, axis=1), axis=0) * category_weights
 
     def compute_frequency_derivative(self, differential_matrices, frequency_index, category_weights):
         site_likelihoods = self.compute_site_likelihoods(category_weights)

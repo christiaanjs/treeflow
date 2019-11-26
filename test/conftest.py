@@ -48,10 +48,6 @@ def single_rates_():
 def single_rates():
     return single_rates_()
 
-@pytest.fixture(params=[single_rates_(), tf.convert_to_tensor(np.array([0.9, 1.1]))])
-def category_rates(request):
-    return request.param
-
 def single_weights_():
     return tf.convert_to_tensor(np.array([1.0]))
 
@@ -59,6 +55,16 @@ def single_weights_():
 def single_weights():
     return single_weights_()
 
-@pytest.fixture(params=[single_weights_(), tf.convert_to_tensor(np.array([0.6, 0.4]))])
-def category_weights(request):
+def double_weights_():
+    return tf.convert_to_tensor(np.array([0.6, 0.4]))
+
+@pytest.fixture(params=[single_weights_(), double_weights_()])
+def category_rates(request):
+    return request.param
+
+@pytest.fixture(params=[
+    (single_weights_(), single_rates_()),
+    (double_weights_(), tf.convert_to_tensor(np.array([0.9, 1.1])))]
+)
+def weights_rates(request):
     return request.param
