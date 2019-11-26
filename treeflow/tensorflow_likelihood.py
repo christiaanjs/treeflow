@@ -132,8 +132,11 @@ class TensorflowLikelihood(BaseLikelihood):
         cat_derivatives = self.compute_cat_derivatives(differential_matrices, sum_branches=sum_branches)
         return tf.reduce_sum(cat_derivatives * category_weights, axis=-1)
 
+    def compute_cat_likelihoods(self):
+        return tf.reduce_sum(self.postorder_partials[-1] * self.preorder_partials[-1], axis=-1)
+
     def compute_site_likelihoods(self, category_weights):
-        return tf.reduce_sum(tf.reduce_sum(self.postorder_partials[-1] * self.preorder_partials[-1], axis=-1) * category_weights, axis=-1)
+        return tf.reduce_sum(self.compute_cat_likelihoods() * category_weights, axis=-1)
 
     def compute_derivative(self, differential_matrices, category_weights):
         site_derivatives = self.compute_site_derivatives(differential_matrices, category_weights, sum_branches=True)
@@ -156,6 +159,10 @@ class TensorflowLikelihood(BaseLikelihood):
         dist_derivatives = self.compute_cat_derivatives(tf.reshape(q, [1, 1, 4, 4]))
         site_derivatives = tf.reduce_sum(dist_derivatives * tf.reshape(branch_lengths, [-1, 1, 1]), axis=0)
         return tf.reduce_sum(site_derivatives * tf.expand_dims(site_coefficients, axis=1), axis=0) * category_weights
+
+    def compute_weight_derivatives(self, category_weights):
+        site_coefficients = self.pattern_counts / self.compute_site_likelihoods(category_weights)
+        return tf.reduce_sum(self.compute_cat_likelihoods() * tf.expand_dims(site_coefficients, axis=1), axis=0)
 
     def compute_frequency_derivative(self, differential_matrices, frequency_index, category_weights):
         site_likelihoods = self.compute_site_likelihoods(category_weights)

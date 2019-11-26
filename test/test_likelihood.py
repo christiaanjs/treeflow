@@ -98,3 +98,14 @@ def test_hky_rate_gradient_tf(hky_params, weights_rates, hello_newick_file, hell
     tf_grad = t.gradient(likelihood, category_rates)
     grad = tf_likelihood.compute_rate_derivatives(q, branch_lengths, category_weights)
     assert_allclose(grad.numpy(), tf_grad.numpy())
+
+def test_hky_weight_gradient_tf(hky_params, weights_rates, hello_newick_file, hello_fasta_file):
+    category_rates, category_weights = weights_rates
+    subst_model = treeflow.substitution_model.HKY()
+    tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, category_rates, category_weights, **hky_params)
+    with tf.GradientTape() as t:
+        t.watch(category_weights)
+        likelihood = tf_likelihood.compute_likelihood(branch_lengths, category_rates, category_weights, hky_params['frequencies'], eigendecomp)
+    tf_grad = t.gradient(likelihood, category_weights)
+    grad = tf_likelihood.compute_weight_derivatives(category_weights)
+    assert_allclose(grad.numpy(), tf_grad.numpy())
