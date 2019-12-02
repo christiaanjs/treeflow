@@ -16,7 +16,7 @@ class BranchBreaking(tfp.bijectors.Bijector):
         return tf.scan(f, (node_indices, parent_indices), x)[-1]
 
     def _inverse(self, y):
-        return y / tf.gather(y, self.parent_indices)
+        return y / tf.concat(tf.gather(y, self.parent_indices), tf.ones((1,)))
 
     def _log_det_jacobian(self, y):
         return -tf.reduce_sum(tf.math.log(tf.gather(y, self.parent_indices)))
