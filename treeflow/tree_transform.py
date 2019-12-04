@@ -25,6 +25,6 @@ class TreeChain(tfp.bijectors.Chain):
         branch_breaking = BranchBreaking(parent_indices, preorder_node_indices)
         blockwise = tfp.bijectors.Blockwise(
             [tfp.bijectors.Sigmoid(), tfp.bijectors.Exp()],
-            block_sizes=tf.concat([parent_indices.shape, [1]])
+            block_sizes=tf.concat([parent_indices.shape, [1]], 0)
         )
         super(TreeChain, self).__init__([branch_breaking, blockwise], name=name)
