@@ -2,7 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 class BranchBreaking(tfp.bijectors.Bijector):
-    def __init__(self, parent_indices, preorder_node_indices, name='branch_breaking'):
+    def __init__(self, parent_indices, preorder_node_indices, name='BranchBreaking'):
         super(BranchBreaking, self).__init__(forward_min_event_ndims=1,name=name)
         self.parent_indices = parent_indices
         self.preorder_node_indices = preorder_node_indices
@@ -21,7 +21,7 @@ class BranchBreaking(tfp.bijectors.Bijector):
 
 
 class TreeChain(tfp.bijectors.Chain):
-    def __init__(self, parent_indices, preorder_node_indices, name='tree_chain'):
+    def __init__(self, parent_indices, preorder_node_indices, name='TreeChain'):
         branch_breaking = BranchBreaking(parent_indices, preorder_node_indices)
         blockwise = tfp.bijectors.Blockwise(
             [tfp.bijectors.Sigmoid(), tfp.bijectors.Exp()],
