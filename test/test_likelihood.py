@@ -15,8 +15,6 @@ def prep_likelihood(newick_file, fasta_file, subst_model, rates, weights, freque
     tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
 
     branch_lengths = treeflow.sequences.get_branch_lengths(tree)
-    
-    print(treeflow.tree_processing.update_topology_dict(tree['topology']))
 
     tf_likelihood.set_topology(treeflow.tree_processing.update_topology_dict(tree['topology']))
 
