@@ -1,77 +1,33 @@
 import tensorflow as tf
 import numpy as np
-import re
-from collections import Counter
-from treeflow.base_likelihood import BaseLikelihood
 import treeflow.substitution_model
 
-init_partials_dict = {
-    'A':[1.,0.,0.,0.],
-    'C':[0.,1.,0.,0.],
-    'G':[0.,0.,1.,0.],
-    'T':[0.,0.,0.,1.],
-    '-':[1.,1.,1.,1.],
-    '?':[1.,1.,1.,1.],
-    'N':[1.,1.,1.,1.],
-    #'R':[1.,1.,0.,0.],# TODO: Fix indexing of these
-    #'Y':[0.,0.,1.,1.],
-    #'S':[0.,1.,1.,0.], 
-    #'W':[1.,0.,0.,1.],
-    #'K':[0.,1.,0.,1.],
-    #'M':[1.,0.,1.,0.],
-    #'B':[0.,1.,1.,1.],
-    #'D':[1.,1.,0.,1.],
-    #'H':[1.,0.,1.,1.],
-    #'V':[1.,1.,1.,0.],
-    '.':[1.,1.,1.,1.],
-    'U':[0.,0.,0.,1.]
-}
-
-def parse_fasta(filename):
-    f = open(filename)
-    x = f.read()
-    f.close()
-    def process_block(block):
-        lines = block.split('\n')
-        return lines[0], ''.join(lines[1:])
-    return dict([process_block(block) for block in x.split('>')[1:]])
-
-def compress_sites(sequence_dict):
-    taxa = sorted(list(sequence_dict.keys()))
-    sequences = [sequence_dict[taxon] for taxon in taxa]
-    patterns = list(zip(*sequences)) 
-    count_dict = Counter(patterns)
-    pattern_ordering = sorted(list(count_dict.keys()))
-    compressed_sequences = list(zip(*pattern_ordering))
-    counts = [count_dict[pattern] for pattern in pattern_ordering]
-    pattern_dict = dict(zip(taxa, compressed_sequences))
-    return pattern_dict, counts
-
-class TensorflowLikelihood(BaseLikelihood):
+class TensorflowLikelihood():
     def __init__(self, fasta_file, category_count=1, *args, **kwargs):
-        super(TensorflowLikelihood, self).__init__(fasta_file=fasta_file, *args, **kwargs)
-        self.child_indices = self.get_child_indices() # TODO: Tidy initialisation
-        self.postorder_node_indices = self.get_postorder_node_traversal_indices()
         self.category_count = category_count
-        self.node_indices_tensor = tf.convert_to_tensor(self.postorder_node_indices)
-        self.child_indices_tensor = tf.convert_to_tensor(self.child_indices[self.postorder_node_indices])
-        preorder_node_indices = self.get_preorder_traversal_indices()[1:]
-        self.preorder_node_indices_tensor = tf.convert_to_tensor(preorder_node_indices)
-        self.preorder_sibling_indices_tensor = tf.convert_to_tensor(self.get_sibling_indices()[preorder_node_indices])
-        self.preorder_parent_indices_tensor = tf.convert_to_tensor(self.get_parent_indices()[preorder_node_indices])
 
-        self.init_postorder_partials(fasta_file)
+    def set_topology(self, topology_dict):
+        self.taxon_count = len(topology_dict['postorder_node_indices']) + 1
+        self.node_indices_tensor = tf.convert_to_tensor(topology_dict['postorder_node_indices'])
+        self.child_indices_tensor = tf.convert_to_tensor(topology_dict['child_indices'][topology_dict['postorder_node_indices']])
 
-    def init_postorder_partials(self, fasta_file):
-        newick = self.inst.tree_collection.newick()
-        leaf_names = re.findall(r'(\w+)(?=:)', newick)
-        sequence_dict = parse_fasta(fasta_file)
-        pattern_dict, self.pattern_counts = compress_sites(sequence_dict) 
-        postorder_partials = np.zeros((self.get_vertex_count(), len(self.pattern_counts), self.category_count, 4))
-        for leaf_index in range(len(leaf_names)):
-            for pattern_index in range(len(self.pattern_counts)):
-                postorder_partials[leaf_index, pattern_index] = np.array(init_partials_dict[pattern_dict[leaf_names[leaf_index]][pattern_index]])[np.newaxis, :]
-        self.postorder_partials = tf.convert_to_tensor(postorder_partials)
+        preorder_indices = topology_dict['preorder_indices'][:-1]
+        self.preorder_indices_tensor = tf.convert_to_tensor(preorder_indices)
+        self.preorder_sibling_indices_tensor = tf.convert_to_tensor(topology_dict['sibling_indices'][preorder_indices])
+        self.preorder_parent_indices_tensor = tf.convert_to_tensor(topology_dict['parent_indices'][preorder_indices])
+
+    def get_vertex_count(self):
+        return 2 * self.taxon_count - 1
+
+    def set_pattern_counts(self, pattern_counts):
+        self.pattern_counts = pattern_counts
+
+    def init_postorder_partials(self, sequences_encoded):
+        taxon_count = sequences_encoded.shape[0]
+        pattern_count = sequences_encoded.shape[1]
+        leaf_partials = tf.broadcast_to(tf.expand_dims(sequences_encoded, 2), [taxon_count, pattern_count, self.category_count, 4])
+        node_partials = tf.zeros([taxon_count - 1, pattern_count, self.category_count, 4])
+        self.postorder_partials = tf.concat([leaf_partials, node_partials], 0)
 
     def compute_postorder_partials(self, transition_probs):
         node_indices = tf.reshape(self.node_indices_tensor, [-1, 1, 1])
@@ -106,8 +62,8 @@ class TensorflowLikelihood(BaseLikelihood):
             tf.expand_dims(tf.broadcast_to(tf.reshape(frequencies, [1, 1, 4]), (len(self.pattern_counts), self.category_count, 4)), 0))
 
     def compute_preorder_partials(self, transition_probs):
-        node_indices = tf.reshape(self.preorder_node_indices_tensor, [-1, 1, 1])
-        preorder_transition_probs = tf.gather(transition_probs, self.preorder_node_indices_tensor)
+        node_indices = tf.reshape(self.preorder_indices_tensor, [-1, 1, 1])
+        preorder_transition_probs = tf.gather(transition_probs, self.preorder_indices_tensor)
         sibling_transition_probs = tf.gather(transition_probs, self.preorder_sibling_indices_tensor)
         sibling_postorder_partials = tf.gather(self.postorder_partials, self.preorder_sibling_indices_tensor)
         sibling_sums = tf.reduce_sum(tf.expand_dims(sibling_transition_probs, 1) * tf.expand_dims(sibling_postorder_partials, 3), axis=4)
