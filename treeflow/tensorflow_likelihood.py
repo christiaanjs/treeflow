@@ -3,7 +3,7 @@ import numpy as np
 import treeflow.substitution_model
 
 class TensorflowLikelihood():
-    def __init__(self, fasta_file, category_count=1, *args, **kwargs):
+    def __init__(self, category_count=1, *args, **kwargs):
         self.category_count = category_count
 
     def set_topology(self, topology_dict):
