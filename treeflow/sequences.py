@@ -38,21 +38,26 @@ def compress_sites(sequence_dict):
 def encode_sequence_dict(sequence_dict, taxon_names):
     return tf.convert_to_tensor(np.array([[init_partials_dict[char] for char in sequence_dict[taxon_name]] for taxon_name in taxon_names]))
 
+def get_encoded_sequences(fasta_file, taxon_names):
+    sequence_dict = parse_fasta(fasta_file)
+    pattern_dict, counts = compress_sites(sequence_dict)
+    return encode_sequence_dict(pattern_dict, taxon_names), counts
 
-def get_branch_lengths(heights, topology):
-    pass # TODO
+def get_branch_lengths(tree):
+    heights = tree['heights']
+    return tf.gather(heights, tree['topology']['parent_indices']) - heights[:-1]
 
 def log_prob_conditioned(value, topology):
     patterns = value['sequences']
     pattern_counts = value['weights']
 
-    def log_prob(heights, subst_model, frequencies, category_weights, category_rates, **subst_model_params):
+    def log_prob(branch_lengths, subst_model, frequencies, category_weights, category_rates, **subst_model_params):
         subst_model_param_keys = list(subst_model_params.keys())
         @tf.custom_gradient
         def log_prob_flat(branch_lengths, frequencies, category_weights, category_rates, *subst_model_params):
             def grad(dbranch_lengths, dfrequencies, dcategory_weights, dcategory_rates, *dsubst_model_params):
                 pass # TODO
-        return log_prob_flat(get_branch_lengths(heights, topology), frequencies, category_weights, category_rates,
+        return log_prob_flat(branch_lengths, frequencies, category_weights, category_rates,
             *[subst_model_params[key] for key in subst_model_param_keys])
     return log_prob
     

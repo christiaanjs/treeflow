@@ -5,11 +5,24 @@ import numpy as np
 import tensorflow as tf
 import treeflow.substitution_model
 import treeflow.tensorflow_likelihood
+import treeflow.sequences
+import treeflow.tree_processing
 
 def prep_likelihood(newick_file, fasta_file, subst_model, rates, weights, frequencies, **subst_params):
     eigendecomp = subst_model.eigen(frequencies, **subst_params)
-    tf_likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(newick_file=newick_file, fasta_file=fasta_file, category_count=len(rates))
-    branch_lengths = tf.convert_to_tensor(tf_likelihood.get_init_branch_lengths())
+    tf_likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(category_count=len(rates))
+
+    tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
+
+    branch_lengths = treeflow.sequences.get_branch_lengths(tree)
+    
+    print(treeflow.tree_processing.update_topology_dict(tree['topology']))
+
+    tf_likelihood.set_topology(treeflow.tree_processing.update_topology_dict(tree['topology']))
+
+    sequences, pattern_counts = treeflow.sequences.get_encoded_sequences(fasta_file, taxon_names)
+    tf_likelihood.init_postorder_partials(sequences, pattern_counts)
+
     transition_probs = treeflow.substitution_model.transition_probs(eigendecomp, rates, branch_lengths)
     tf_likelihood.compute_postorder_partials(transition_probs)
     tf_likelihood.init_preorder_partials(frequencies)

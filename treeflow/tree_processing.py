@@ -6,14 +6,14 @@ def parse_newick(newick_file):
     t = ete3.Tree(newick_file)
     ordered_nodes = sorted(t.traverse("postorder"), key=lambda n: not n.is_leaf())
 
-    indices = { i: n for i, n in enumerate(ordered_nodes) }
+    indices = { n: i for i, n in enumerate(ordered_nodes) }
     parent_indices = np.array([indices[n.up] for n in ordered_nodes[:-1]])
 
     root_distances = np.array([t.get_distance(n) for n in ordered_nodes]) # TODO: Optimise
     root_height = max(root_distances)
     heights = root_height - root_distances
 
-    taxon_count = (len(ordered_nodes) + 1)/2
+    taxon_count = (len(ordered_nodes) + 1)//2
     taxon_names = [x.name for x in ordered_nodes[:taxon_count]]
     return { 'topology': { 'parent_indices': parent_indices }, 'heights': heights }, taxon_names
 
@@ -56,3 +56,13 @@ def get_preorder_indices(child_indices):
                 stack.append(child_index)
         visited.append(node_index)
     return np.array(visited)
+
+def update_topology_dict(topology):
+    parent_indices = topology['parent_indices']
+    child_indices = get_child_indices(parent_indices)
+    return dict(
+        postorder_node_indices=get_postorder_node_indices(len(parent_indices)//2 + 1), # Parent indices for every vertex except root
+        child_indices=child_indices,
+        preorder_indices=get_preorder_indices(child_indices),
+        sibling_indices=get_sibling_indices(child_indices),
+        **topology)

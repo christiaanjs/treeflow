@@ -11,7 +11,7 @@ class TensorflowLikelihood():
         self.node_indices_tensor = tf.convert_to_tensor(topology_dict['postorder_node_indices'])
         self.child_indices_tensor = tf.convert_to_tensor(topology_dict['child_indices'][topology_dict['postorder_node_indices']])
 
-        preorder_indices = topology_dict['preorder_indices'][:-1]
+        preorder_indices = topology_dict['preorder_indices'][1:]
         self.preorder_indices_tensor = tf.convert_to_tensor(preorder_indices)
         self.preorder_sibling_indices_tensor = tf.convert_to_tensor(topology_dict['sibling_indices'][preorder_indices])
         self.preorder_parent_indices_tensor = tf.convert_to_tensor(topology_dict['parent_indices'][preorder_indices])
@@ -19,14 +19,13 @@ class TensorflowLikelihood():
     def get_vertex_count(self):
         return 2 * self.taxon_count - 1
 
-    def set_pattern_counts(self, pattern_counts):
-        self.pattern_counts = pattern_counts
-
-    def init_postorder_partials(self, sequences_encoded):
+    def init_postorder_partials(self, sequences_encoded, pattern_counts=None):
         taxon_count = sequences_encoded.shape[0]
         pattern_count = sequences_encoded.shape[1]
+        self.pattern_counts = tf.ones([pattern_count]) if pattern_counts is None else pattern_counts
+
         leaf_partials = tf.broadcast_to(tf.expand_dims(sequences_encoded, 2), [taxon_count, pattern_count, self.category_count, 4])
-        node_partials = tf.zeros([taxon_count - 1, pattern_count, self.category_count, 4])
+        node_partials = tf.zeros([taxon_count - 1, pattern_count, self.category_count, 4], dtype=tf.float64)
         self.postorder_partials = tf.concat([leaf_partials, node_partials], 0)
 
     def compute_postorder_partials(self, transition_probs):
