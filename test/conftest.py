@@ -3,6 +3,11 @@ import tensorflow as tf
 import numpy as np
 from pathlib import Path
 
+import treeflow.sequences
+import treeflow.substitution_model
+import treeflow.tensorflow_likelihood
+import treeflow.tree_processing
+
 def single_hky_params_():
     return {
       'frequencies': tf.convert_to_tensor(np.array([0.23, 0.27, 0.24, 0.26])),
@@ -68,3 +73,25 @@ def category_rates(request):
 )
 def weights_rates(request):
     return request.param
+
+@pytest.fixture
+def prep_likelihood():
+    def prep_likelihood_(newick_file, fasta_file, subst_model, rates, weights, frequencies, **subst_params):
+        eigendecomp = subst_model.eigen(frequencies, **subst_params)
+        tf_likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(category_count=len(rates))
+
+        tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
+
+        branch_lengths = treeflow.sequences.get_branch_lengths(tree)
+
+        tf_likelihood.set_topology(treeflow.tree_processing.update_topology_dict(tree['topology']))
+
+        sequences, pattern_counts = treeflow.sequences.get_encoded_sequences(fasta_file, taxon_names)
+        tf_likelihood.init_postorder_partials(sequences, pattern_counts)
+
+        transition_probs = treeflow.substitution_model.transition_probs(eigendecomp, rates, branch_lengths)
+        tf_likelihood.compute_postorder_partials(transition_probs)
+        tf_likelihood.init_preorder_partials(frequencies)
+        tf_likelihood.compute_preorder_partials(transition_probs)
+        return tf_likelihood, branch_lengths, eigendecomp
+    return prep_likelihood_

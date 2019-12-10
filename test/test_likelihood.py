@@ -8,31 +8,12 @@ import treeflow.tensorflow_likelihood
 import treeflow.sequences
 import treeflow.tree_processing
 
-def prep_likelihood(newick_file, fasta_file, subst_model, rates, weights, frequencies, **subst_params):
-    eigendecomp = subst_model.eigen(frequencies, **subst_params)
-    tf_likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(category_count=len(rates))
-
-    tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
-
-    branch_lengths = treeflow.sequences.get_branch_lengths(tree)
-
-    tf_likelihood.set_topology(treeflow.tree_processing.update_topology_dict(tree['topology']))
-
-    sequences, pattern_counts = treeflow.sequences.get_encoded_sequences(fasta_file, taxon_names)
-    tf_likelihood.init_postorder_partials(sequences, pattern_counts)
-
-    transition_probs = treeflow.substitution_model.transition_probs(eigendecomp, rates, branch_lengths)
-    tf_likelihood.compute_postorder_partials(transition_probs)
-    tf_likelihood.init_preorder_partials(frequencies)
-    tf_likelihood.compute_preorder_partials(transition_probs)
-    return tf_likelihood, branch_lengths, eigendecomp
-
-def test_hky_1cat_likelihood_beast(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
+def test_hky_1cat_likelihood_beast(prep_likelihood, single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, single_rates, single_weights, **single_hky_params)[0]
     assert_allclose(tf_likelihood.compute_likelihood_from_partials(single_hky_params['frequencies'], single_weights).numpy(), -88.86355638556158)
 
-def test_hky_1cat_beast_kappa_gradient(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
+def test_hky_1cat_beast_kappa_gradient(prep_likelihood, single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, single_rates, single_weights, **single_hky_params)
     q_diff = subst_model.q_norm_param_differentials(**single_hky_params)['kappa']
@@ -40,7 +21,7 @@ def test_hky_1cat_beast_kappa_gradient(single_hky_params, single_rates, single_w
     assert_allclose(tf_likelihood.compute_derivative(transition_prob_differential, single_weights).numpy(), 0.12373298571565322)
 
 @pytest.mark.skip(reason="BEAST value is wrong")
-def test_hky_1cat_freqA_gradient_beast(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
+def test_hky_1cat_freqA_gradient_beast(prep_likelihood, single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
     freq_index = 0
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, single_rates, single_weights, **single_hky_params)
@@ -51,7 +32,7 @@ def test_hky_1cat_freqA_gradient_beast(single_hky_params, single_rates, single_w
 
     assert_allclose(grad.numpy(), 12.658386297868352) # TODO: Correct once BEAST is corrected
     
-def test_hky_1cat_freqA_gradient_num(single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
+def test_hky_1cat_freqA_gradient_num(prep_likelihood, single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
     freq_index = 0
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, single_rates, single_weights, **single_hky_params)
@@ -70,8 +51,24 @@ def test_hky_1cat_freqA_gradient_num(single_hky_params, single_rates, single_wei
 
     assert_allclose(grad.numpy(), num_grad)
 
-def test_hky_freq_gradient_tf(hky_params, weights_rates, hello_newick_file, hello_fasta_file, freq_index):
-    category_rates, category_weights = weights_rates
+def test_hky_kappa_gradient_tf(prep_likelihood, hky_params, weights_rates, hello_newick_file, hello_fasta_file):
+    category_weights, category_rates = weights_rates
+    subst_model = treeflow.substitution_model.HKY()
+    tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, category_rates, category_weights, **hky_params)
+    with tf.GradientTape() as t:
+        t.watch(hky_params['kappa'])
+        q = subst_model.q_norm(**hky_params)
+        likelihood = tf_likelihood.compute_likelihood_expm(branch_lengths, category_rates, category_weights, hky_params['frequencies'], q)
+
+    tf_grad = t.gradient(likelihood, hky_params['kappa'])
+
+    q_diff = subst_model.q_norm_param_differentials(**hky_params)['kappa']
+    transition_prob_differential = treeflow.substitution_model.transition_probs_differential(q_diff, eigendecomp, branch_lengths, category_rates)
+    grad = tf_likelihood.compute_derivative(transition_prob_differential, category_weights)
+    assert_allclose(grad.numpy(), tf_grad.numpy())
+
+def test_hky_freq_gradient_tf(prep_likelihood, hky_params, weights_rates, hello_newick_file, hello_fasta_file, freq_index):
+    category_weights, category_rates = weights_rates
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, category_rates, category_weights, **hky_params)
     with tf.GradientTape() as t:
@@ -86,8 +83,8 @@ def test_hky_freq_gradient_tf(hky_params, weights_rates, hello_newick_file, hell
     grad = tf_likelihood.compute_frequency_derivative(transition_prob_differential, freq_index, category_weights)
     assert_allclose(grad.numpy(), tf_grad.numpy())
 
-def test_hky_branch_gradient_tf(hky_params, weights_rates, hello_newick_file, hello_fasta_file):
-    category_rates, category_weights = weights_rates
+def test_hky_branch_gradient_tf(prep_likelihood, hky_params, weights_rates, hello_newick_file, hello_fasta_file):
+    category_weights, category_rates = weights_rates
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, category_rates, category_weights, **hky_params)
     with tf.GradientTape() as t:
@@ -98,8 +95,8 @@ def test_hky_branch_gradient_tf(hky_params, weights_rates, hello_newick_file, he
     grad = tf_likelihood.compute_branch_length_derivatives(q, category_rates, category_weights)
     assert_allclose(grad.numpy(), tf_grad.numpy())
 
-def test_hky_rate_gradient_tf(hky_params, weights_rates, hello_newick_file, hello_fasta_file):
-    category_rates, category_weights = weights_rates
+def test_hky_rate_gradient_tf(prep_likelihood, hky_params, weights_rates, hello_newick_file, hello_fasta_file):
+    category_weights, category_rates = weights_rates
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, category_rates, category_weights, **hky_params)
     with tf.GradientTape() as t:
@@ -110,8 +107,8 @@ def test_hky_rate_gradient_tf(hky_params, weights_rates, hello_newick_file, hell
     grad = tf_likelihood.compute_rate_derivatives(q, branch_lengths, category_weights)
     assert_allclose(grad.numpy(), tf_grad.numpy())
 
-def test_hky_weight_gradient_tf(hky_params, weights_rates, hello_newick_file, hello_fasta_file):
-    category_rates, category_weights = weights_rates
+def test_hky_weight_gradient_tf(prep_likelihood, hky_params, weights_rates, hello_newick_file, hello_fasta_file):
+    category_weights, category_rates = weights_rates
     subst_model = treeflow.substitution_model.HKY()
     tf_likelihood, branch_lengths, eigendecomp = prep_likelihood(hello_newick_file, hello_fasta_file, subst_model, category_rates, category_weights, **hky_params)
     with tf.GradientTape() as t:
