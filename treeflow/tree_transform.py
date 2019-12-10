@@ -2,27 +2,37 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 class BranchBreaking(tfp.bijectors.Bijector):
-    def __init__(self, parent_indices, preorder_node_indices, name='BranchBreaking'):
+    def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='BranchBreaking'):
         super(BranchBreaking, self).__init__(forward_min_event_ndims=1,name=name)
         self.parent_indices = parent_indices
-        self.preorder_node_indices = preorder_node_indices
+        self.preorder_node_indices = preorder_node_indices # Don't include root
+        self.anchor_heights = tf.zeros(len(preorder_node_indices) + 1, dtype=tf.dtypes.float64) if anchor_heights is None else anchor_heights
 
     def _forward(self, x):
+        init = tf.scatter_nd([[len(x) - 1]], tf.expand_dims(x[-1] + self.anchor_heights[-1], 0), self.anchor_heights.shape)
         def f(out, elems):
-            node_index, parent_index = elems
-            return tf.tensor_scatter_nd_update(out, tf.reshape(node_index, [1, 1]), tf.expand_dims(out[parent_index]*out[node_index], 0))
-        return tf.scan(f, (self.preorder_node_indices, tf.gather(self.parent_indices, self.preorder_node_indices)), x)[-1]
+            node_index, parent_index, proportion, anchor_height = elems
+            node_height = (out[parent_index] - anchor_height) * proportion + anchor_height
+            return tf.tensor_scatter_nd_update(out, tf.reshape(node_index, [1, 1]), tf.expand_dims(node_height, 0))
+        return tf.scan(
+            f,
+            (
+                self.preorder_node_indices,
+                tf.gather(self.parent_indices, self.preorder_node_indices),
+                tf.gather(x, self.preorder_node_indices), tf.gather(self.anchor_heights, self.preorder_node_indices)
+            ),
+            init)[-1]
 
     def _inverse(self, y):
-        return y / tf.concat([tf.gather(y, self.parent_indices), tf.ones((1,), dtype=tf.dtypes.float64)], 0)
+        return (y - self.anchor_heights) / tf.concat([(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]), tf.ones((1,), dtype=tf.dtypes.float64)], 0)
 
     def _inverse_log_det_jacobian(self, y):
-        return -tf.reduce_sum(tf.math.log(tf.gather(y, self.parent_indices)))
+        return -tf.reduce_sum(tf.math.log(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]))
 
 
 class TreeChain(tfp.bijectors.Chain):
-    def __init__(self, parent_indices, preorder_node_indices, name='TreeChain'):
-        branch_breaking = BranchBreaking(parent_indices, preorder_node_indices)
+    def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='TreeChain'):
+        branch_breaking = BranchBreaking(parent_indices, preorder_node_indices, anchor_heights=anchor_heights)
         blockwise = tfp.bijectors.Blockwise(
             [tfp.bijectors.Sigmoid(), tfp.bijectors.Exp()],
             block_sizes=tf.concat([parent_indices.shape, [1]], 0)

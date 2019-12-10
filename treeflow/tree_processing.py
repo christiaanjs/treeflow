@@ -66,3 +66,13 @@ def update_topology_dict(topology):
         preorder_indices=get_preorder_indices(child_indices),
         sibling_indices=get_sibling_indices(child_indices),
         **topology)
+
+def get_node_anchor_heights(heights, postorder_node_indices, child_indices):
+    taxon_count = len(postorder_node_indices) + 1
+    anchor_heights = np.zeros_like(heights)
+    anchor_heights[:taxon_count] = heights[:taxon_count]
+
+    for i in postorder_node_indices:
+        anchor_heights[i] = np.max(anchor_heights[child_indices[i]])
+
+    return anchor_heights[taxon_count:]

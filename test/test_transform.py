@@ -61,3 +61,5 @@ def test_tree_transform_jac(heights, parent_indices, preorder_indices, transform
     jac = t.jacobian(res, heights, experimental_use_pfor=False)
     log_det_jac = tf.math.log(tf.linalg.det(jac))
     assert_allclose(log_det_jac.numpy(), transform.inverse_log_det_jacobian(heights, event_ndims=1).numpy())
+
+# TODO: Tests for heterochronous case
