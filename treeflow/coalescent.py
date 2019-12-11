@@ -7,7 +7,7 @@ def coalescent_likelihood(lineage_count,
                           population_func, # At coalescence
                           population_areas, # Integrals of 1/N
                           coalescent_mask): # At top of interval
-    k_choose_2 = lineage_count * (lineage_count - 1) / 2
+    k_choose_2 = tf.cast(lineage_count * (lineage_count - 1), dtype=tf.float32) / 2.0
     return -tf.reduce_sum(k_choose_2 * population_areas) - tf.reduce_sum(tf.math.log(tf.boolean_mask(population_func, coalescent_mask)))
 
 def get_lineage_count(event_types):
@@ -22,7 +22,7 @@ class ConstantCoalescent(tfp.distributions.Distribution):
             dtype={
                 'heights': sampling_times.dtype,
                 'topology': {
-                    'parent_indices': tf.int64
+                    'parent_indices': tf.int32
                 }
             },
             reparameterization_type=tfp.distributions.NOT_REPARAMETERIZED,
@@ -54,4 +54,23 @@ class ConstantCoalescent(tfp.distributions.Distribution):
         return coalescent_likelihood(lineage_count, population_func, population_areas, coalescent_mask)
 
     def _sample_n(self, n, seed=None):
-        raise NotImplementedError('Coalescent simulator not yet implemented')
+        import warnings
+        warnings.warn('Dummy sampling')
+        #raise NotImplementedError('Coalescent simulator not yet implemented')
+        return {
+            'heights': tf.zeros(self.taxon_count, dtype=self.dtype['heights']),
+            'topology': {
+                'parent_indices': tf.zeros(self.taxon_count - 1, dtype=self.dtype['topology']['parent_indices'])
+            }
+        }
+
+    # Borrwoed from JointDistribution
+    # We need to bypass base Distribution reshaping/validation logic so we
+    # tactically implement a few of the `_call_*` redirectors. 
+    def _call_log_prob(self, value, name):
+        with self._name_and_control_scope(name):
+            return self._log_prob(value)
+
+    def _call_sample_n(self, sample_shape, seed, name):
+        with self._name_and_control_scope(name):
+            return self._sample_n(sample_shape, seed)

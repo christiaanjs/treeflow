@@ -43,10 +43,11 @@ def get_sibling_indices(child_indices):
 
     return sibling_indices
 
-def get_preorder_indices(child_indices):        
+def get_preorder_indices(child_indices):
+    
     def is_leaf(node_index):
         return child_indices[node_index, 0] == -1
-    
+
     stack = [len(child_indices) - 1]
     visited = [] 
     while len(stack) > 0:
@@ -57,6 +58,11 @@ def get_preorder_indices(child_indices):
         visited.append(node_index)
     return np.array(visited)
 
+def get_preorder_node_indices(child_indices):
+    preorder_indices = get_preorder_indices(child_indices)
+    taxon_count = (len(preorder_indices) + 1) // 2
+    return preorder_indices[preorder_indices > taxon_count]
+
 def update_topology_dict(topology):
     parent_indices = topology['parent_indices']
     child_indices = get_child_indices(parent_indices)
@@ -64,6 +70,7 @@ def update_topology_dict(topology):
         postorder_node_indices=get_postorder_node_indices(len(parent_indices)//2 + 1), # Parent indices for every vertex except root
         child_indices=child_indices,
         preorder_indices=get_preorder_indices(child_indices),
+        preorder_node_indices=get_preorder_node_indices(child_indices),
         sibling_indices=get_sibling_indices(child_indices),
         **topology)
 

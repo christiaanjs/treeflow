@@ -93,7 +93,7 @@ class HKY(SubstitutionModel):
             [1.0, 0.0, -1.0, 0.0]
         ])
 
-        return [tf.dtypes.cast(x, tf.dtypes.float64) for x in [evec, eval, ivec]]
+        return [tf.dtypes.cast(x, tf.dtypes.float32) for x in [evec, eval, ivec]]
 
     def q(self, frequencies, kappa):
         pi = frequencies
