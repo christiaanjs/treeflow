@@ -43,7 +43,12 @@ class TreeChain(tfp.bijectors.Chain):
 class FixedTopologyDistribution(tfp.distributions.JointDistributionNamed):
     def __init__(self, height_distribution, topology, name='FixedTopologyDistribution'):
         super(FixedTopologyDistribution, self).__init__(dict(
-        topology=tfp.distributions.JointDistributionNamed({ key: tfp.distributions.Deterministic(loc=value) for key, value in topology.items() }),
+            topology=tfp.distributions.JointDistributionNamed({
+                key: tfp.distributions.Independent(
+                    tfp.distributions.Deterministic(loc=value),
+                    reinterpreted_batch_ndims=height_distribution.event_shape.ndims
+                ) for key, value in topology.items()
+            }),
             heights=height_distribution
         ))
         self.topology_keys = topology.keys()
