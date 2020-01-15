@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import treeflow.tf_util
 
 class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='BranchBreaking'):
@@ -8,7 +9,7 @@ class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
         self.preorder_node_indices = preorder_node_indices # Don't include root
         self.anchor_heights = tf.zeros(len(preorder_node_indices) + 1, dtype=tf.dtypes.float32) if anchor_heights is None else anchor_heights
 
-    def _forward(self, x):
+    def _forward_1d(self, x):
         length = x.shape[-1]
         init = tf.scatter_nd([[length - 1]], tf.expand_dims(x[-1] + self.anchor_heights[-1], 0), self.anchor_heights.shape)
         def f(out, elems):
@@ -24,11 +25,20 @@ class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
             ),
             init)[-1]
 
-    def _inverse(self, y):
+    def _forward(self, x):
+        return treeflow.tf_util.vectorize_1d_if_needed(self._forward_1d, x)
+
+    def _inverse_1d(self, y):
         return (y - self.anchor_heights) / tf.concat([(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]), tf.ones((1,), dtype=tf.dtypes.float32)], 0)
 
-    def _inverse_log_det_jacobian(self, y):
+    def _inverse(self, y):
+        return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_1d, y)
+
+    def _inverse_log_det_jacobian_1d(self, y):
         return -tf.reduce_sum(tf.math.log(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]))
+
+    def _inverse_log_det_jacobian(self, y):
+        return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_log_det_jacobian_1d, y)
 
 
 class TreeChain(tfp.bijectors.Chain):
