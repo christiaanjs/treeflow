@@ -3,7 +3,6 @@ from tensorflow_probability.python.vi import csiszar_divergence
 
 from tensorflow_probability.python.internal import nest_util
 
-
 _trace_loss = lambda loss, grads, variables: loss
 
 def fit_surrogate_posterior(

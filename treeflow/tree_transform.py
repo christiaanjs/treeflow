@@ -26,19 +26,19 @@ class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
             init)[-1]
 
     def _forward(self, x):
-        return treeflow.tf_util.vectorize_1d_if_needed(self._forward_1d, x)
+        return treeflow.tf_util.vectorize_1d_if_needed(self._forward_1d, x, x.shape.rank - 1)
 
     def _inverse_1d(self, y):
         return (y - self.anchor_heights) / tf.concat([(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]), tf.ones((1,), dtype=tf.dtypes.float32)], 0)
 
     def _inverse(self, y):
-        return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_1d, y)
+        return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_1d, y, y.shape.rank - 1)
 
     def _inverse_log_det_jacobian_1d(self, y):
         return -tf.reduce_sum(tf.math.log(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]))
 
     def _inverse_log_det_jacobian(self, y):
-        return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_log_det_jacobian_1d, y)
+        return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_log_det_jacobian_1d, y, y.shape.rank - 1)
 
 
 class TreeChain(tfp.bijectors.Chain):

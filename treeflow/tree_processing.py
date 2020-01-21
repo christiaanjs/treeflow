@@ -61,7 +61,7 @@ def get_preorder_indices(child_indices):
 def get_preorder_node_indices(child_indices):
     preorder_indices = get_preorder_indices(child_indices)
     taxon_count = (len(preorder_indices) + 1) // 2
-    return preorder_indices[preorder_indices > taxon_count]
+    return preorder_indices[preorder_indices >= taxon_count]
 
 def update_topology_dict(topology):
     parent_indices = topology['parent_indices']

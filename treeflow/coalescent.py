@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import treeflow.tf_util
 
 COALESCENCE, SAMPLING, OTHER = -1, 1, 0
 
@@ -35,10 +36,10 @@ class ConstantCoalescent(tfp.distributions.Distribution):
         self.sampling_times = sampling_times
         self.taxon_count = self.sampling_times.shape[-1]
 
-    def _log_prob(self, x):
+    def _log_prob_1d(self, x, pop_size_1d):
         # TODO: Validate topology
-        node_heights = x['heights']
-        heights = tf.concat([self.sampling_times, node_heights], 0)
+        # TODO: Check sampling times?
+        heights = x['heights']
         node_mask = tf.concat([tf.fill([self.taxon_count], False), tf.fill([self.taxon_count - 1], True)], 0)
 
         sort_indices = tf.argsort(heights)
@@ -46,12 +47,28 @@ class ConstantCoalescent(tfp.distributions.Distribution):
         node_mask_sorted = tf.gather(node_mask, sort_indices)
 
         lineage_count =  get_lineage_count(tf.where(node_mask_sorted, COALESCENCE, SAMPLING))[:-1]
-        population_func = tf.broadcast_to(tf.expand_dims(self.pop_size, 0), lineage_count.shape)
+        population_func = tf.broadcast_to(pop_size_1d, lineage_count.shape)
         durations = heights_sorted[1:] - heights_sorted[:-1]
-        population_areas = durations / self.pop_size
+        population_areas = durations / pop_size_1d
         coalescent_mask = node_mask_sorted[1:]
 
         return coalescent_likelihood(lineage_count, population_func, population_areas, coalescent_mask)
+
+    def _log_prob_1d_flat(self, x_flat):
+        x_dict = {
+            'heights': x_flat[0],
+            'topology': {
+                'parent_indices': x_flat[1]
+            }
+        }
+        pop_size = x_flat[2]
+        return self._log_prob_1d(x_dict, pop_size)
+
+    def _log_prob(self, x):
+        batch_shape = x['heights'].shape[:-1]
+        pop_size = tf.broadcast_to(self.pop_size, batch_shape)
+        x_flat = [x['heights'], x['topology']['parent_indices'], pop_size]
+        return treeflow.tf_util.vectorize_1d_if_needed(self._log_prob_1d_flat, x_flat, batch_shape.rank)
 
     def _sample_n(self, n, seed=None):
         import warnings
