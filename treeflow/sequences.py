@@ -5,6 +5,7 @@ from collections import Counter
 import treeflow.tensorflow_likelihood
 import treeflow.tree_processing
 import treeflow.substitution_model
+import treeflow.tf_util
 
 init_partials_dict = {
     'A':[1.,0.,0.,0.],
@@ -48,7 +49,7 @@ def get_encoded_sequences(fasta_file, taxon_names):
 
 def get_branch_lengths(tree):
     heights = tree['heights']
-    return tf.gather(heights, tree['topology']['parent_indices']) - heights[:-1]
+    return tf.gather(heights, tree['topology']['parent_indices'], batch_dims=-1) - heights[..., :-1]
 
 def log_prob_conditioned(value, topology, category_count):
 
@@ -82,8 +83,20 @@ def log_prob_conditioned(value, topology, category_count):
                 ] + param_grads)]
             log_prob_val = likelihood.compute_likelihood_from_partials(frequencies, category_weights)
             return log_prob_val, grad # TODO: Cache site likelihoods
-        return log_prob_flat(branch_lengths, category_weights, category_rates, frequencies,
-            *[subst_model_params[key] for key in subst_model_param_keys])
+
+        def log_prob_1d(elems):
+            branch_lengths, category_weights, category_rates, frequencies = elems[:4]
+            subst_model_params_list = elems[4:]
+            return log_prob_flat(branch_lengths, category_weights, category_rates, frequencies, *subst_model_params_list)
+
+        batch_shape = branch_lengths.shape[:-1] # TODO: What's a better way to get batch shape?
+        category_weights_b = tf.broadcast_to(category_weights, batch_shape + [category_count])
+        category_rates_b = tf.broadcast_to(category_rates, batch_shape + [category_count])
+        frequencies_b = tf.broadcast_to(frequencies, batch_shape + [4])
+        subst_model_params_list = [subst_model_params[key] for key in subst_model_param_keys]
+        subst_model_params_b = [tf.broadcast_to(param, batch_shape) for param in subst_model_params_list]
+        elems = [branch_lengths, category_weights_b, category_rates_b, frequencies_b] + subst_model_params_b 
+        return treeflow.tf_util.vectorize_1d_if_needed(log_prob_1d, elems, batch_shape.rank)
     return log_prob
     
 
