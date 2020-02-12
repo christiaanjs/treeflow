@@ -1,5 +1,6 @@
 import ete3
 import numpy as np
+import tensorflow as tf
 
 def parse_newick(newick_file):
     """Return leaves followed by nodes (postorder)"""
@@ -83,3 +84,9 @@ def get_node_anchor_heights(heights, postorder_node_indices, child_indices):
         anchor_heights[i] = np.max(anchor_heights[child_indices[i]])
 
     return anchor_heights[taxon_count:]
+
+def tree_to_tensor(tree):
+    return {
+        'heights': tf.convert_to_tensor(tree['heights'], dtype=tf.float32),
+        'topology': { key: tf.convert_to_tensor(value, dtype=tf.int32) for key, value in tree['topology'].items() }
+    }

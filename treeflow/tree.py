@@ -1,8 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-COALESCENCE, SAMPLING, OTHER = -1, 1, 0
-
 class TreeDistribution(tfp.distributions.Distribution):
     def __init__(self, **kwargs):
         super(TreeDistribution, self).__init__(
