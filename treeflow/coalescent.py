@@ -13,15 +13,11 @@ def coalescent_likelihood(lineage_count,
                           population_func, # At coalescence
                           population_areas, # Integrals of 1/N
                           coalescent_mask): # At top of interval
-    print(lineage_count)
-    print(population_func)
-    print(population_areas)
-    print(coalescent_mask)
     k_choose_2 = tf.cast(lineage_count * (lineage_count - 1), dtype=tf.float32) / 2.0
     return -tf.reduce_sum(k_choose_2 * population_areas) - tf.reduce_sum(tf.math.log(tf.boolean_mask(population_func, coalescent_mask)))
 
 class ConstantCoalescent(treeflow.tree.TreeDistribution):
-    def __init__(self, pop_size, sampling_times,
+    def __init__(self, taxon_count, pop_size, sampling_times,
                validate_args=False,
                allow_nan_stats=True,
                name='ConstantCoalescent'):
@@ -33,7 +29,7 @@ class ConstantCoalescent(treeflow.tree.TreeDistribution):
         )
         self.pop_size = pop_size
         self.sampling_times = sampling_times
-        self.taxon_count = self.sampling_times.shape[-1]
+        self.taxon_count = taxon_count#tf.convert_to_tensor(taxon_count)
 
     def _log_prob_1d(self, x, pop_size_1d):
         # TODO: Validate topology
@@ -64,7 +60,6 @@ class ConstantCoalescent(treeflow.tree.TreeDistribution):
         return self._log_prob_1d(x_dict, pop_size)
 
     def _log_prob(self, x):
-        print(x)
         batch_shape = x['heights'].shape[:-1]
         pop_size = tf.broadcast_to(self.pop_size, batch_shape)
         x_flat = [x['heights'], x['topology']['parent_indices'], pop_size]

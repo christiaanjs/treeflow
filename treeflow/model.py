@@ -21,12 +21,13 @@ def construct_model_likelihood(newick_file, fasta_file):
         pop_size=tfd.LogNormal(loc=0, scale=1),
         #site_alpha=tfd.LogNormal(loc=0, scale=1),
         #clock_rate=tfd.LogNormal(loc=0, scale=1),
-        tree=lambda pop_size: treeflow.coalescent.ConstantCoalescent(pop_size=pop_size, sampling_times=sampling_times)
+        tree=lambda pop_size: treeflow.coalescent.ConstantCoalescent(taxon_count=taxon_count, pop_size=pop_size, sampling_times=sampling_times)
     ))
 
     subst_model = treeflow.substitution_model.HKY()
     category_weights = tf.ones(1)
     category_rates = tf.ones(1)
+    mutation_rate = tf.convert_to_tensor(0.001)
 
     alignment = treeflow.sequences.get_encoded_sequences(fasta_file, taxon_names)
     log_prob_conditioned = treeflow.sequences.log_prob_conditioned(alignment, tree['topology'], 1)
@@ -36,12 +37,12 @@ def construct_model_likelihood(newick_file, fasta_file):
             subst_model=subst_model,
             category_weights=category_weights,
             category_rates=category_rates,
-            branch_lengths=treeflow.sequences.get_branch_lengths(tree, ),
+            branch_lengths=treeflow.sequences.get_branch_lengths(tree) * mutation_rate,
             frequencies=frequencies,
             kappa=kappa
         )
     log_prob = lambda **z: prior.log_prob(z) + log_likelihood(z['tree'], z['kappa'], z['frequencies'])
-    return log_prob
+    return log_prob, prior
 
 
 def construct_surrogate_posterior(newick_file):

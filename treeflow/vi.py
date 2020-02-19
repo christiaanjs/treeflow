@@ -6,26 +6,29 @@ import numpy as np
 import tensorflow as tf
 import tqdm
 
-_trace_loss = lambda loss, grads, variables: loss
-
-def minimize_eager(loss_fn, num_steps, optimizer, trainable_variables=None, trace_fn=_trace_loss, name='minimize', iter=range):
+def minimize_eager(loss_fn, num_steps, optimizer, trainable_variables=None, name='minimize', iter=range):
     state = { 'loss': np.zeros(num_steps), 'vars': {} }
     for i in iter(num_steps):
-        with tf.GradientTape(watch_accessed_variables=trainable_variables is None) as tape:
-            for v in trainable_variables or []:
-                tape.watch(v)
-            loss = loss_fn()
-        watched_variables = tape.watched_variables()
+        try:
+            with tf.GradientTape(watch_accessed_variables=trainable_variables is None) as tape:
+                for v in trainable_variables or []:
+                    tape.watch(v)
+                loss = loss_fn()
+            
+            watched_variables = tape.watched_variables()
 
-        if i == 0:
+            if i == 0:
+                for variable in watched_variables:
+                    state['vars'][variable.name] = np.zeros((num_steps + variable.shape).as_list())
+            state['loss'][i] = loss.numpy()
             for variable in watched_variables:
-                state['vars'][variable.name] = np.zeros((num_steps + variable.shape).as_list())
-        state['loss'][i] = loss.numpy()
-        for variable in watched_variables:
-                state['vars'][variable.name][i] = variable.numpy()
+                    state['vars'][variable.name][i] = variable.numpy()
 
-        grads = tape.gradient(loss, watched_variables)
-        optimizer.apply_gradients(zip(grads, watched_variables))
+            grads = tape.gradient(loss, watched_variables)
+            optimizer.apply_gradients(zip(grads, watched_variables))
+        except KeyboardInterrupt:
+            print('Exiting after {0} iterations'.format(i))
+            break
     return state
 
 def fit_surrogate_posterior(
