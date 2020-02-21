@@ -2,6 +2,15 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.tf_util
 
+class ParentCorrelation(tfp.bijectors.ScaleMatvecLU):
+    def __init__(self, parent_indices, beta, name='ParentAffine'):
+        non_root_count = parent_indices.shape[-1]
+        node_count = non_root_count + 1
+        perm = tf.range(node_count)
+        indices = tf.concat([tf.expand_dims(tf.range(non_root_count), 1), tf.expand_dims(tf.convert_to_tensor(parent_indices, tf.int32), 1)], axis=1)
+        build_triu = lambda beta: tf.eye(node_count) + tf.scatter_nd(indices, beta, [node_count, node_count])
+        super(ParentCorrelation, self).__init__(tfp.util.DeferredTensor(beta, build_triu, shape=[node_count, node_count]), perm, name=name)
+
 class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='BranchBreaking'):
         super(BranchBreaking, self).__init__(forward_min_event_ndims=1,name=name)
