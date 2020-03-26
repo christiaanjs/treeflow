@@ -8,7 +8,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
 
-def construct_model_likelihood(newick_file, fasta_file):
+def construct_model_likelihood(newick_file, fasta_file, clock='strict'):
     tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
     topology = treeflow.tree_processing.update_topology_dict(tree['topology'])
     taxon_count = len(taxon_names)
@@ -44,8 +44,56 @@ def construct_model_likelihood(newick_file, fasta_file):
     log_prob = lambda **z: prior.log_prob(z) + log_likelihood(z['tree'], z['kappa'], z['frequencies'])
     return log_prob, prior
 
+distribution_class_supports = {
+    tfd.Normal: 'real',
+    tfd.LogNormal: 'nonnegative',
+    tfd.Beta: '01',
+    tfd.Dirichlet: 'simplex'
+}
 
-def construct_surrogate_posterior(newick_file):
+def construct_distribution_approximation(model_name, dist_name, distribution, init_mode=None):
+    try:
+        support = distribution_class_supports[type(distribution)]
+    except KeyError:
+        print('Distribution not supported: ' + str(distribution))
+
+    full_shape = distribution.batch_shape + distribution.event_shape
+    
+    if support == 'real':
+        init_loc = tf.zeros(full_shape, dtype=distribution.dtype) if init_mode is None else init_mode
+        init_scale = tf.ones(full_shape, dtype=distribution.dtype)
+        batch_dist = tfd.Normal(
+            loc=tf.Variable(init_loc, name='{0}_{1}_loc'.format(model_name, dist_name)),
+            scale=tfp.util.DeferredTensor(
+                tf.Variable(tfp.math.softplus_inverse(init_scale), name='{0}_{1}_scale'.format(model_name, dist_name)),
+                tf.nn.softplus
+            )
+        )
+    elif support == 'nonnegative':
+        init_loc = tf.zeros(full_shape, dtype=distribution.dtype) if init_mode is None else (tf.math.log(init_mode) + 1.0)
+        init_scale = tf.ones(full_shape, dtype=distribution.dtype)
+        batch_dist = tfd.LogNormal(
+            loc=tf.Variable(init_loc, name='{0}_{1}_loc'.format(model_name, dist_name)),
+            scale=tfp.util.DeferredTensor(
+                tf.Variable(tfp.math.softplus_inverse(init_scale), name='{0}_{1}_scale'.format(model_name, dist_name)),
+                tf.nn.softplus
+            )
+        )
+    elif support == 'simplex':
+        init_concentration = tf.fill(full_shape, tf.convert_to_tensor(2.0, dtype=dtype)) if init_mode is None else (full_shape[-1] * init_mode + 1)
+    else:
+        raise ValueError('Approximation not yet implemented for support: ' + support)
+
+    event_rank = distribution.event_shape.rank
+        if event_rank > 0:
+            return tfd.Independent(batch_dist, reinterpreted_batch_ndims=event_rank)
+        else:
+            return batch_dist
+
+def construct_prior_approximation(model, approx_name='q', init_vals={}):
+    return { name: construct_distribution_approximation(approx_name, name, dist, init_model=init_vals.get(name)) for name, dist in prior.items() if name != 'tree' }
+
+def construct_tree_approximation(newick_file, approx_name, approx_model='mean_field'):
     tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
     topology = treeflow.tree_processing.update_topology_dict(tree['topology'])
     taxon_count = len(taxon_names)
@@ -59,30 +107,20 @@ def construct_surrogate_posterior(newick_file):
     init_heights_trans = tree_chain.inverse(init_heights)
     leaf_heights = tf.convert_to_tensor(tree['heights'][:taxon_count], dtype=tf.float32)
 
+    if approx_model='mean_field':
+        pretransformed_distribution = tfd.Independent(tfd.Normal(
+                    loc=tf.Variable(init_heights_trans, name='q_tree_loc'),
+                    scale=tfp.util.DeferredTensor(tf.Variable(tf.ones_like(init_heights_trans), name='q_tree_scale'), tf.nn.softplus)
+                ), reinterpreted_batch_ndims=1)
+    else:
+        raise ValueError('Approximation not yet implemented for support: ' + support)
+
     height_dist = tfd.Blockwise([
         tfd.Independent(tfd.Deterministic(leaf_heights), reinterpreted_batch_ndims=1),
-        tfd.TransformedDistribution(
-            distribution=tfd.Independent(tfd.Normal(
-                loc=tf.Variable(init_heights_trans, name='q_tree_loc'),
-                scale=tfp.util.DeferredTensor(tf.Variable(tf.ones_like(init_heights_trans), name='q_tree_scale'), tf.nn.softplus)
-            ), reinterpreted_batch_ndims=1),
-            bijector=tree_chain
-        )
+        tfd.TransformedDistribution(pretransformed_distribution, bijector=tree_chain)
     ])
 
-    q = tfd.JointDistributionNamed(dict(
-        tree=treeflow.tree_transform.FixedTopologyDistribution(
+    return treeflow.tree_transform.FixedTopologyDistribution(
             height_distribution=height_dist,
             topology=tree['topology']
-        ),
-        kappa=tfd.LogNormal(
-            loc=tf.Variable(0.0, name='q_kappa_loc'),
-            scale=tfp.util.DeferredTensor(tf.Variable(1.0, name='q_kappa_scale'), tf.nn.softplus)
-        ),
-        pop_size=tfd.LogNormal(
-            loc=tf.Variable(0.0, name='q_pop_size_loc'),
-            scale=tfp.util.DeferredTensor(tf.Variable(1.0, name='q_pop_size_scale'), tf.nn.softplus)
-        ),
-        frequencies=tfd.Dirichlet(concentration=tfp.util.DeferredTensor(tf.Variable([4.0, 4.0, 4.0, 4.0], name='q_frequencies_concentration'), tf.nn.softplus))
-    ))
-    return q
+        )
