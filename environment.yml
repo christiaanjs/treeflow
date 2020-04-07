@@ -22,6 +22,7 @@ dependencies:
   - ete3
   - seaborn
   - jupyter
+  - tqdm
   - pip:
       - black
       - click

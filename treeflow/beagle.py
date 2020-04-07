@@ -13,6 +13,16 @@ def log_prob_conditioned_branch_only(newick_file, fasta_file, subst_model, frequ
             'GTR rates': np.array(subst_model_params['rates']),
             'frequencies': np.array(frequencies)
         }
+    elif isinstance(subst_model, treeflow.substitution_model.HKY):
+        subst_model_string = 'GTR'
+        kappa = subst_model_params['kappa']
+        rates = np.ones(6)
+        rates[1] = kappa
+        rates[4] = kappa
+        param_updates = {
+            'GTR rates': rates,
+            'frequencies': np.array(frequencies)
+        }
     else:
         raise ValueError('Unsupported substitution model')
     
@@ -48,7 +58,7 @@ def log_prob_conditioned_branch_only(newick_file, fasta_file, subst_model, frequ
     def libsbn_tf_func(x):
         logp, grad_val = tf.numpy_function(libsbn_func_vec, [x], [tf.float32, tf.float32])
         def grad(dlogp):
-            return dlogp * grad_val
+            return tf.expand_dims(dlogp, -1) * grad_val
         return logp, grad
 
     return libsbn_tf_func, inst

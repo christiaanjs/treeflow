@@ -58,6 +58,7 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
         print('Distribution not supported: ' + str(distribution))
 
     full_shape = distribution.batch_shape + distribution.event_shape
+    support = distribution_class_supports[type(distribution)]
     
     if support == 'real':
         init_loc = tf.zeros(full_shape, dtype=distribution.dtype) if init_mode is None else init_mode
@@ -85,15 +86,15 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
         raise ValueError('Approximation not yet implemented for support: ' + support)
 
     event_rank = distribution.event_shape.rank
-        if event_rank > 0:
-            return tfd.Independent(batch_dist, reinterpreted_batch_ndims=event_rank)
-        else:
-            return batch_dist
+    if event_rank > 0:
+        return tfd.Independent(batch_dist, reinterpreted_batch_ndims=event_rank)
+    else:
+        return batch_dist
 
-def construct_prior_approximation(model, approx_name='q', init_vals={}):
-    return { name: construct_distribution_approximation(approx_name, name, dist, init_model=init_vals.get(name)) for name, dist in prior.items() if name != 'tree' }
+def construct_prior_approximation(prior, approx_name='q', init_mode={}):
+    return { name: construct_distribution_approximation(approx_name, name, dist, init_mode=init_mode.get(name)) for name, dist in prior.model.items() if name != 'tree' }
 
-def construct_tree_approximation(newick_file, approx_name, approx_model='mean_field'):
+def construct_tree_approximation(newick_file, approx_name='q', dist_name='tree', approx_model='mean_field'):
     tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
     topology = treeflow.tree_processing.update_topology_dict(tree['topology'])
     taxon_count = len(taxon_names)
@@ -107,10 +108,10 @@ def construct_tree_approximation(newick_file, approx_name, approx_model='mean_fi
     init_heights_trans = tree_chain.inverse(init_heights)
     leaf_heights = tf.convert_to_tensor(tree['heights'][:taxon_count], dtype=tf.float32)
 
-    if approx_model='mean_field':
+    if approx_model == 'mean_field':
         pretransformed_distribution = tfd.Independent(tfd.Normal(
-                    loc=tf.Variable(init_heights_trans, name='q_tree_loc'),
-                    scale=tfp.util.DeferredTensor(tf.Variable(tf.ones_like(init_heights_trans), name='q_tree_scale'), tf.nn.softplus)
+                    loc=tf.Variable(init_heights_trans, name='{0}_{1}_loc'.format(approx_name, dist_name)),
+                    scale=tfp.util.DeferredTensor(tf.Variable(tf.ones_like(init_heights_trans), name='{0}_{1}_scale'.format(approx_name, dist_name)), tf.nn.softplus)
                 ), reinterpreted_batch_ndims=1)
     else:
         raise ValueError('Approximation not yet implemented for support: ' + support)

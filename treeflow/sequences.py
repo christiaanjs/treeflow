@@ -47,9 +47,18 @@ def get_encoded_sequences(fasta_file, taxon_names):
     pattern_dict, counts = compress_sites(sequence_dict)
     return { 'sequences': encode_sequence_dict(pattern_dict, taxon_names), 'weights': counts }
 
+def _get_branch_lengths_1d_flat(x_flat): # TODO: Make this work properly with > 1 batch dim
+    heights = x_flat[0]
+    parent_indices = x_flat[1]
+    return tf.gather(heights, parent_indices) - heights[:-1]
+
 def get_branch_lengths(tree):
     heights = tree['heights']
-    return tf.gather(heights, tree['topology']['parent_indices'], batch_dims=-1) - heights[..., :-1]
+    batch_shape = heights.shape[:-1]
+    node_count = heights.shape[-1]
+    parent_indices = tf.broadcast_to(tree['topology']['parent_indices'], batch_shape + (node_count - 1))
+    x_flat = [heights, parent_indices]
+    return treeflow.tf_util.vectorize_1d_if_needed(_get_branch_lengths_1d_flat, x_flat, batch_shape.rank)
 
 def log_prob_conditioned(value, topology, category_count):
 
@@ -118,7 +127,7 @@ def log_prob_conditioned_branch_only(value, topology, category_count, subst_mode
         log_prob_val = likelihood.compute_likelihood_from_partials(frequencies, category_weights)
         return log_prob_val, grad # TODO: Cache site likelihoods
 
-    return log_prob
+    return log_prob, likelihood
     
 
 class LeafSequences(tfp.distributions.Distribution):
