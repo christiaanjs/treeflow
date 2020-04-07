@@ -8,42 +8,6 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
 
-def construct_model_likelihood(newick_file, fasta_file, clock='strict'):
-    tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
-    topology = treeflow.tree_processing.update_topology_dict(tree['topology'])
-    taxon_count = len(taxon_names)
-
-    sampling_times = tf.convert_to_tensor(tree['heights'][:taxon_count], dtype=tf.float32)
-
-    prior = tfd.JointDistributionNamed(dict(
-        frequencies=tfd.Dirichlet(concentration=[4,4,4,4]),
-        kappa=tfd.LogNormal(loc=0, scale=1),
-        pop_size=tfd.LogNormal(loc=0, scale=1),
-        #site_alpha=tfd.LogNormal(loc=0, scale=1),
-        #clock_rate=tfd.LogNormal(loc=0, scale=1),
-        tree=lambda pop_size: treeflow.coalescent.ConstantCoalescent(taxon_count=taxon_count, pop_size=pop_size, sampling_times=sampling_times)
-    ))
-
-    subst_model = treeflow.substitution_model.HKY()
-    category_weights = tf.ones(1)
-    category_rates = tf.ones(1)
-    mutation_rate = tf.convert_to_tensor(0.001)
-
-    alignment = treeflow.sequences.get_encoded_sequences(fasta_file, taxon_names)
-    log_prob_conditioned = treeflow.sequences.log_prob_conditioned(alignment, tree['topology'], 1)
-                    
-    def log_likelihood(tree, kappa, frequencies):  
-        return log_prob_conditioned(
-            subst_model=subst_model,
-            category_weights=category_weights,
-            category_rates=category_rates,
-            branch_lengths=treeflow.sequences.get_branch_lengths(tree) * mutation_rate,
-            frequencies=frequencies,
-            kappa=kappa
-        )
-    log_prob = lambda **z: prior.log_prob(z) + log_likelihood(z['tree'], z['kappa'], z['frequencies'])
-    return log_prob, prior
-
 distribution_class_supports = {
     tfd.Normal: 'real',
     tfd.LogNormal: 'nonnegative',
