@@ -36,10 +36,10 @@ class SubstitutionModel:
 
 class JC(SubstitutionModel):
     def frequencies(self, *args, **kwargs):
-        return tf.convert_to_tensor(np.array([0.25, 0.25, 0.25, 0.25]))
+        return tf.convert_to_tensor(np.array([0.25, 0.25, 0.25, 0.25]), dtype=tf.float32)
 
     def eigen(self, *args, **kwargs):
-        return [tf.convert_to_tensor(np.array(x)) for x in [
+        return [tf.convert_to_tensor(np.array(x), dtype=tf.float32) for x in [
             [
                 [1.0, 2.0, 0.0, 0.5],
                 [1.0, -2.0, 0.5, 0.0],
