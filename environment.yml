@@ -18,7 +18,7 @@ dependencies:
   - scons
   - scipy
   - sphinx >= 2.2.1
-  - biopython 
+  - biopython
   - ete3
   - seaborn
   - jupyter
@@ -31,5 +31,6 @@ dependencies:
       - flake8
       - sphinx-click
       - sphinx-rtd-theme
+      - pyyaml
       - tf-nightly
       - tfp-nightly

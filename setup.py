@@ -10,6 +10,7 @@ setuptools.setup(
         'tfp-nightly',
         'jupyter',
         'ete3',
-        'pytest'
+        'pytest',
+        'pyyaml'
     ]
 )
