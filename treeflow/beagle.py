@@ -25,8 +25,8 @@ def log_prob_conditioned_branch_only(newick_file, fasta_file, subst_model, frequ
         }
     else:
         raise ValueError('Unsupported substitution model')
-    
-    inst = libsbn.instance('treeflow')
+
+    inst = libsbn.rooted_instance('treeflow')
     inst.read_newick_file(newick_file)
     inst.read_fasta_file(fasta_file)
     inst.set_rescaling(rescaling)
@@ -44,13 +44,13 @@ def log_prob_conditioned_branch_only(newick_file, fasta_file, subst_model, frequ
     root_children = np.nonzero(parent_id_vector == root_id)
 
     branch_lengths = np.array(inst.tree_collection.trees[0].branch_lengths, copy=False)
-    
+
     def libsbn_func(x):
         branch_lengths[:-1] = x
-        logp, grad = inst.branch_gradients()[0]
-        grad_array = np.array(grad, dtype=np.float32)[:-1]
+        gradient = inst.gradients()[0]
+        grad_array = np.array(gradient.branch_lengths, dtype=np.float32)[:-1]
         grad_array[root_children] = np.sum(grad_array[root_children])
-        return np.array(logp, dtype=np.float32), grad_array
+        return np.array(gradient.log_likelihood, dtype=np.float32), grad_array
 
     libsbn_func_vec = np.vectorize(libsbn_func, [np.float32, np.float32], signature='(n)->(),(n)')
 
