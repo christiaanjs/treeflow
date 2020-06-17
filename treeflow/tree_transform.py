@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.tf_util
+import numpy as np
 
 class ParentCorrelation(tfp.bijectors.ScaleMatvecLU):
     def __init__(self, parent_indices, beta, name='ParentAffine'):
@@ -49,10 +50,36 @@ class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
     def _inverse_log_det_jacobian(self, y):
         return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_log_det_jacobian_1d, y, y.shape.rank - 1)
 
+class Ratio(BranchBreaking):
+    def __init__(self, inst, *args, name='BranchBreaking', **kwargs):
+        super(Ratio, self).__init__(*args, **kwargs)
+        self.inst = inst
+        self.tree = inst.tree_collection.trees[0]
+        self.node_height_state = np.array(self.tree.node_heights, dtype=np.float32, copy=False)
+
+    def _forward_1d_numpy(self, x): # TODO: Should we do vectorization in Numpy or TF land?
+        self.tree.set_node_heights_via_height_ratios(x)
+        return self.node_height_state
+
+    def _ratio_gradient_numpy(self, heights, dheights):
+        self.node_height_state[:] = heights
+        return np.array(self.tree.ratio_gradient_of_height_gradient(dheights), dtype=np.float32)
+
+    def _forward_1d(self, x):
+        @tf.custom_gradient
+        def libsbn_tf_func(x):
+            heights = tf.numpy_function(self._forward_1d_numpy, [x], tf.float32)
+            def grad(dheights):
+                return tf.numpy_function(self._ratio_gradient_numpy, [heights, dheights], tf.float32)
+            return heights, grad
 
 class TreeChain(tfp.bijectors.Chain):
-    def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='TreeChain'):
-        branch_breaking = BranchBreaking(parent_indices, preorder_node_indices, anchor_heights=anchor_heights)
+    def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='TreeChain', inst=None):
+        branch_breaking = (
+            BranchBreaking(parent_indices, preorder_node_indices, anchor_heights=anchor_heights)
+            if inst is None
+            else Ratio(inst, parent_indices, preorder_node_indices, anchor_heights=anchor_heights)
+        )
         blockwise = tfp.bijectors.Blockwise(
             [tfp.bijectors.Sigmoid(), tfp.bijectors.Exp()],
             block_sizes=tf.concat([parent_indices.shape, [1]], 0)

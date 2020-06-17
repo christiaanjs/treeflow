@@ -1,9 +1,10 @@
+import libsbn
 import tensorflow as tf
 import treeflow.substitution_model
-import libsbn
+import treeflow.libsbn
 import numpy as np
 
-def log_prob_conditioned_branch_only(newick_file, fasta_file, subst_model, frequencies, rescaling=False, **subst_model_params):
+def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, rescaling=False, inst=None, newick_file=None, **subst_model_params):
     if isinstance(subst_model, treeflow.substitution_model.JC):
         subst_model_string = 'JC69'
         param_updates = { }
@@ -26,8 +27,10 @@ def log_prob_conditioned_branch_only(newick_file, fasta_file, subst_model, frequ
     else:
         raise ValueError('Unsupported substitution model')
 
-    inst = libsbn.rooted_instance('treeflow')
-    inst.read_newick_file(newick_file)
+    if inst is None:
+        if newick_file is None:
+            raise ValueError('Either a libsbn instance or Newick file must be supplied')
+        inst = treeflow.libsbn.get_instance(newick_file)
     inst.read_fasta_file(fasta_file)
     inst.set_rescaling(rescaling)
     model_specification = libsbn.PhyloModelSpecification(subst_model_string, 'constant','strict')
