@@ -49,6 +49,7 @@ def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, resca
     branch_lengths = np.array(inst.tree_collection.trees[0].branch_lengths, copy=False)
 
     def libsbn_func(x):
+        """Wrapping likelihood and gradient evaluation via libsbn."""
         branch_lengths[:-1] = x
         gradient = inst.phylo_gradients()[0]
         grad_array = np.array(gradient.branch_lengths, dtype=np.float32)[:-1]
@@ -65,4 +66,3 @@ def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, resca
         return logp, grad
 
     return libsbn_tf_func, inst
-
