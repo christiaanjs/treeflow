@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.tf_util
 import numpy as np
+import libsbn
 
 class ParentCorrelation(tfp.bijectors.ScaleMatvecLU):
     def __init__(self, parent_indices, beta, name='ParentAffine'):
@@ -55,15 +56,15 @@ class Ratio(BranchBreaking):
         super(Ratio, self).__init__(*args, **kwargs)
         self.inst = inst
         self.tree = inst.tree_collection.trees[0]
-        self.node_height_state = np.array(self.tree.node_heights, dtype=np.float32, copy=False)
+        self.node_height_state = np.array(self.tree.node_heights, copy=False)
 
     def _forward_1d_numpy(self, x): # TODO: Should we do vectorization in Numpy or TF land?
         self.tree.set_node_heights_via_height_ratios(x)
-        return self.node_height_state
+        return self.node_height_state[-x.shape[-1]:].astype(x.dtype)
 
     def _ratio_gradient_numpy(self, heights, dheights):
-        self.node_height_state[:] = heights
-        return np.array(self.tree.ratio_gradient_of_height_gradient(dheights), dtype=np.float32)
+        self.node_height_state[-heights.shape[-1]:] = heights
+        return np.array(libsbn.ratio_gradient_of_height_gradient(self.tree, dheights), dtype=heights.dtype)
 
     def _forward_1d(self, x):
         @tf.custom_gradient
@@ -72,6 +73,7 @@ class Ratio(BranchBreaking):
             def grad(dheights):
                 return tf.numpy_function(self._ratio_gradient_numpy, [heights, dheights], tf.float32)
             return heights, grad
+        return libsbn_tf_func(x)
 
 class TreeChain(tfp.bijectors.Chain):
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='TreeChain', inst=None):
