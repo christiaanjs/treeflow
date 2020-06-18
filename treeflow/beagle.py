@@ -50,7 +50,7 @@ def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, resca
 
     def libsbn_func(x):
         branch_lengths[:-1] = x
-        gradient = inst.gradients()[0]
+        gradient = inst.phylo_gradients()[0]
         grad_array = np.array(gradient.branch_lengths, dtype=np.float32)[:-1]
         grad_array[root_children] = np.sum(grad_array[root_children])
         return np.array(gradient.log_likelihood, dtype=np.float32), grad_array
