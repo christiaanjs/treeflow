@@ -10,7 +10,7 @@ def undecomp(eigen):
 def assert_eigen(subst_model, **params):
     eigen = subst_model.eigen(**params)
     q = subst_model.q_norm(**params)
-    assert_allclose(q.numpy(), undecomp(eigen).numpy())
+    assert_allclose(q.numpy(), undecomp(eigen).numpy(), rtol=1e-6)
 
 def test_jc_eigen():
     jc = JC()
@@ -31,8 +31,8 @@ def test_hky_eigen_q_freq_jacobian(hky_params):
         t.watch(frequencies)
         q_norm = subst_model.q_norm(**hky_params)
     jac = t.jacobian(q_norm, frequencies)
-    assert_allclose(eig_jac, jac)
-    
+    assert_allclose(eig_jac, jac, atol=1e-7)
+
 
 # TODO: test_gtr_eigen
 
@@ -56,7 +56,7 @@ def assert_param_differentials(subst_model, param_key, **params):
     diffs = subst_model.q_param_differentials(**params)[param_key]
 
     assert_allclose(tf_jac, diffs)
-        
+
 @pytest.mark.parametrize("param_key", HKY().param_keys())
 def test_hky_param_differentials(hky_params, param_key):
     assert_param_differentials(HKY(), param_key, **hky_params)
