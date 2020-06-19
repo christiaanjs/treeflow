@@ -31,7 +31,7 @@ def test_hky_eigen_q_freq_jacobian(hky_params):
         t.watch(frequencies)
         q_norm = subst_model.q_norm(**hky_params)
     jac = t.jacobian(q_norm, frequencies)
-    assert_allclose(eig_jac, jac, atol=1e-7)
+    assert_allclose(eig_jac, jac, atol=1e-6)
 
 
 # TODO: test_gtr_eigen

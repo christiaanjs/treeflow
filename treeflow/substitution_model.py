@@ -76,20 +76,20 @@ class HKY(SubstitutionModel):
         beta = -1.0 / (2.0 * (piR*piY + kappa * (pi[A]*pi[G] + pi[C]*pi[T])))
         #A_R = 1.0 + piR * (kappa - 1)
         #A_Y = 1.0 + piY * (kappa - 1)
-        eval = our_convert_to_tensor([ # Eigenvalues
+        eval = tf.convert_to_tensor([ # Eigenvalues
             0.0,
             beta,
             beta * (piY * kappa + piR),
             beta * (piY + piR * kappa)
         ])
-        evec = tf.transpose(our_convert_to_tensor([ # Right eigenvectors as columns (rows of transpose)
+        evec = tf.transpose(tf.convert_to_tensor([ # Right eigenvectors as columns (rows of transpose)
             [1.0, 1.0, 1.0, 1.0],
             [1.0/piR, -1.0/piY, 1.0/piR, -1.0/piY],
             [0.0, pi[T]/piY, 0.0, -pi[C]/piY],
             [pi[G]/piR, 0.0, -pi[A]/piR, 0.0]
         ]))
 
-        ivec = our_convert_to_tensor([ # Left eigenvectors as rows
+        ivec = tf.convert_to_tensor([ # Left eigenvectors as rows
             [pi[A], pi[C], pi[G], pi[T]],
             [pi[A]*piY, -pi[C]*piR, pi[G]*piY, -pi[T]*piR],
             [0.0, 1.0, 0.0, -1.0],
@@ -100,7 +100,7 @@ class HKY(SubstitutionModel):
 
     def q(self, frequencies, kappa):
         pi = frequencies
-        return our_convert_to_tensor([
+        return tf.convert_to_tensor([
             [-(pi[C] + kappa*pi[G] + pi[T]), pi[C], kappa*pi[G], pi[T]],
             [pi[A], -(pi[A] + pi[G] + kappa*pi[T]) , pi[G], kappa*pi[T]],
             [kappa*pi[A], pi[C], -(kappa*pi[A] + pi[C] + pi[T]), pi[T]],
@@ -109,7 +109,7 @@ class HKY(SubstitutionModel):
 
     def q_param_differentials(self, frequencies, kappa):
         pi = frequencies
-        return { 'kappa': our_convert_to_tensor([
+        return { 'kappa': tf.convert_to_tensor([
             [-pi[G], 0.0, pi[G], 0.0],
             [0.0, -pi[T], 0.0, pi[T]],
             [pi[A], 0.0, -pi[A], 0.0],
@@ -117,7 +117,7 @@ class HKY(SubstitutionModel):
         ])}
 
     def q_frequency_differentials(self, frequencies, kappa):
-        return our_convert_to_tensor([
+        return tf.convert_to_tensor([
             [
                 [0.0, 0.0, 0.0, 0.0],
                 [1.0, -1.0, 0.0, 0.0],
@@ -150,7 +150,7 @@ class HKY(SubstitutionModel):
 class GTR(SubstitutionModel):
     def q(self, frequencies, rates):
         pi = frequencies
-        return our_convert_to_tensor([
+        return tf.convert_to_tensor([
             [-(rates[0]*pi[1] + rates[1]*pi[2] + rates[2]*pi[3]), rates[0]*pi[1], rates[1]*pi[2], rates[2]*pi[3]],
             [rates[0]*pi[0], -(rates[0]*pi[0] + rates[3]*pi[2] + rates[4]*pi[3]), rates[3]*pi[2], rates[4]*pi[3]],
             [rates[1]*pi[0], rates[3]*pi[1], -(rates[1]*pi[0] + rates[3]*pi[1] + rates[5]*pi[3]), rates[5]*pi[3]],
