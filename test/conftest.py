@@ -32,7 +32,7 @@ def hky_params(request):
 def freq_index(request):
     return request.param
 
-data_dir = Path('data')
+data_dir = Path('test/data')
 
 @pytest.fixture
 def hello_newick_file():
