@@ -184,6 +184,7 @@ def transition_probs(eigendecomposition, category_rates, t):
     t_b = tf.reshape(t, [-1, 1, 1])
     rates_b = tf.reshape(category_rates, [1, -1, 1])
     eval_b = tf.reshape(eval, [1, 1, -1])
+
     diag = tf.linalg.diag(tf.exp(eval_b * rates_b * t_b))
 
     evec_b, ivec_b = [tf.reshape(x, [1, 1, 4, 4]) for x in (evec, ivec)]

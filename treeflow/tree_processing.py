@@ -10,7 +10,7 @@ def parse_newick(newick_file):
     indices = { n: i for i, n in enumerate(ordered_nodes) }
     parent_indices = np.array([indices[n.up] for n in ordered_nodes[:-1]])
 
-    root_distances = np.array([t.get_distance(n) for n in ordered_nodes]) # TODO: Optimise
+    root_distances = np.array([t.get_distance(n) for n in ordered_nodes], dtype=np.float32) # TODO: Optimise
     root_height = max(root_distances)
     heights = root_height - root_distances
 

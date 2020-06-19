@@ -50,14 +50,14 @@ def branch_lengths(request):
     return request.param
 
 def single_rates_():
-    return our_convert_to_tensor(1.0)
+    return our_convert_to_tensor([1.0])
 
 @pytest.fixture
 def single_rates():
     return single_rates_()
 
 def single_weights_():
-    return our_convert_to_tensor(1.0)
+    return our_convert_to_tensor([1.0])
 
 @pytest.fixture
 def single_weights():
@@ -89,8 +89,8 @@ def prep_likelihood():
 
         tf_likelihood.set_topology(treeflow.tree_processing.update_topology_dict(tree['topology']))
 
-        sequences, pattern_counts = treeflow.sequences.get_encoded_sequences(fasta_file, taxon_names)
-        tf_likelihood.init_postorder_partials(sequences, pattern_counts)
+        alignment = treeflow.sequences.get_encoded_sequences(fasta_file, taxon_names)
+        tf_likelihood.init_postorder_partials(alignment['sequences'], pattern_counts=alignment['weights'])
 
         transition_probs = treeflow.substitution_model.transition_probs(eigendecomp, rates, branch_lengths)
         tf_likelihood.compute_postorder_partials(transition_probs)

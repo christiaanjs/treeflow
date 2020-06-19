@@ -56,9 +56,9 @@ def get_branch_lengths(tree):
     heights = tree['heights']
     batch_shape = heights.shape[:-1]
     node_count = heights.shape[-1]
-    parent_indices = tf.broadcast_to(tree['topology']['parent_indices'], batch_shape + (node_count - 1))
+    parent_indices = tf.broadcast_to(tree['topology']['parent_indices'], batch_shape + (node_count - 1,))
     x_flat = [heights, parent_indices]
-    return treeflow.tf_util.vectorize_1d_if_needed(_get_branch_lengths_1d_flat, x_flat, batch_shape.rank)
+    return treeflow.tf_util.vectorize_1d_if_needed(_get_branch_lengths_1d_flat, x_flat, len(batch_shape))
 
 def log_prob_conditioned(value, topology, category_count):
 

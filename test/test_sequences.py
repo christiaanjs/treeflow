@@ -13,8 +13,7 @@ def test_log_prob_custom_gradient_hky(prep_likelihood, hky_params, weights_rates
     
     tree, taxon_names = treeflow.tree_processing.parse_newick(hello_newick_file)
 
-    sequences, pattern_counts = treeflow.sequences.get_encoded_sequences(hello_fasta_file, taxon_names) # TODO: return from prep_likelihood
-    value = { 'sequences': sequences, 'weights': pattern_counts }
+    value = treeflow.sequences.get_encoded_sequences(hello_fasta_file, taxon_names) # TODO: return from prep_likelihood
     log_prob = treeflow.sequences.log_prob_conditioned(value, tree['topology'], len(category_rates))
 
     power = 2.0
