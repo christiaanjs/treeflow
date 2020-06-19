@@ -31,7 +31,7 @@ def test_hky_1cat_freqA_gradient_beast(prep_likelihood, single_hky_params, singl
     grad = tf_likelihood.compute_derivative(transition_prob_differential, single_weights)
 
     assert_allclose(grad.numpy(), 12.658386297868352) # TODO: Correct once BEAST is corrected
-    
+
 def test_hky_1cat_freqA_gradient_num(prep_likelihood, single_hky_params, single_rates, single_weights, hello_newick_file, hello_fasta_file):
     freq_index = 0
     subst_model = treeflow.substitution_model.HKY()
