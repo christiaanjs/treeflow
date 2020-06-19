@@ -81,10 +81,10 @@ def construct_tree_approximation(newick_file, approx_name='q', dist_name='tree',
     else:
         raise ValueError('Approximation not yet implemented for support: ' + support)
 
-    height_dist = tfd.Blockwise([
-        tfd.Independent(tfd.Deterministic(leaf_heights), reinterpreted_batch_ndims=1),
-        tfd.TransformedDistribution(pretransformed_distribution, bijector=tree_chain)
-    ])
+    height_dist = treeflow.tree_transform.FixedLeafHeightDistribution(
+        tfd.TransformedDistribution(pretransformed_distribution, bijector=tree_chain),
+        leaf_heights
+    )
 
     return treeflow.tree_transform.FixedTopologyDistribution(
             height_distribution=height_dist,

@@ -77,7 +77,7 @@ class Ratio(BranchBreaking):
 
 class TreeChain(tfp.bijectors.Chain):
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='TreeChain', inst=None):
-        branch_breaking = (
+        ratio_bijector = (
             BranchBreaking(parent_indices, preorder_node_indices, anchor_heights=anchor_heights)
             if inst is None
             else Ratio(inst, parent_indices, preorder_node_indices, anchor_heights=anchor_heights)
@@ -86,7 +86,18 @@ class TreeChain(tfp.bijectors.Chain):
             [tfp.bijectors.Sigmoid(), tfp.bijectors.Exp()],
             block_sizes=tf.concat([parent_indices.shape, [1]], 0)
         )
-        super(TreeChain, self).__init__([branch_breaking, blockwise], name=name)
+        self.ratio_bijector = ratio_bijector
+        self.to_ratio_bijector = blockwise
+        super(TreeChain, self).__init__([ratio_bijector, blockwise], name=name)
+
+class FixedLeafHeightDistribution(tfp.distributions.Blockwise):
+    def __init__(self, node_height_distribution, leaf_heights):
+        self.node_height_distribution = node_height_distribution
+        self.leaf_heights = leaf_heights
+        super(FixedLeafHeightDistribution, self).__init__([
+            tfp.distributions.Independent(tfp.distributions.Deterministic(leaf_heights), reinterpreted_batch_ndims=1),
+            node_height_distribution
+        ])
 
 class FixedTopologyDistribution(tfp.distributions.JointDistributionNamed):
     def __init__(self, height_distribution, topology, name='FixedTopologyDistribution'):
@@ -101,6 +112,7 @@ class FixedTopologyDistribution(tfp.distributions.JointDistributionNamed):
         ))
         self.topology_keys = topology.keys()
         self.heights_reparam = height_distribution.reparameterization_type
+        self.height_distribution = height_distribution
 
     @property
     def reparameterization_type(self): # Hack to allow VI
