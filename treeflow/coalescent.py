@@ -35,7 +35,7 @@ class ConstantCoalescent(treeflow.tree.TreeDistribution):
     def _log_prob_1d(self, x, pop_size_1d):
         # TODO: Validate topology
         # TODO: Check sampling times?
-        heights = tf.cast(x['heights'], dtype = DEFAULT_FLOAT_DTYPE_TF)
+        heights = x['heights']
         node_mask = tf.concat([tf.fill([self.taxon_count], False), tf.fill([self.taxon_count - 1], True)], 0)
 
         sort_indices = tf.argsort(heights)
