@@ -1,10 +1,11 @@
 import tensorflow as tf
 import numpy as np
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 A, C, G, T = list(range(4))
 
 def our_convert_to_tensor(x):
-    return tf.convert_to_tensor(np.array(x), dtype=tf.float32)
+    return tf.convert_to_tensor(np.array(x), dtype=DEFAULT_FLOAT_DTYPE_TF)
 
 class SubstitutionModel:
     def q(self, frequencies, **kwargs):
@@ -96,7 +97,7 @@ class HKY(SubstitutionModel):
             [1.0, 0.0, -1.0, 0.0]
         ])
 
-        return [tf.dtypes.cast(x, tf.dtypes.float32) for x in [evec, eval, ivec]]
+        return [tf.dtypes.cast(x, tf.dtypes.float64) for x in [evec, eval, ivec]]
 
     def q(self, frequencies, kappa):
         pi = frequencies
@@ -105,7 +106,7 @@ class HKY(SubstitutionModel):
             [pi[A], -(pi[A] + pi[G] + kappa*pi[T]) , pi[G], kappa*pi[T]],
             [kappa*pi[A], pi[C], -(kappa*pi[A] + pi[C] + pi[T]), pi[T]],
             [pi[A], kappa*pi[C], pi[G], -(pi[A] + kappa*pi[C] + pi[G])]
-        ])
+        ], dtype = DEFAULT_FLOAT_DTYPE_TF)
 
     def q_param_differentials(self, frequencies, kappa):
         pi = frequencies
@@ -114,7 +115,7 @@ class HKY(SubstitutionModel):
             [0.0, -pi[T], 0.0, pi[T]],
             [pi[A], 0.0, -pi[A], 0.0],
             [0.0, pi[C], 0.0, -pi[C]]
-        ])}
+        ], dtype = DEFAULT_FLOAT_DTYPE_TF)}
 
     def q_frequency_differentials(self, frequencies, kappa):
         return tf.convert_to_tensor([
@@ -142,7 +143,7 @@ class HKY(SubstitutionModel):
                 [0.0, 0.0, -1.0, 1.0],
                 [0.0, 0.0, 0.0, 0.0]
             ]
-        ])
+        ], dtype = DEFAULT_FLOAT_DTYPE_TF)
 
     def param_keys(self):
         return ['kappa']
@@ -155,7 +156,7 @@ class GTR(SubstitutionModel):
             [rates[0]*pi[0], -(rates[0]*pi[0] + rates[3]*pi[2] + rates[4]*pi[3]), rates[3]*pi[2], rates[4]*pi[3]],
             [rates[1]*pi[0], rates[3]*pi[1], -(rates[1]*pi[0] + rates[3]*pi[1] + rates[5]*pi[3]), rates[5]*pi[3]],
             [rates[2]*pi[0], rates[4]*pi[1], rates[5]*pi[2], -(rates[2]*pi[0] + rates[4]*pi[1] + rates[5]*pi[2])]
-        ])
+        ], dtype = DEFAULT_FLOAT_DTYPE_TF)
 
     def eigen(self, frequencies, rates):
         q = self.q(frequencies, rates)

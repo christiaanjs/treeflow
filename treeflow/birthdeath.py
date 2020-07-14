@@ -1,5 +1,6 @@
 import tensorflow as tf
 import treeflow.tree
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 class BirthDeath(treeflow.tree.TreeDistribution):
     def __init__(self, taxon_count, birth_diff_rate, relative_death_rate, sample_probability=1.0,
@@ -22,7 +23,7 @@ class BirthDeath(treeflow.tree.TreeDistribution):
         # TODO: Check sampling times?
         heights = x['heights'][self.taxon_count:]
         
-        taxon_count = tf.cast(self.taxon_count, tf.float32)
+        taxon_count = tf.cast(self.taxon_count, DEFAULT_FLOAT_DTYPE_TF)
         log_coeff = (taxon_count - 1)*tf.math.log(2.0) - tf.math.lgamma(taxon_count)
         tree_logp = log_coeff + (taxon_count - 1)*tf.math.log(r*rho) + taxon_count*tf.math.log(1 - a)
         

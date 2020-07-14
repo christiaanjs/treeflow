@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.tf_util
 import treeflow.tree
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 COALESCENCE, SAMPLING, OTHER = -1, 1, 0
 
@@ -13,7 +14,7 @@ def coalescent_likelihood(lineage_count,
                           population_func, # At coalescence
                           population_areas, # Integrals of 1/N
                           coalescent_mask): # At top of interval
-    k_choose_2 = tf.cast(lineage_count * (lineage_count - 1), dtype=tf.float32) / 2.0
+    k_choose_2 = tf.cast(lineage_count * (lineage_count - 1), dtype=DEFAULT_FLOAT_DTYPE_TF) / 2.0
     return -tf.reduce_sum(k_choose_2 * population_areas) - tf.reduce_sum(tf.math.log(tf.boolean_mask(population_func, coalescent_mask)))
 
 class ConstantCoalescent(treeflow.tree.TreeDistribution):
@@ -34,7 +35,7 @@ class ConstantCoalescent(treeflow.tree.TreeDistribution):
     def _log_prob_1d(self, x, pop_size_1d):
         # TODO: Validate topology
         # TODO: Check sampling times?
-        heights = x['heights']
+        heights = tf.cast(x['heights'], dtype = DEFAULT_FLOAT_DTYPE_TF)
         node_mask = tf.concat([tf.fill([self.taxon_count], False), tf.fill([self.taxon_count - 1], True)], 0)
 
         sort_indices = tf.argsort(heights)

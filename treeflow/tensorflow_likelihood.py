@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import treeflow.substitution_model
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 class TensorflowLikelihood():
     def __init__(self, category_count=1, *args, **kwargs):
@@ -25,7 +26,7 @@ class TensorflowLikelihood():
         self.pattern_counts = tf.ones([pattern_count]) if pattern_counts is None else pattern_counts
 
         leaf_partials = tf.broadcast_to(tf.expand_dims(sequences_encoded, 2), [taxon_count, pattern_count, self.category_count, 4])
-        node_partials = tf.zeros([taxon_count - 1, pattern_count, self.category_count, 4], dtype=tf.float32)
+        node_partials = tf.zeros([taxon_count - 1, pattern_count, self.category_count, 4], dtype=DEFAULT_FLOAT_DTYPE_TF)
         self.postorder_partials_init = tf.concat([leaf_partials, node_partials], 0)
 
     def compute_postorder_partials(self, transition_probs):
@@ -54,7 +55,7 @@ class TensorflowLikelihood():
         return self.compute_likelihood_from_partials(freqs, category_weights)
 
     def init_preorder_partials(self, frequencies):
-        zeros = tf.zeros([self.get_vertex_count(), len(self.pattern_counts), self.category_count, 4], dtype=tf.float32)
+        zeros = tf.zeros([self.get_vertex_count(), len(self.pattern_counts), self.category_count, 4], dtype=DEFAULT_FLOAT_DTYPE_TF)
         self.preorder_partials = tf.tensor_scatter_nd_update(
             zeros,
             np.array([[self.get_vertex_count() - 1]]),

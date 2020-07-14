@@ -1,11 +1,12 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 class TreeDistribution(tfp.distributions.Distribution):
     def __init__(self, **kwargs):
         super(TreeDistribution, self).__init__(
             dtype={
-                'heights': tf.float32,
+                'heights': DEFAULT_FLOAT_DTYPE_TF,
                 'topology': {
                     'parent_indices': tf.int32
                 }
