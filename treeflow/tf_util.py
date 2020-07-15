@@ -1,5 +1,5 @@
 import tensorflow as tf
-from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 def get_nested_shape(x):
     return x.shape if isinstance(x, tf.Tensor) else x[0].shape

@@ -17,7 +17,7 @@ class TreeDistribution(tfp.distributions.Distribution):
 
     # Borrwoed from JointDistribution
     # We need to bypass base Distribution reshaping/validation logic so we
-    # tactically implement a few of the `_call_*` redirectors. 
+    # tactically implement a few of the `_call_*` redirectors.
     #def _call_sample_n(self, sample_shape, seed, name):
     #    with self._name_and_control_scope(name):
     #        return self._sample_n(

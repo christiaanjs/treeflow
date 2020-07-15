@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import treeflow.substitution_model
-from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 class TensorflowLikelihood():
     def __init__(self, category_count=1, *args, **kwargs):
@@ -38,7 +38,7 @@ class TensorflowLikelihood():
             node_partials = tf.reduce_prod(tf.reduce_sum(tf.expand_dims(node_child_transition_probs, 1) * tf.expand_dims(child_partials, 3), axis=4), axis=0)
             return tf.tensor_scatter_nd_update(partials, node_index, tf.expand_dims(node_partials, axis=0))
         self.postorder_partials = tf.scan(do_integration, (node_indices, child_transition_probs, self.child_indices_tensor), self.postorder_partials_init)[-1]
-    
+
     def compute_likelihood_from_partials(self, freqs, category_weights):
         cat_likelihoods = tf.reduce_sum(freqs * self.postorder_partials[-1], axis=-1)
         site_likelihoods = tf.reduce_sum(category_weights * cat_likelihoods, axis=-1)

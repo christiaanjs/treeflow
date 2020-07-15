@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 A, C, G, T = list(range(4))
 
@@ -97,7 +97,7 @@ class HKY(SubstitutionModel):
             [1.0, 0.0, -1.0, 0.0]
         ])
 
-        return [tf.dtypes.cast(x, tf.dtypes.float64) for x in [evec, eval, ivec]]
+        return [tf.dtypes.cast(x, DEFAULT_FLOAT_DTYPE_TF) for x in [evec, eval, ivec]]
 
     def q(self, frequencies, kappa):
         pi = frequencies
@@ -218,6 +218,3 @@ def transition_probs_differential(q_diff, eigendecomposition, branch_lengths, ca
     G = tf.transpose(tf.tensor_scatter_nd_update(G_non_diag, diag_indices, G_diag), perm=[2, 3, 0, 1])
 
     return tf.linalg.matmul(tf.linalg.matmul(evec, G), ivec)
-
-
-

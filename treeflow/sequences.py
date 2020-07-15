@@ -6,7 +6,7 @@ import treeflow.tensorflow_likelihood
 import treeflow.tree_processing
 import treeflow.substitution_model
 import treeflow.tf_util
-from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 init_partials_dict = {
     'A':[1.,0.,0.,0.],

@@ -2,7 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.tf_util
 import treeflow.tree
-from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 COALESCENCE, SAMPLING, OTHER = -1, 1, 0
 

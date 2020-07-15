@@ -7,7 +7,7 @@ import treeflow.substitution_model
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
-from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 distribution_class_supports = {
     tfd.Normal: 'real',
@@ -24,7 +24,7 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
 
     full_shape = distribution.batch_shape + distribution.event_shape
     support = distribution_class_supports[type(distribution)]
-    
+
     if support == 'real':
         init_loc = tf.zeros(full_shape, dtype=distribution.dtype) if init_mode is None else init_mode
         init_scale = tf.ones(full_shape, dtype=distribution.dtype)
