@@ -100,12 +100,20 @@ class FixedLeafHeightDistribution(tfp.distributions.Blockwise):
             node_height_distribution
         ])
 
+class Deterministic(tfp.distributions.Deterministic):
+    def __init__(self, prob_dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF , *args, **kwargs):
+        self.prob_dtype  = prob_dtype 
+        super(Deterministic, self).__init__(*args, **kwargs)
+
+    def _prob(self, x):
+        return tf.cast(super(Deterministic, self)._prob(x), dtype=self.prob_dtype)
+    
 class FixedTopologyDistribution(tfp.distributions.JointDistributionNamed):
     def __init__(self, height_distribution, topology, name='FixedTopologyDistribution'):
         super(FixedTopologyDistribution, self).__init__(dict(
             topology=tfp.distributions.JointDistributionNamed({
                 key: tfp.distributions.Independent(
-                    tfp.distributions.Deterministic(loc=value),
+                    Deterministic(loc=value),
                     reinterpreted_batch_ndims=height_distribution.event_shape.ndims
                 ) for key, value in topology.items()
             }),
