@@ -3,6 +3,7 @@ import tensorflow as tf
 import treeflow.substitution_model
 import treeflow.libsbn
 import numpy as np
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, rescaling=False, inst=None, newick_file=None, **subst_model_params):
     if isinstance(subst_model, treeflow.substitution_model.JC):
@@ -52,15 +53,15 @@ def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, resca
         """Wrapping likelihood and gradient evaluation via libsbn."""
         branch_lengths[:-1] = x
         gradient = inst.phylo_gradients()[0]
-        grad_array = np.array(gradient.branch_lengths, dtype=np.float32)[:-1]
+        grad_array = np.array(gradient.branch_lengths, dtype=DEFAULT_FLOAT_DTYPE_NP)[:-1]
         grad_array[root_children] = np.sum(grad_array[root_children])
-        return np.array(gradient.log_likelihood, dtype=np.float32), grad_array
+        return np.array(gradient.log_likelihood, dtype=DEFAULT_FLOAT_DTYPE_NP), grad_array
 
-    libsbn_func_vec = np.vectorize(libsbn_func, [np.float32, np.float32], signature='(n)->(),(n)')
+    libsbn_func_vec = np.vectorize(libsbn_func, [DEFAULT_FLOAT_DTYPE_NP, DEFAULT_FLOAT_DTYPE_NP], signature='(n)->(),(n)')
 
     @tf.custom_gradient
     def libsbn_tf_func(x):
-        logp, grad_val = tf.numpy_function(libsbn_func_vec, [x], [tf.float32, tf.float32])
+        logp, grad_val = tf.numpy_function(libsbn_func_vec, [x], [DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_TF])
         def grad(dlogp):
             return tf.expand_dims(dlogp, -1) * grad_val
         return logp, grad

@@ -6,6 +6,7 @@ import treeflow.tensorflow_likelihood
 import treeflow.tree_processing
 import treeflow.substitution_model
 import treeflow.tf_util
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 init_partials_dict = {
     'A':[1.,0.,0.,0.],
@@ -52,7 +53,7 @@ def compress_sites(sequence_dict):
     return pattern_dict, counts
 
 def encode_sequence_dict(sequence_dict, taxon_names):
-    return tf.convert_to_tensor(np.array([[init_partials_dict[char] for char in sequence_dict[taxon_name]] for taxon_name in taxon_names]), dtype=tf.float32)
+    return tf.convert_to_tensor(np.array([[init_partials_dict[char] for char in sequence_dict[taxon_name]] for taxon_name in taxon_names]), dtype=DEFAULT_FLOAT_DTYPE_TF)
 
 def get_encoded_sequences(fasta_file, taxon_names):
     sequence_dict = parse_fasta(fasta_file)

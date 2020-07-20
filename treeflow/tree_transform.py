@@ -3,6 +3,7 @@ import tensorflow_probability as tfp
 import treeflow.tf_util
 import numpy as np
 import libsbn
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 class ParentCorrelation(tfp.bijectors.ScaleMatvecLU):
     def __init__(self, parent_indices, beta, name='ParentAffine'):
@@ -18,7 +19,7 @@ class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
         super(BranchBreaking, self).__init__(forward_min_event_ndims=1,name=name)
         self.parent_indices = parent_indices
         self.preorder_node_indices = preorder_node_indices # Don't include root
-        self.anchor_heights = tf.zeros(len(preorder_node_indices) + 1, dtype=tf.dtypes.float32) if anchor_heights is None else anchor_heights
+        self.anchor_heights = tf.zeros(len(preorder_node_indices) + 1, dtype=DEFAULT_FLOAT_DTYPE_TF) if anchor_heights is None else anchor_heights
 
     def _forward_1d(self, x):
         length = x.shape[-1]
@@ -40,7 +41,7 @@ class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
         return treeflow.tf_util.vectorize_1d_if_needed(self._forward_1d, x, x.shape.rank - 1)
 
     def _inverse_1d(self, y):
-        return (y - self.anchor_heights) / tf.concat([(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]), tf.ones((1,), dtype=tf.dtypes.float32)], 0)
+        return (y - self.anchor_heights) / tf.concat([(tf.gather(y, self.parent_indices) - self.anchor_heights[:-1]), tf.ones((1,), dtype=DEFAULT_FLOAT_DTYPE_TF)], 0)
 
     def _inverse(self, y):
         return treeflow.tf_util.vectorize_1d_if_needed(self._inverse_1d, y, y.shape.rank - 1)
@@ -69,9 +70,9 @@ class Ratio(BranchBreaking):
     def _forward_1d(self, x):
         @tf.custom_gradient
         def libsbn_tf_func(x):
-            heights = tf.numpy_function(self._forward_1d_numpy, [x], tf.float32)
+            heights = tf.numpy_function(self._forward_1d_numpy, [x], DEFAULT_FLOAT_DTYPE_TF)
             def grad(dheights):
-                return tf.numpy_function(self._ratio_gradient_numpy, [heights, dheights], tf.float32)
+                return tf.numpy_function(self._ratio_gradient_numpy, [heights, dheights], DEFAULT_FLOAT_DTYPE_TF)
             return heights, grad
         return libsbn_tf_func(x)
 
@@ -99,12 +100,20 @@ class FixedLeafHeightDistribution(tfp.distributions.Blockwise):
             node_height_distribution
         ])
 
+class Deterministic(tfp.distributions.Deterministic):
+    def __init__(self, prob_dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF , *args, **kwargs):
+        self.prob_dtype  = prob_dtype
+        super(Deterministic, self).__init__(*args, **kwargs)
+
+    def _prob(self, x):
+        return tf.cast(super(Deterministic, self)._prob(x), dtype=self.prob_dtype)
+
 class FixedTopologyDistribution(tfp.distributions.JointDistributionNamed):
     def __init__(self, height_distribution, topology, name='FixedTopologyDistribution'):
         super(FixedTopologyDistribution, self).__init__(dict(
             topology=tfp.distributions.JointDistributionNamed({
                 key: tfp.distributions.Independent(
-                    tfp.distributions.Deterministic(loc=value),
+                    Deterministic(loc=value),
                     reinterpreted_batch_ndims=height_distribution.event_shape.ndims
                 ) for key, value in topology.items()
             }),
@@ -117,5 +126,3 @@ class FixedTopologyDistribution(tfp.distributions.JointDistributionNamed):
     @property
     def reparameterization_type(self): # Hack to allow VI
         return dict(heights=self.heights_reparam, topology={ key: tfp.distributions.FULLY_REPARAMETERIZED for key in self.topology_keys })
-
-    

@@ -1,11 +1,12 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 class TreeDistribution(tfp.distributions.Distribution):
     def __init__(self, **kwargs):
         super(TreeDistribution, self).__init__(
             dtype={
-                'heights': tf.float32,
+                'heights': DEFAULT_FLOAT_DTYPE_TF,
                 'topology': {
                     'parent_indices': tf.int32
                 }
@@ -16,7 +17,7 @@ class TreeDistribution(tfp.distributions.Distribution):
 
     # Borrwoed from JointDistribution
     # We need to bypass base Distribution reshaping/validation logic so we
-    # tactically implement a few of the `_call_*` redirectors. 
+    # tactically implement a few of the `_call_*` redirectors.
     #def _call_sample_n(self, sample_shape, seed, name):
     #    with self._name_and_control_scope(name):
     #        return self._sample_n(

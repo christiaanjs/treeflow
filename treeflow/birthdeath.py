@@ -1,5 +1,6 @@
 import tensorflow as tf
 import treeflow.tree
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 class BirthDeath(treeflow.tree.TreeDistribution):
     def __init__(self, taxon_count, birth_diff_rate, relative_death_rate, sample_probability=1.0,
@@ -21,18 +22,18 @@ class BirthDeath(treeflow.tree.TreeDistribution):
         # TODO: Validate topology
         # TODO: Check sampling times?
         heights = x['heights'][self.taxon_count:]
-        
-        taxon_count = tf.cast(self.taxon_count, tf.float32)
+
+        taxon_count = tf.cast(self.taxon_count, DEFAULT_FLOAT_DTYPE_TF)
         log_coeff = (taxon_count - 1)*tf.math.log(2.0) - tf.math.lgamma(taxon_count)
         tree_logp = log_coeff + (taxon_count - 1)*tf.math.log(r*rho) + taxon_count*tf.math.log(1 - a)
-        
+
         mrhs = -r*heights
         zs = tf.math.log(rho + ((1 - rho) - a)*tf.math.exp(mrhs))
         ls = -2*zs + mrhs
         root_term = mrhs[-1] - zs[-1]
-        
+
         return tree_logp + tf.reduce_sum(ls) + root_term
-        
+
     def _log_prob_1d_flat(self, x_flat):
         x_dict = {
             'heights': x_flat[0],
