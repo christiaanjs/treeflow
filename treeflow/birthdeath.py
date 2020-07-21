@@ -3,7 +3,7 @@ import treeflow.tree
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 class BirthDeath(treeflow.tree.TreeDistribution):
-    def __init__(self, taxon_count, birth_diff_rate, relative_death_rate, sample_probability=1.0,
+    def __init__(self, taxon_count, birth_diff_rate, relative_death_rate, sample_probability=tf.convert_to_tensor(1.0, dtype=DEFAULT_FLOAT_DTYPE_TF),
                validate_args=False,
                allow_nan_stats=True,
                name='BirthDeath'):
@@ -24,7 +24,7 @@ class BirthDeath(treeflow.tree.TreeDistribution):
         heights = x['heights'][self.taxon_count:]
 
         taxon_count = tf.cast(self.taxon_count, DEFAULT_FLOAT_DTYPE_TF)
-        log_coeff = (taxon_count - 1)*tf.math.log(2.0) - tf.math.lgamma(taxon_count)
+        log_coeff = (taxon_count - 1)*tf.math.log(tf.convert_to_tensor(2.0, dtype=DEFAULT_FLOAT_DTYPE_TF)) - tf.math.lgamma(taxon_count)
         tree_logp = log_coeff + (taxon_count - 1)*tf.math.log(r*rho) + taxon_count*tf.math.log(1 - a)
 
         mrhs = -r*heights

@@ -7,9 +7,10 @@ import treeflow.sequences
 import treeflow.substitution_model
 import treeflow.tensorflow_likelihood
 import treeflow.tree_processing
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 def our_convert_to_tensor(x):
-    return tf.convert_to_tensor(np.array(x), dtype=tf.float32)
+    return tf.convert_to_tensor(np.array(x), dtype=DEFAULT_FLOAT_DTYPE_TF)
 
 def single_hky_params_():
     return {

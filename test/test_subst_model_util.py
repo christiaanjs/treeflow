@@ -3,10 +3,11 @@ from treeflow.substitution_model import JC, HKY, normalising_constant, normalise
 import numpy as np
 from numpy.testing import assert_allclose
 import tensorflow as tf
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 def get_transition_probs_vals(subst_model, branch_lengths, category_rates, **params):
-    branch_lengths_ = tf.convert_to_tensor(branch_lengths, dtype=tf.float32)
-    rates_ = tf.convert_to_tensor(category_rates, dtype=tf.float32)
+    branch_lengths_ = tf.convert_to_tensor(branch_lengths, dtype=DEFAULT_FLOAT_DTYPE_TF)
+    rates_ = tf.convert_to_tensor(category_rates, dtype=DEFAULT_FLOAT_DTYPE_TF)
     eigen = subst_model.eigen(**params)
     return transition_probs(eigen, rates_, branch_lengths_).numpy()
 
@@ -51,12 +52,12 @@ def test_normalisation_gradient(hky_params, param_key):
         norm_diffs = subst_model.q_norm_frequency_differentials(**params)
         tf_diffs = tf.transpose(tf_jac, perm=[2, 0, 1]).numpy()
 
-    assert_allclose(tf_diffs, norm_diffs)
+    assert_allclose(tf_diffs, norm_diffs, atol=1e-6)
 
 @pytest.mark.parametrize('inv_mult', [False, True])
 def test_transition_prob_differential_tf_hky_kappa(hky_params, category_rates, inv_mult):
     param_key = 'kappa'
-    branch_lengths = tf.convert_to_tensor(np.array([0.9, 2.2]), dtype=tf.float32)
+    branch_lengths = tf.convert_to_tensor(np.array([0.9, 2.2]), dtype=DEFAULT_FLOAT_DTYPE_TF)
     subst_model = HKY()
     params = hky_params
     with tf.GradientTape(persistent=True) as t:
@@ -72,11 +73,11 @@ def test_transition_prob_differential_tf_hky_kappa(hky_params, category_rates, i
     diffs = transition_probs_differential(q_diffs, eigen, branch_lengths, category_rates, inv_mult=inv_mult)
     tf_diffs = (transition_probs_inv @ tf_jacs) if inv_mult else tf_jacs
 
-    assert_allclose(tf_diffs.numpy(), diffs.numpy())
+    assert_allclose(tf_diffs.numpy(), diffs.numpy(), atol=1e-4)
 
 @pytest.mark.parametrize('inv_mult', [False, True])
 def test_transition_prob_differential_tf_hky_frequencies(hky_params, category_rates, inv_mult, freq_index):
-    branch_lengths = tf.convert_to_tensor(np.array([0.9, 2.2]), dtype=tf.float32)
+    branch_lengths = tf.convert_to_tensor(np.array([0.9, 2.2]), dtype=DEFAULT_FLOAT_DTYPE_TF)
     subst_model = HKY()
     params = hky_params
     param_key = 'frequencies'
@@ -98,7 +99,7 @@ def test_transition_prob_differential_tf_hky_frequencies(hky_params, category_ra
 def test_transition_prob_differential_freq_num(hky_params, single_rates):
     import numdifftools
 
-    branch_lengths = tf.convert_to_tensor(np.array([0.1]), dtype=tf.float32)
+    branch_lengths = tf.convert_to_tensor(np.array([0.1]), dtype=DEFAULT_FLOAT_DTYPE_TF)
     subst_model = HKY()
     params = hky_params
     freq_index = 2
