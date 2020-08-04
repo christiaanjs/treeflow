@@ -124,7 +124,8 @@ def log_prob_conditioned(value, topology, category_count):
 def log_prob_conditioned_branch_only(value, topology, category_count, subst_model, category_weights, category_rates, frequencies, **subst_model_params):
 
     likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(category_count=category_count)
-    likelihood.set_topology(topology)
+    likelihood.set_topology(treeflow.tree_processing.update_topology_dict(topology))
+    # likelihood.set_topology(topology) TODO: Ask Christiaan about this
     likelihood.init_postorder_partials(value['sequences'], pattern_counts=(value['weights'] if 'weights' in value else None))
 
     @tf.custom_gradient
