@@ -38,13 +38,32 @@ def freq_index(request):
 
 data_dir = Path('test/data')
 
-@pytest.fixture
-def hello_newick_file():
+def hello_newick_file_():
     return str(data_dir / 'hello.nwk')
 
 @pytest.fixture
-def hello_fasta_file():
+def hello_newick_file():
+    return hello_newick_file_()
+
+def wnv_newick_file_():
+    return str(data_dir / 'wnv.nwk')
+
+def hello_fasta_file_():
     return str(data_dir / 'hello.fasta')
+
+@pytest.fixture
+def hello_fasta_file():
+    return hello_fasta_file_()
+
+def wnv_fasta_file_():
+    return str(data_dir / 'wnv.fasta')
+
+@pytest.fixture(params=[
+    (hello_newick_file_(), hello_fasta_file_()),
+    (wnv_newick_file_(), wnv_fasta_file_())
+])
+def newick_fasta_file(request):
+    return request.param
 
 @pytest.fixture(params=[our_convert_to_tensor([0.1]), our_convert_to_tensor([0.4, 2.2])])
 def branch_lengths(request):
@@ -73,8 +92,8 @@ def category_rates(request):
 
 @pytest.fixture(params=[
     (single_weights_(), single_rates_()),
-    (double_weights_(), our_convert_to_tensor([0.9, 1.1]))]
-)
+    (double_weights_(), our_convert_to_tensor([0.9, 1.1]))
+])
 def weights_rates(request):
     return request.param
 
