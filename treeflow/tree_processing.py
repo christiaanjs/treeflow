@@ -2,6 +2,7 @@ import ete3
 import numpy as np
 import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+import collections
 
 def parse_newick(newick_file):
     """Return leaves followed by nodes (postorder)"""
@@ -85,6 +86,19 @@ def get_node_anchor_heights(heights, postorder_node_indices, child_indices):
         anchor_heights[i] = np.max(anchor_heights[child_indices[i]])
 
     return anchor_heights[taxon_count:]
+
+TreeInfo = collections.namedtuple('TreeInfo', ['tree', 'node_bounds'])
+
+def parse_tree_info(newick_file):
+    tree, taxon_names = parse_newick(newick_file)
+    return TreeInfo(
+        tree,
+        get_node_anchor_heights(
+            tree['heights'],
+            get_postorder_node_indices(len(taxon_names)),
+            get_child_indices(tree['topology']['parent_indices'])
+        )
+    )
 
 def tree_to_tensor(tree):
     return {
