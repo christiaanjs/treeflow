@@ -75,7 +75,7 @@ class Ratio(BranchBreaking):
 
     def _ratio_gradient_numpy(self, heights, dheights):
         self.node_height_state[-heights.shape[-1]:] = heights
-        return np.array(libsbn.ratio_gradient_of_height_gradient(self.tree, dheights), dtype=heights.dtype)
+        return np.array(libsbn.ratio_gradient_of_height_gradient(self.tree, dheights, False), dtype=heights.dtype)
 
     def _forward_1d(self, x):
         @tf.custom_gradient
@@ -84,7 +84,9 @@ class Ratio(BranchBreaking):
             def grad(dheights):
                 return tf.numpy_function(self._ratio_gradient_numpy, [heights, dheights], DEFAULT_FLOAT_DTYPE_TF)
             return heights, grad
-        return libsbn_tf_func(x)
+        
+        with_root_height = tf.concat([x[:-1], x[-1:] + self.anchor_heights[-1]], axis=0) # Libsbn doesn't add root bound
+        return libsbn_tf_func(with_root_height)
 
 class TreeChain(tfp.bijectors.Chain):
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='TreeChain', inst=None):

@@ -29,10 +29,12 @@ def get_test_gradient(ratios, transform):
     with tf.GradientTape() as t:
         t.watch(ratios)
         heights = transform.forward(ratios)
-        res = tf.reduce_sum(heights ** 2)
+        res = tf.reduce_sum(heights)# ** 2)
     return t.gradient(res, ratios)
 
 def test_libsbn_transform_gradient(newick_file):
     tf_transform, libsbn_transform, tree_info = get_transforms(newick_file)
     ratios = tf.convert_to_tensor(get_ratios(tree_info.node_bounds.shape[0] + 1), dtype=DEFAULT_FLOAT_DTYPE_TF)
-    assert_allclose(get_test_gradient(ratios, tf_transform), get_test_gradient(ratios, libsbn_transform))
+    tf_gradient = get_test_gradient(ratios, tf_transform)
+    libsbn_gradient = get_test_gradient(ratios, libsbn_transform)
+    assert_allclose(tf_gradient, libsbn_gradient)

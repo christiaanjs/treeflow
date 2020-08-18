@@ -15,7 +15,7 @@ def get_tree_info(inst):
     taxon_count = (parent_indices.shape[0] + 2) // 2
     return treeflow.tree_processing.TreeInfo(
         dict(
-            heights=node_heights,#np.concatenate([node_bounds[:taxon_count], node_heights]),
+            heights=node_heights,
             topology=dict(parent_indices=parent_indices)
         ),
         node_bounds[taxon_count:]
