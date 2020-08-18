@@ -65,6 +65,10 @@ def wnv_fasta_file_():
 def newick_fasta_file(request):
     return request.param
 
+@pytest.fixture(params=[hello_newick_file_(), wnv_newick_file_()])
+def newick_file(request):
+    return request.param
+
 @pytest.fixture(params=[our_convert_to_tensor([0.1]), our_convert_to_tensor([0.4, 2.2])])
 def branch_lengths(request):
     return request.param

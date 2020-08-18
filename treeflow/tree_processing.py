@@ -99,7 +99,7 @@ def parse_tree_info(newick_file):
             get_child_indices(tree['topology']['parent_indices'])
         )
     )
-
+    
 def tree_to_tensor(tree):
     return {
         'heights': tf.convert_to_tensor(tree['heights'], dtype=DEFAULT_FLOAT_DTYPE_TF),

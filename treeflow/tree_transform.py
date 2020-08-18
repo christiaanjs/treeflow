@@ -14,6 +14,16 @@ class ParentCorrelation(tfp.bijectors.ScaleMatvecLU):
         build_triu = lambda beta: tf.eye(node_count) + tf.scatter_nd(indices, beta, [node_count, node_count])
         super(ParentCorrelation, self).__init__(tfp.util.DeferredTensor(beta, build_triu, shape=[node_count, node_count]), perm, name=name)
 
+def get_transform_args(tree_info):
+    topology = treeflow.tree_processing.update_topology_dict(tree_info.tree['topology'])
+    taxon_count = (topology['parent_indices'].shape[0] + 2)//2
+    return dict(
+        parent_indices=topology['parent_indices'][taxon_count:] - taxon_count,
+        preorder_node_indices=topology['preorder_node_indices'][1:] - taxon_count,
+        anchor_heights=tree_info.node_bounds
+    )
+
+
 class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='BranchBreaking'):
         super(BranchBreaking, self).__init__(forward_min_event_ndims=1,name=name)

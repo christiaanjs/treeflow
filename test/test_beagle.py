@@ -32,12 +32,6 @@ def test_log_prob_conditioned_hky(prep_likelihood, hky_params, single_weights, s
         **hky_params
     )
     
-    libsbn_branch_lengths = np.array(inst.tree_collection.trees[0].branch_lengths)
-    
-    # Checking that branch lengths are equal. Note this fails at tolerance 1e-16
-    assert_allclose(tf_branch_lengths, libsbn_branch_lengths[:-1], 1e-9)
-
-    
     with tf.GradientTape() as tf_t:
         tf_t.watch(tf_branch_lengths)
         tf_ll = tf_log_prob(tf_branch_lengths, subst_model, category_weights, category_rates, **hky_params)
