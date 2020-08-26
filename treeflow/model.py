@@ -20,7 +20,7 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
     try:
         support = distribution_class_supports[type(distribution)]
     except KeyError:
-        print('Distribution not supported: ' + str(distribution))
+        raise ValueError('Distribution not supported: ' + str(distribution))
 
     full_shape = distribution.batch_shape + distribution.event_shape
     support = distribution_class_supports[type(distribution)]
