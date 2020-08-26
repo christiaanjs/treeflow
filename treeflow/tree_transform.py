@@ -14,6 +14,16 @@ class ParentCorrelation(tfp.bijectors.ScaleMatvecLU):
         build_triu = lambda beta: tf.eye(node_count) + tf.scatter_nd(indices, beta, [node_count, node_count])
         super(ParentCorrelation, self).__init__(tfp.util.DeferredTensor(beta, build_triu, shape=[node_count, node_count]), perm, name=name)
 
+def get_transform_args(tree_info):
+    topology = treeflow.tree_processing.update_topology_dict(tree_info.tree['topology'])
+    taxon_count = (topology['parent_indices'].shape[0] + 2)//2
+    return dict(
+        parent_indices=topology['parent_indices'][taxon_count:] - taxon_count,
+        preorder_node_indices=topology['preorder_node_indices'][1:] - taxon_count,
+        anchor_heights=tree_info.node_bounds
+    )
+
+
 class BranchBreaking(tfp.bijectors.Bijector): # TODO: Broadcast over batch_dims
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='BranchBreaking'):
         super(BranchBreaking, self).__init__(forward_min_event_ndims=1,name=name)
@@ -65,7 +75,7 @@ class Ratio(BranchBreaking):
 
     def _ratio_gradient_numpy(self, heights, dheights):
         self.node_height_state[-heights.shape[-1]:] = heights
-        return np.array(libsbn.ratio_gradient_of_height_gradient(self.tree, dheights), dtype=heights.dtype)
+        return np.array(libsbn.ratio_gradient_of_height_gradient(self.tree, dheights, False), dtype=heights.dtype)
 
     def _forward_1d(self, x):
         @tf.custom_gradient
@@ -74,7 +84,9 @@ class Ratio(BranchBreaking):
             def grad(dheights):
                 return tf.numpy_function(self._ratio_gradient_numpy, [heights, dheights], DEFAULT_FLOAT_DTYPE_TF)
             return heights, grad
-        return libsbn_tf_func(x)
+        
+        with_root_height = tf.concat([x[:-1], x[-1:] + self.anchor_heights[-1]], axis=0) # Libsbn doesn't add root bound
+        return libsbn_tf_func(with_root_height)
 
 class TreeChain(tfp.bijectors.Chain):
     def __init__(self, parent_indices, preorder_node_indices, anchor_heights=None, name='TreeChain', inst=None):

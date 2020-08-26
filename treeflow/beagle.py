@@ -44,8 +44,6 @@ def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, resca
         phylo_model_param_block_map[key][:] = value
 
     parent_id_vector = np.array(inst.tree_collection.trees[0].parent_id_vector())
-    root_id = parent_id_vector.shape[0]
-    root_children = np.nonzero(parent_id_vector == root_id)
 
     branch_lengths = np.array(inst.tree_collection.trees[0].branch_lengths, copy=False)
 
@@ -54,7 +52,6 @@ def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, resca
         branch_lengths[:-1] = x
         gradient = inst.phylo_gradients()[0]
         grad_array = np.array(gradient.branch_lengths, dtype=DEFAULT_FLOAT_DTYPE_NP)[:-1]
-        grad_array[root_children] = np.sum(grad_array[root_children])
         return np.array(gradient.log_likelihood, dtype=DEFAULT_FLOAT_DTYPE_NP), grad_array
 
     libsbn_func_vec = np.vectorize(libsbn_func, [DEFAULT_FLOAT_DTYPE_NP, DEFAULT_FLOAT_DTYPE_NP], signature='(n)->(),(n)')
