@@ -67,11 +67,12 @@ def _get_branch_lengths_1d_flat(x_flat): # TODO: Make this work properly with > 
 
 def get_branch_lengths(tree):
     heights = tree['heights']
-    batch_shape = heights.shape[:-1]
-    node_count = heights.shape[-1]
-    parent_indices = tf.broadcast_to(tree['topology']['parent_indices'], batch_shape + (node_count - 1,))
-    x_flat = [heights, parent_indices]
-    return treeflow.tf_util.vectorize_1d_if_needed(_get_branch_lengths_1d_flat, x_flat, len(batch_shape))
+    batch_shape = tf.shape(heights)[:-1]
+    node_count = tf.shape(heights)[-1]
+    parent_indices = tf.broadcast_to(tree['topology']['parent_indices'], tf.concat([batch_shape, [node_count - 1]], axis=0))
+    batch_dims = tf.shape(batch_shape)[0]
+    x_flat =  [heights, parent_indices]
+    return treeflow.tf_util.vectorize_1d_if_needed(_get_branch_lengths_1d_flat, x_flat, batch_dims)
 
 def log_prob_conditioned(value, topology, category_count):
 

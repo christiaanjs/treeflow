@@ -65,7 +65,7 @@ def wnv_fasta_file_():
 def newick_fasta_file(request):
     return request.param
 
-@pytest.fixture(params=[hello_newick_file_(), wnv_newick_file_()])
+@pytest.fixture(params=[hello_newick_file_(), wnv_newick_file_(), str(data_dir / 'dengue.nwk')])
 def newick_file(request):
     return request.param
 
@@ -122,3 +122,7 @@ def prep_likelihood():
         tf_likelihood.compute_preorder_partials(transition_probs)
         return tf_likelihood, branch_lengths, eigendecomp
     return prep_likelihood_
+
+@pytest.fixture(params=[True, False])
+def function_mode(request):
+    return request.param

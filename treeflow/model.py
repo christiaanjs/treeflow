@@ -59,10 +59,11 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
 def construct_prior_approximation(prior, approx_name='q', init_mode={}):
     return { name: construct_distribution_approximation(approx_name, name, dist, init_mode=init_mode.get(name)) for name, dist in prior.model.items() if name != 'tree' }
 
-def construct_tree_approximation(newick_file, approx_name='q', dist_name='tree', approx_model='mean_field', inst=None):
-    tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
+def construct_tree_approximation(newick_file=None, approx_name='q', dist_name='tree', approx_model='mean_field', inst=None, tree=None):
+    if tree is None:
+        tree, _ = treeflow.tree_processing.parse_newick(newick_file)
     topology = treeflow.tree_processing.update_topology_dict(tree['topology'])
-    taxon_count = len(taxon_names)
+    taxon_count = (tree['heights'].shape[0] + 1) // 2
     anchor_heights = treeflow.tree_processing.get_node_anchor_heights(tree['heights'], topology['postorder_node_indices'], topology['child_indices'])
     anchor_heights = tf.convert_to_tensor(anchor_heights, dtype=DEFAULT_FLOAT_DTYPE_TF)
     tree_chain = treeflow.tree_transform.TreeChain(
