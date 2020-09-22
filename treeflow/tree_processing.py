@@ -1,6 +1,8 @@
 import ete3
 import numpy as np
 import tensorflow as tf
+from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
+import collections
 
 def parse_newick(newick_file):
     """Return leaves followed by nodes (postorder)"""
@@ -10,7 +12,7 @@ def parse_newick(newick_file):
     indices = { n: i for i, n in enumerate(ordered_nodes) }
     parent_indices = np.array([indices[n.up] for n in ordered_nodes[:-1]])
 
-    root_distances = np.array([t.get_distance(n) for n in ordered_nodes]) # TODO: Optimise
+    root_distances = np.array([t.get_distance(n) for n in ordered_nodes], dtype=DEFAULT_FLOAT_DTYPE_NP) # TODO: Optimise
     root_height = max(root_distances)
     heights = root_height - root_distances
 
@@ -85,8 +87,21 @@ def get_node_anchor_heights(heights, postorder_node_indices, child_indices):
 
     return anchor_heights[taxon_count:]
 
+TreeInfo = collections.namedtuple('TreeInfo', ['tree', 'node_bounds'])
+
+def parse_tree_info(newick_file):
+    tree, taxon_names = parse_newick(newick_file)
+    return TreeInfo(
+        tree,
+        get_node_anchor_heights(
+            tree['heights'],
+            get_postorder_node_indices(len(taxon_names)),
+            get_child_indices(tree['topology']['parent_indices'])
+        )
+    )
+    
 def tree_to_tensor(tree):
     return {
-        'heights': tf.convert_to_tensor(tree['heights'], dtype=tf.float32),
+        'heights': tf.convert_to_tensor(tree['heights'], dtype=DEFAULT_FLOAT_DTYPE_TF),
         'topology': { key: tf.convert_to_tensor(value, dtype=tf.int32) for key, value in tree['topology'].items() }
     }

@@ -7,6 +7,7 @@ import treeflow.substitution_model
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 distribution_class_supports = {
     tfd.Normal: 'real',
@@ -23,7 +24,7 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
 
     full_shape = distribution.batch_shape + distribution.event_shape
     support = distribution_class_supports[type(distribution)]
-    
+
     if support == 'real':
         init_loc = tf.zeros(full_shape, dtype=distribution.dtype) if init_mode is None else init_mode
         init_scale = tf.ones(full_shape, dtype=distribution.dtype)
@@ -58,19 +59,20 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
 def construct_prior_approximation(prior, approx_name='q', init_mode={}):
     return { name: construct_distribution_approximation(approx_name, name, dist, init_mode=init_mode.get(name)) for name, dist in prior.model.items() if name != 'tree' }
 
-def construct_tree_approximation(newick_file, approx_name='q', dist_name='tree', approx_model='mean_field'):
+def construct_tree_approximation(newick_file, approx_name='q', dist_name='tree', approx_model='mean_field', inst=None):
     tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
     topology = treeflow.tree_processing.update_topology_dict(tree['topology'])
     taxon_count = len(taxon_names)
     anchor_heights = treeflow.tree_processing.get_node_anchor_heights(tree['heights'], topology['postorder_node_indices'], topology['child_indices'])
-    anchor_heights = tf.convert_to_tensor(anchor_heights, dtype=tf.float32)
+    anchor_heights = tf.convert_to_tensor(anchor_heights, dtype=DEFAULT_FLOAT_DTYPE_TF)
     tree_chain = treeflow.tree_transform.TreeChain(
         topology['parent_indices'][taxon_count:] - taxon_count,
         topology['preorder_node_indices'][1:] - taxon_count,
-        anchor_heights=anchor_heights)
-    init_heights = tf.convert_to_tensor(tree['heights'][taxon_count:], dtype=tf.float32)
+        anchor_heights=anchor_heights,
+        inst=inst)
+    init_heights = tf.convert_to_tensor(tree['heights'][taxon_count:], dtype=DEFAULT_FLOAT_DTYPE_TF)
     init_heights_trans = tree_chain.inverse(init_heights)
-    leaf_heights = tf.convert_to_tensor(tree['heights'][:taxon_count], dtype=tf.float32)
+    leaf_heights = tf.convert_to_tensor(tree['heights'][:taxon_count], dtype=DEFAULT_FLOAT_DTYPE_TF)
 
     if approx_model == 'mean_field':
         pretransformed_distribution = tfd.Independent(tfd.Normal(
@@ -80,10 +82,10 @@ def construct_tree_approximation(newick_file, approx_name='q', dist_name='tree',
     else:
         raise ValueError('Approximation not yet implemented for support: ' + support)
 
-    height_dist = tfd.Blockwise([
-        tfd.Independent(tfd.Deterministic(leaf_heights), reinterpreted_batch_ndims=1),
-        tfd.TransformedDistribution(pretransformed_distribution, bijector=tree_chain)
-    ])
+    height_dist = treeflow.tree_transform.FixedLeafHeightDistribution(
+        tfd.TransformedDistribution(pretransformed_distribution, bijector=tree_chain),
+        leaf_heights
+    )
 
     return treeflow.tree_transform.FixedTopologyDistribution(
             height_distribution=height_dist,

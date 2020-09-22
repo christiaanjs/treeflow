@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.tf_util
 import treeflow.tree
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 COALESCENCE, SAMPLING, OTHER = -1, 1, 0
 
@@ -13,7 +14,7 @@ def coalescent_likelihood(lineage_count,
                           population_func, # At coalescence
                           population_areas, # Integrals of 1/N
                           coalescent_mask): # At top of interval
-    k_choose_2 = tf.cast(lineage_count * (lineage_count - 1), dtype=tf.float32) / 2.0
+    k_choose_2 = tf.cast(lineage_count * (lineage_count - 1), dtype=DEFAULT_FLOAT_DTYPE_TF) / 2.0
     return -tf.reduce_sum(k_choose_2 * population_areas) - tf.reduce_sum(tf.math.log(tf.boolean_mask(population_func, coalescent_mask)))
 
 class ConstantCoalescent(treeflow.tree.TreeDistribution):

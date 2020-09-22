@@ -6,17 +6,30 @@ import treeflow.tensorflow_likelihood
 import treeflow.tree_processing
 import treeflow.substitution_model
 import treeflow.tf_util
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 init_partials_dict = {
     'A':[1.,0.,0.,0.],
     'C':[0.,1.,0.,0.],
     'G':[0.,0.,1.,0.],
     'T':[0.,0.,0.,1.],
+    'U':[0.,0.,0.,1.],
     '-':[1.,1.,1.,1.],
     '?':[1.,1.,1.,1.],
     'N':[1.,1.,1.,1.],
     '.':[1.,1.,1.,1.],
-    'U':[0.,0.,0.,1.]
+    # Note treating all degenerate bases as gaps to maintain agreement with BEAST.
+    'B':[1.,1.,1.,1.],
+    'D':[1.,1.,1.,1.],
+    'H':[1.,1.,1.,1.],
+    'K':[1.,1.,1.,1.],
+    'M':[1.,1.,1.,1.],
+    'R':[1.,1.,1.,1.],
+    'S':[1.,1.,1.,1.],
+    'U':[1.,1.,1.,1.],
+    'V':[1.,1.,1.,1.],
+    'W':[1.,1.,1.,1.],
+    'Y':[1.,1.,1.,1.]
 }
 
 def parse_fasta(filename):
@@ -31,7 +44,7 @@ def parse_fasta(filename):
 def compress_sites(sequence_dict):
     taxa = sorted(list(sequence_dict.keys()))
     sequences = [sequence_dict[taxon] for taxon in taxa]
-    patterns = list(zip(*sequences)) 
+    patterns = list(zip(*sequences))
     count_dict = Counter(patterns)
     pattern_ordering = sorted(list(count_dict.keys()))
     compressed_sequences = list(zip(*pattern_ordering))
@@ -40,7 +53,7 @@ def compress_sites(sequence_dict):
     return pattern_dict, counts
 
 def encode_sequence_dict(sequence_dict, taxon_names):
-    return tf.convert_to_tensor(np.array([[init_partials_dict[char] for char in sequence_dict[taxon_name]] for taxon_name in taxon_names]), dtype=tf.float32)
+    return tf.convert_to_tensor(np.array([[init_partials_dict[char] for char in sequence_dict[taxon_name]] for taxon_name in taxon_names]), dtype=DEFAULT_FLOAT_DTYPE_TF)
 
 def get_encoded_sequences(fasta_file, taxon_names):
     sequence_dict = parse_fasta(fasta_file)
@@ -56,9 +69,9 @@ def get_branch_lengths(tree):
     heights = tree['heights']
     batch_shape = heights.shape[:-1]
     node_count = heights.shape[-1]
-    parent_indices = tf.broadcast_to(tree['topology']['parent_indices'], batch_shape + (node_count - 1))
+    parent_indices = tf.broadcast_to(tree['topology']['parent_indices'], batch_shape + (node_count - 1,))
     x_flat = [heights, parent_indices]
-    return treeflow.tf_util.vectorize_1d_if_needed(_get_branch_lengths_1d_flat, x_flat, batch_shape.rank)
+    return treeflow.tf_util.vectorize_1d_if_needed(_get_branch_lengths_1d_flat, x_flat, len(batch_shape))
 
 def log_prob_conditioned(value, topology, category_count):
 
@@ -104,16 +117,16 @@ def log_prob_conditioned(value, topology, category_count):
         frequencies_b = tf.broadcast_to(frequencies, batch_shape + [4])
         subst_model_params_list = [subst_model_params[key] for key in subst_model_param_keys]
         subst_model_params_b = [tf.broadcast_to(param, batch_shape) for param in subst_model_params_list]
-        elems = [branch_lengths, category_weights_b, category_rates_b, frequencies_b] + subst_model_params_b 
+        elems = [branch_lengths, category_weights_b, category_rates_b, frequencies_b] + subst_model_params_b
         return treeflow.tf_util.vectorize_1d_if_needed(log_prob_1d, elems, batch_shape.rank)
     return log_prob
 
 def log_prob_conditioned_branch_only(value, topology, category_count, subst_model, category_weights, category_rates, frequencies, **subst_model_params):
 
     likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(category_count=category_count)
-    likelihood.set_topology(treeflow.tree_processing.update_topology_dict(topology))
+    likelihood.set_topology(topology)
     likelihood.init_postorder_partials(value['sequences'], pattern_counts=(value['weights'] if 'weights' in value else None))
-    
+
     @tf.custom_gradient
     def log_prob(branch_lengths):
         eigendecomp = subst_model.eigen(frequencies, **subst_model_params)
@@ -128,7 +141,7 @@ def log_prob_conditioned_branch_only(value, topology, category_count, subst_mode
         return log_prob_val, grad # TODO: Cache site likelihoods
 
     return log_prob, likelihood
-    
+
 
 class LeafSequences(tfp.distributions.Distribution):
     def __init__(self, tree, subst_model, frequencies, category_weights, category_rates,
@@ -137,7 +150,7 @@ class LeafSequences(tfp.distributions.Distribution):
             dtype={ 'sequences': tf.int64, 'weights': tf.int64 },
             reparameterization_type=tfp.distributions.NOT_REPARAMETERIZED,
             validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats, 
+            allow_nan_stats=allow_nan_stats,
             parameters=dict(locals()))
         self.tree = tree
         self.subst_model = subst_model

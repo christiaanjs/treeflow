@@ -3,9 +3,10 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 from treeflow.tree_transform import BranchBreaking, TreeChain
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 # Heights, parent indices, preorder indices, transformed
-test_data = [[tf.convert_to_tensor(x, dtype=dtype) for x, dtype in zip(test_case, [tf.float32, tf.int32, tf.int32, tf.float32])] for test_case in [
+test_data = [[tf.convert_to_tensor(x, dtype=dtype) for x, dtype in zip(test_case, [DEFAULT_FLOAT_DTYPE_TF, tf.int32, tf.int32, DEFAULT_FLOAT_DTYPE_TF])] for test_case in [
         ([0.6, 2.4], [1], [0], [0.25, 2.4]),
         ([1.2, 0.9, 1.8, 2.4], [3, 2, 3], [0, 2, 1], [0.5, 0.5, 0.75, 2.4])
 ]]

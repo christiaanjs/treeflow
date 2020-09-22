@@ -1,4 +1,5 @@
 import tensorflow as tf
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 def get_nested_shape(x):
     return x.shape if isinstance(x, tf.Tensor) else x[0].shape
@@ -14,8 +15,8 @@ def _vectorize_1d(f, x, batch_ndims, dtype):
     batch_shape = shape[:batch_ndims]
     batch_size = tf.reduce_prod(batch_shape)
     elems = apply_nested(lambda y: reshape_batch_dims(y, batch_ndims, [batch_size]), x)
-    res_flat = tf.map_fn(f, elems, dtype=dtype)
+    res_flat = tf.map_fn(f, elems, fn_output_signature=dtype)
     return apply_nested(lambda y: reshape_batch_dims(y, batch_ndims, batch_shape), res_flat)
 
-def vectorize_1d_if_needed(f, x, batch_ndims, dtype=tf.float32):
+def vectorize_1d_if_needed(f, x, batch_ndims, dtype=DEFAULT_FLOAT_DTYPE_TF):
     return f(x) if batch_ndims == 0 else _vectorize_1d(f, x, batch_ndims, dtype)
