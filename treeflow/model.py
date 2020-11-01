@@ -30,15 +30,14 @@ def scale_constraint(var):
 
 def construct_distribution_approximation(model_name, dist_name, distribution, init_mode=None, vars=None):
     try:
-        support = distribution_class_supports[type(distribution)]
+        base_dist_type = type(distribution.distribution if isinstance(distribution, tfd.Sample) else distribution)
+        support = distribution_class_supports[base_dist_type]
     except KeyError:
         raise ValueError('Distribution not supported: ' + str(distribution))
 
     if init_mode is not None and vars is not None:
         raise ValueError("Only one of init_mode and vars must be specified")
 
-    base_dist_type = type(distribution.distribution if isinstance(distribution, tfd.Sample) else distribution)
-    support = distribution_class_supports[base_dist_type]
     if support == 'real':
         if vars is None:
             vars = get_approx_vars(distribution, model_name, dist_name, init_loc=init_mode)
@@ -100,8 +99,9 @@ def construct_rate_approximation(rate_dist, approx_name='q', dist_name='rates', 
     base_dist, vars = construct_distribution_approximation(approx_name, dist_name, rate_dist, vars=vars) # TODO: Init mode
     if approx_model == 'mean_field':
         final_dist = base_dist
-    elif approx_model == 'branch_length_scaled':
-        final_dist = lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(base_dist, tree, clock_rate) # TODO: Does it work having base_dist from closure?
+    elif approx_model == 'scaled': # TODO: Does it make sense to use construct_distribution_approximation here?
+        base_dist_callable = lambda **vars: construct_distribution_approximation(approx_name, dist_name, rate_dist, vars=vars)[0]
+        final_dist = lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(base_dist_callable, tree, clock_rate, **vars)
     else:
         raise ValueError('Rate approximation not known: ' + approx_model)
     return final_dist, vars
