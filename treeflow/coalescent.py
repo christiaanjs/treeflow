@@ -9,7 +9,12 @@ COALESCENCE, SAMPLING, OTHER = -1, 1, 0
 def get_lineage_count(event_types):
     return tf.math.cumsum(event_types)
 
-
+# tf.boolean_mask is picky about mask dimension; required to get this working in function mode
+@tf.function(input_signature=[
+    tf.TensorSpec(None, tf.int32),
+    tf.TensorSpec(None, DEFAULT_FLOAT_DTYPE_TF),
+    tf.TensorSpec(None, DEFAULT_FLOAT_DTYPE_TF),
+    tf.TensorSpec([None], tf.bool)])
 def coalescent_likelihood(lineage_count,
                           population_func, # At coalescence
                           population_areas, # Integrals of 1/N
@@ -43,7 +48,7 @@ class ConstantCoalescent(treeflow.tree.TreeDistribution):
         node_mask_sorted = tf.gather(node_mask, sort_indices)
 
         lineage_count =  get_lineage_count(tf.where(node_mask_sorted, COALESCENCE, SAMPLING))[:-1]
-        population_func = tf.broadcast_to(pop_size_1d, lineage_count.shape)
+        population_func = tf.broadcast_to(pop_size_1d, tf.shape(lineage_count))
         durations = heights_sorted[1:] - heights_sorted[:-1]
         population_areas = durations / pop_size_1d
         coalescent_mask = node_mask_sorted[1:]
@@ -61,10 +66,10 @@ class ConstantCoalescent(treeflow.tree.TreeDistribution):
         return self._log_prob_1d(x_dict, pop_size)
 
     def _log_prob(self, x):
-        batch_shape = x['heights'].shape[:-1]
+        batch_shape = tf.shape(x['heights'])[:-1]
         pop_size = tf.broadcast_to(self.pop_size, batch_shape)
         x_flat = [x['heights'], x['topology']['parent_indices'], pop_size]
-        return treeflow.tf_util.vectorize_1d_if_needed(self._log_prob_1d_flat, x_flat, batch_shape.rank)
+        return treeflow.tf_util.vectorize_1d_if_needed(self._log_prob_1d_flat, x_flat, tf.shape(batch_shape)[0])
 
     def _sample_n(self, n, seed=None):
         import warnings

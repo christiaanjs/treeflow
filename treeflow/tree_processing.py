@@ -87,7 +87,7 @@ def get_node_anchor_heights(heights, postorder_node_indices, child_indices):
 
     return anchor_heights[taxon_count:]
 
-TreeInfo = collections.namedtuple('TreeInfo', ['tree', 'node_bounds'])
+TreeInfo = collections.namedtuple('TreeInfo', ['tree', 'node_bounds']) # TODO: Think about proper object model for tree
 
 def parse_tree_info(newick_file):
     tree, taxon_names = parse_newick(newick_file)
