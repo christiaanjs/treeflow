@@ -102,6 +102,13 @@ def construct_rate_approximation(rate_dist, approx_name='q', dist_name='rates', 
     elif approx_model == 'scaled': # TODO: Does it make sense to use construct_distribution_approximation here?
         base_dist_callable = lambda **vars: construct_distribution_approximation(approx_name, dist_name, rate_dist, vars=vars)[0]
         final_dist = lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(base_dist_callable, tree, clock_rate, **vars)
+    elif approx_model == 'tuneable':
+        base_dist_callable = lambda **vars: construct_distribution_approximation(approx_name, dist_name, rate_dist, vars=vars)[0]
+        scale_power_key = 'scale_power_logit'
+        if scale_power_key not in vars:
+            vars[scale_power_key] = tf.Variable(tf.zeros(rate_dist.event_shape, rate_dist.dtype), name='{0}_{1}_{2}'.format(approx_name, dist_name, scale_power_key))
+        scale_power = tfp.util.DeferredTensor(vars[scale_power_key], tf.math.sigmoid)
+        final_dist = lambda tree, clock_rate: treeflow.clock_approx.TuneableScaledRateDistribution(base_dist_callable, scale_power, tree, clock_rate, **vars)
     else:
         raise ValueError('Rate approximation not known: ' + approx_model)
     return final_dist, vars
