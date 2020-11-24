@@ -34,3 +34,11 @@ def test_clock_approx_joint_sample_vector(hello_newick_file, clock_rate_approx, 
     sample_shape = 2
     samples = approx.sample(sample_shape)
     assert samples['clock_rate'].numpy().shape == (sample_shape,)
+
+
+def test_construct_prior_approx(hello_newick_file):
+    prior = tfp.distributions.JointDistributionNamed(dict(clock_rate=lognormal_dist, pop_size=lognormal_dist))
+    approx = tfp.distributions.JointDistributionNamed(treeflow.model.construct_prior_approximation(prior)[0])
+    sample = approx.sample()
+    for key in prior.sample():
+        assert key in sample

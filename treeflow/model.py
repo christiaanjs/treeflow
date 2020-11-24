@@ -77,7 +77,7 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
 
 def construct_prior_approximation(prior, approx_name='q', init_mode={}, vars={}, approxs={}):
     dists = [(name, dist) for name, dist in prior.model.items() if name not in ['tree', 'rates']]
-    res = [(name,) + construct_distribution_approximation(approx_name, name, dist, init_mode.get(name), vars.get(name), approxs.get(name)) for name, dist in dists]
+    res = [(name,) + construct_distribution_approximation(approx_name, name, dist, init_mode.get(name), vars.get(name), **(approxs.get(name) or {})) for name, dist in dists]
     names, approx_dists, approx_vars = zip(*res)
     return dict(zip(names, approx_dists)), dict(zip(names, approx_vars))
 
