@@ -17,18 +17,23 @@ distribution_class_supports = {
     tfd.Dirichlet: 'simplex'
 }
 
-def get_approx_vars(distribution, model_name, dist_name, init_loc=None):
+def get_normal_approx_vars(distribution, model_name, dist_name, init_loc=None):
     full_shape = distribution.batch_shape + distribution.event_shape
     init_loc = tf.zeros(full_shape, dtype=distribution.dtype) if init_loc is None else init_loc
     loc_var = tf.Variable(init_loc, name='{0}_{1}_loc'.format(model_name, dist_name))
     init_scale = tf.ones(full_shape, dtype=distribution.dtype)
     scale_var = tf.Variable(tfp.math.softplus_inverse(init_scale), name='{0}_{1}_scale_inv_softplus'.format(model_name, dist_name))
-    return  dict(m=loc_var, s=scale_var)
+    return  dict(loc=loc_var, scale_inverse_softplus=scale_var)
 
 def scale_constraint(var):
     return tfp.util.DeferredTensor(var, tf.nn.softplus)
 
-def construct_distribution_approximation(model_name, dist_name, distribution, init_mode=None, vars=None):
+def lognormal_loc_mode_match(mode, scale=1.0):
+    return tf.math.log(mode) + scale
+
+def construct_distribution_approximation(model_name, dist_name, distribution, init_mode=None, vars=None, approx=None, **approx_kwargs):
+    if approx is None:
+        approx = "mean_field"
     try:
         base_dist_type = type(distribution.distribution if isinstance(distribution, tfd.Sample) else distribution)
         support = distribution_class_supports[base_dist_type]
@@ -38,28 +43,41 @@ def construct_distribution_approximation(model_name, dist_name, distribution, in
     if init_mode is not None and vars is not None:
         raise ValueError("Only one of init_mode and vars must be specified")
 
-    if support == 'real':
-        if vars is None:
-            vars = get_approx_vars(distribution, model_name, dist_name, init_loc=init_mode)
-        batch_dist = tfd.Normal(loc=vars['m'], scale=scale_constraint(vars['s']))
-    elif support == 'nonnegative':
-        if vars is None:
-            vars = get_approx_vars(distribution, model_name, dist_name, init_loc=(None if init_mode is None else (tf.math.log(init_mode) + 1.0)))
-        batch_dist = tfd.LogNormal(loc=vars['m'], scale=scale_constraint(vars['s']))
-    #elif support == 'simplex': # TODO: Implement Dirichlet
-    #    init_concentration = tf.fill(full_shape, tf.convert_to_tensor(2.0, dtype=dtype)) if init_mode is None else (full_shape[-1] * init_mode + 1)
-    else:
-        raise ValueError('Approximation not yet implemented for support: ' + support)
+    if approx == "mean_field":
+        if support == "real":
+            if vars is None:
+                vars = get_normal_approx_vars(distribution, model_name, dist_name, init_loc=init_mode)
+            batch_dist = tfd.Normal(loc=vars["loc"], scale=scale_constraint(vars["scale_inverse_softplus"]))
+        elif support == "nonnegative":
+            if vars is None:
+                vars = get_normal_approx_vars(distribution, model_name, dist_name, init_loc=(None if init_mode is None else lognormal_loc_mode_match(init_mode)))
+            batch_dist = tfd.LogNormal(loc=vars["loc"], scale=scale_constraint(vars["scale_inverse_softplus"]))
+        #elif support == 'simplex': # TODO: Implement Dirichlet
+        #    init_concentration = tf.fill(full_shape, tf.convert_to_tensor(2.0, dtype=dtype)) if init_mode is None else (full_shape[-1] * init_mode + 1)
+        else:
+            raise ValueError('Mean field approximation not yet implemented for support: ' + support)
+        event_rank = distribution.event_shape.rank
+        if event_rank > 0:
+            dist = tfd.Independent(batch_dist, reinterpreted_batch_ndims=event_rank)
+        else:
+            dist = batch_dist
+    elif approx == "scaled":
+        if support == "nonnegative":
+            if vars is None:
+                init_statistic = treeflow.clock_approx.get_tree_statistic(**approx_kwargs)
+                unscaled_init_mode = init_statistic if init_mode is None else None
+                vars = get_normal_approx_vars(distribution, model_name, dist_name, init_loc=(None if unscaled_init_mode is None else lognormal_loc_mode_match(unscaled_init_mode)))
+            base_dist_callable = lambda **vars: tfd.LogNormal(loc=vars["loc"], scale=scale_constraint(vars["scale_inverse_softplus"]))
+            approx_kwargs.pop("tree")
+            dist = lambda tree: treeflow.clock_approx.ScaledDistribution(base_dist_callable, tree=tree, **approx_kwargs, **vars)
+        else:
+            raise ValueError("Scaled approximation only valid for nonnegative support, not " + support)
 
-    event_rank = distribution.event_shape.rank
-    if event_rank > 0:
-        return tfd.Independent(batch_dist, reinterpreted_batch_ndims=event_rank), vars
-    else:
-        return batch_dist, vars
+    return dist, vars
 
-def construct_prior_approximation(prior, approx_name='q', init_mode={}, vars={}):
+def construct_prior_approximation(prior, approx_name='q', init_mode={}, vars={}, approxs={}):
     dists = [(name, dist) for name, dist in prior.model.items() if name not in ['tree', 'rates']]
-    res = [(name,) + construct_distribution_approximation(approx_name, name, dist, init_mode.get(name), vars.get(name)) for name, dist in dists]
+    res = [(name,) + construct_distribution_approximation(approx_name, name, dist, init_mode.get(name), vars.get(name), approxs.get(name)) for name, dist in dists]
     names, approx_dists, approx_vars = zip(*res)
     return dict(zip(names, approx_dists)), dict(zip(names, approx_vars))
 
@@ -99,10 +117,10 @@ def construct_rate_approximation(rate_dist, approx_name='q', dist_name='rates', 
     base_dist, vars = construct_distribution_approximation(approx_name, dist_name, rate_dist, vars=vars) # TODO: Init mode
     if approx_model == 'mean_field':
         final_dist = base_dist
-    elif approx_model == 'scaled': # TODO: Does it make sense to use construct_distribution_approximation here?
+    elif approx_model == 'scaled': # TODO: Does it make sense to use construct_distribution_approximation here? Is DeferredTensor an issue?
         base_dist_callable = lambda **vars: construct_distribution_approximation(approx_name, dist_name, rate_dist, vars=vars)[0]
         final_dist = lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(base_dist_callable, tree, clock_rate, **vars)
-    elif approx_model == 'tuneable':
+    elif approx_model == 'tuneable': # TODO: Remove tuneable?
         base_dist_callable = lambda **vars: construct_distribution_approximation(approx_name, dist_name, rate_dist, vars=vars)[0]
         scale_power_key = 'scale_power_logit'
         if scale_power_key not in vars:

@@ -3,14 +3,18 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.sequences
 
+def get_tree_statistic(tree, tree_statistic):
+    if tree_statistic == "length":
+        blens = treeflow.sequences.get_branch_lengths(tree)
+        return tf.reduce_sum(blens, axis=-1)
+    elif tree_statistic == "height":
+        return tree["heights"][..., -1]
+    else:
+        raise ValueError(f"Unknown tree statistic {tree_statistic}")
+
 class ScaledDistribution(tfp.distributions.TransformedDistribution):
     def __init__(self, distribution, tree, tree_statistic="length", **dist_kwargs):
-        if tree_statistic == "length":
-            blens = treeflow.sequences.get_branch_lengths(tree)
-            statistic = tf.reduce_sum(blens, axis=-1)
-        elif tree_statistic == "height":
-            statistic = tree["heights"][..., -1]
-        
+        statistic = get_tree_statistic(tree, tree_statistic)
         batch_shape = tf.shape(statistic)
         bij = tfp.bijectors.Scale(1.0 / statistic)
 
