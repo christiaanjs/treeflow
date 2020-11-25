@@ -6,6 +6,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         'libsbn',
-        'biopython'
+        'biopython',
+        'ete3'
     ]
 )
