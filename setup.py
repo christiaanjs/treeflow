@@ -7,6 +7,7 @@ setuptools.setup(
     install_requires=[
         'libsbn',
         'biopython',
-        'ete3'
+        'ete3',
+        'numdifftools' # Test dependency
     ]
 )
