@@ -59,14 +59,22 @@ def wnv_fasta_file_():
     return str(data_dir / 'wnv.fasta')
 
 @pytest.fixture(params=[
-    (hello_newick_file_(), hello_fasta_file_()),
-    (wnv_newick_file_(), wnv_fasta_file_())
+    (hello_newick_file_(), hello_fasta_file_(), False),
+    (wnv_newick_file_(), wnv_fasta_file_(), True)
 ])
-def newick_fasta_file(request):
+def newick_fasta_file_dated(request):
     return request.param
 
 @pytest.fixture(params=[hello_newick_file_(), wnv_newick_file_(), str(data_dir / 'dengue.nwk')])
 def newick_file(request):
+    return request.param
+
+@pytest.fixture(params=[
+    (hello_newick_file_(), False),
+    (wnv_newick_file_(), True),
+    (str(data_dir / 'dengue.nwk'), True)
+])
+def newick_file_dated(request):
     return request.param
 
 @pytest.fixture(params=[our_convert_to_tensor([0.1]), our_convert_to_tensor([0.4, 2.2])])

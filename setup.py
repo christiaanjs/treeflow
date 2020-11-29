@@ -5,11 +5,9 @@ setuptools.setup(
     version='0.0.1',
     packages=setuptools.find_packages(),
     install_requires=[
-        'numpy',
-        'tf-nightly',
-        'tfp-nightly',
-        'jupyter',
+        'libsbn',
+        'biopython==1.76',
         'ete3',
-        'pytest'
+        'numdifftools' # Test dependency
     ]
 )

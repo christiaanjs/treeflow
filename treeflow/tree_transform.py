@@ -70,7 +70,7 @@ class Ratio(BranchBreaking):
         self.node_height_state = np.array(self.tree.node_heights, copy=False)
 
     def _forward_1d_numpy(self, x): # TODO: Should we do vectorization in Numpy or TF land?
-        self.tree.set_node_heights_via_height_ratios(x)
+        self.tree.initialize_time_tree_using_height_ratios(x)
         return self.node_height_state[-x.shape[-1]:].astype(x.dtype)
 
     def _ratio_gradient_numpy(self, heights, dheights):
