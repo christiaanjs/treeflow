@@ -5,7 +5,7 @@ import treeflow.libsbn
 import numpy as np
 from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
-def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, rescaling=False, inst=None, newick_file=None, **subst_model_params):
+def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, rescaling=False, inst=None, newick_file=None, dated=True, **subst_model_params):
     if isinstance(subst_model, treeflow.substitution_model.JC):
         subst_model_string = 'JC69'
         param_updates = { }
@@ -31,7 +31,7 @@ def log_prob_conditioned_branch_only(fasta_file, subst_model, frequencies, resca
     if inst is None:
         if newick_file is None:
             raise ValueError('Either a libsbn instance or Newick file must be supplied')
-        inst = treeflow.libsbn.get_instance(newick_file)
+        inst = treeflow.libsbn.get_instance(newick_file, dated=dated)
     inst.read_fasta_file(fasta_file)
     inst.set_rescaling(rescaling)
     model_specification = libsbn.PhyloModelSpecification(subst_model_string, 'constant','strict')

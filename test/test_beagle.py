@@ -12,8 +12,8 @@ import treeflow.tree_processing
 # TODO: Test Weibull site model
 # TF function: log_prob_conditioned
 # libsbn function: log_prob_conditioned_branch_only
-def test_log_prob_conditioned_hky(prep_likelihood, hky_params, single_weights, single_rates, newick_fasta_file):
-    newick_file, fasta_file = newick_fasta_file
+def test_log_prob_conditioned_hky(prep_likelihood, hky_params, single_weights, single_rates, newick_fasta_file_dated):
+    newick_file, fasta_file, dated = newick_fasta_file_dated
     subst_model = treeflow.substitution_model.HKY()
     category_weights = single_weights
     category_rates = single_weights
@@ -29,6 +29,7 @@ def test_log_prob_conditioned_hky(prep_likelihood, hky_params, single_weights, s
         fasta_file,
         subst_model,
         newick_file=newick_file,
+        dated=dated,
         **hky_params
     )
     
