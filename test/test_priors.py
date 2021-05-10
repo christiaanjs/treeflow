@@ -15,3 +15,6 @@ def test_get_params_for_quantiles(dist_class, param_dict, bounds_dict):
     assert opt_res.success
     dist_result = dist_class(**param_result)
     assert_allclose(quantiles, dist_result.quantile(PROBS))
+
+def test_get_params_for_quantiles_lognormal_conjugate():
+    assert False
