@@ -8,14 +8,18 @@ tfd = tfp.distributions
 
 REAL_BOUNDS = (None, None)
 NONNEGATIVE_BOUNDS = (1e-3, 1e4)
+NORMAL_BOUNDS = dict(loc=REAL_BOUNDS, scale=NONNEGATIVE_BOUNDS)
 default_bounds = {
     tfd.Gamma: dict(concentration=NONNEGATIVE_BOUNDS, rate=NONNEGATIVE_BOUNDS),
-    tfd.Normal: dict(loc=REAL_BOUNDS, scale=NONNEGATIVE_BOUNDS),
+    tfd.Normal: NORMAL_BOUNDS,
+    tfd.LogNormal: NORMAL_BOUNDS,
 }
 
+NORMAL_INIT = dict(loc=0.0, scale=1.0)
 default_init = {
     tfd.Gamma: dict(concentration=1.0, rate=1.0),
-    tfd.Normal: dict(loc=0.0, scale=1.0),
+    tfd.Normal: NORMAL_INIT,
+    tfd.LogNormal: NORMAL_INIT,
 }
 
 
@@ -57,8 +61,6 @@ def get_params_for_quantiles(
     if bounds_dict is None:
         bounds_dict = default_bounds[dist_class]
 
-    print(obj_and_grad_flat(init_par))
-
     bounds = [bounds_dict.get(key, (None, None)) for key in param_keys]
 
     res = minimize(
@@ -76,7 +78,7 @@ def get_params_for_quantiles_lognormal_conjugate(
     cov_quantiles, mean_quantiles, **kwargs
 ):
     cov_to_precision = lambda x: 1.0 / np.log(x ** 2.0 + 1)
-    precision_quantiles = cov_to_precision(cov_quantiles)[::-1]
+    precision_quantiles = cov_to_precision(np.array(cov_quantiles))[::-1]
     precision_params, precision_res = get_params_for_quantiles(
         tfd.Gamma, precision_quantiles
     )
@@ -87,7 +89,6 @@ def get_params_for_quantiles_lognormal_conjugate(
     )  # Increasing function of mean and precision
     loc_params, loc_res = get_params_for_quantiles(tfd.Normal, loc_quantiles)
     return (
-        dict(loc=loc_params, precision=precision_params),
+        dict(loc=dict(normal=loc_params), precision=dict(gamma=precision_params)),
         dict(loc=loc_res, precision=precision_res),
     )
-
