@@ -75,7 +75,7 @@ class TuneableScaledRateDistribution(tfp.distributions.TransformedDistribution):
         )
 
 
-def get_normal_conjugate_posterior(concentration, rate, loc, precision_scale):
+def get_normal_conjugate_posterior_dict(concentration, rate, loc, precision_scale):
     def precision_posterior(x):
         n = tf.cast(tf.shape(x)[-1], treeflow.DEFAULT_FLOAT_DTYPE_TF)
         sample_mean = tf.reduce_mean(x, axis=-1)
