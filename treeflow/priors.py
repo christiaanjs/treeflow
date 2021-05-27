@@ -92,3 +92,16 @@ def get_params_for_quantiles_lognormal_conjugate(
         dict(loc=dict(normal=loc_params), precision=dict(gamma=precision_params)),
         dict(loc=loc_res, precision=precision_res),
     )
+
+
+def precision_to_scale(x):
+    return tf.sqrt(1.0 / x)
+
+
+def get_normal_conjugate_prior_dict(concentration, rate, loc, precision_scale):
+    return dict(
+        precision=tfp.distributions.Gamma(concentration=concentration, rate=rate),
+        loc=lambda precision: tfp.distributions.Normal(
+            loc=loc, scale=precision_to_scale(precision * precision_scale)
+        ),
+    )

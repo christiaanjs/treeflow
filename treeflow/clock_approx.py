@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.sequences
 import treeflow
+from treeflow.priors import precision_to_scale
 
 
 def get_tree_statistic(tree, tree_statistic):
@@ -74,47 +75,35 @@ class TuneableScaledRateDistribution(tfp.distributions.TransformedDistribution):
         )
 
 
-def get_lognormal_loc_conjugate_posterior(loc_prior):
-    assert isinstance(loc_prior, tfp.distributions.Normal)
-
-    def conjugate_posterior(rates):
-        n = tf.cast(tf.shape(rates)[-1], treeflow.DEFAULT_FLOAT_DTYPE_TF)
-        log_rates_mean = tf.reduce_mean(tf.math.log(tf.rates), axis=-1)
-        loc_posterior_loc = (loc_prior.scale * loc_prior.loc + n * log_rates_mean) / (
-            loc_prior.scale + n
-        )
-        loc_posterior_scale = loc_prior.scale + n
-        return tfp.distributions.Normal(
-            loc=loc_posterior_loc, scale=loc_posterior_scale
-        )
-
-    return conjugate_posterior
-
-
-def get_lognormal_precision_conjugate_posterior(loc_prior, precision_prior):
-    assert isinstance(precision_prior, tfp.distributions.Gamma)
-
-    def conjugate_posterior(rates):
-        n = tf.cast(tf.shape(rates)[-1], treeflow.DEFAULT_FLOAT_DTYPE_TF)
-        log_rates = tf.math.log(tf.rates)
-        log_rates_mean = tf.reduce_mean(log_rates, axis=-1)
-        log_rates_sum_of_squares = tf.reduce_sum(
-            tf.square(log_rates - tf.expand_dims(log_rates_mean, -1)), axis=-1
-        )
-        precision_posterior_concentration = (
-            precision_prior.concentration + n / 2.0
-        )  # alpha
-        precision_posterior_rate = (
-            precision_prior.rate
-            + 0.5 * log_rates_sum_of_squares
-            + (n * loc_prior.scale)
-            / (loc_prior.scale + n)
-            * tf.square(log_rates_mean - loc_prior.loc)
-            / 2.0
-        )  # beta
+def get_normal_conjugate_posterior(concentration, rate, loc, precision_scale):
+    def precision_posterior(x):
+        n = tf.cast(tf.shape(x)[-1], treeflow.DEFAULT_FLOAT_DTYPE_TF)
+        sample_mean = tf.reduce_mean(x, axis=-1)
+        posterior_concentration = concentration + n / 2.0
+        posterior_rate = None
         return tfp.distributions.Gamma(
-            concentration=precision_posterior_concentration,
-            rate=precision_posterior_rate,
+            concentration=posterior_concentration, rate=posterior_rate
         )
 
-    return conjugate_posterior
+    def loc_posterior(x, precision):
+        n = tf.cast(tf.shape(x)[-1], treeflow.DEFAULT_FLOAT_DTYPE_TF)
+        sample_mean = tf.reduce_mean(x, axis=-1)
+        sample_variance = tf.square(tf.math.reduce_std(x, axis=-1))
+        posterior_loc = (precision_scale * loc + n * sample_mean) / (
+            precision_scale + n
+        )
+        posterior_precision_scale = (
+            precision_scale
+            + (
+                n * sample_variance
+                + (precision_scale * n * tf.square(sample_mean - loc))
+                / (precision_scale + n)
+            )
+            / 2.0
+        )
+        return tfp.distributions.Normal(
+            loc=posterior_loc,
+            scale=precision_to_scale(posterior_precision_scale * precision),
+        )
+
+    return dict(precision=precision_posterior, loc=loc_posterior)
