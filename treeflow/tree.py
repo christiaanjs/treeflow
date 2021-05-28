@@ -2,14 +2,13 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
+
 class TreeDistribution(tfp.distributions.Distribution):
     def __init__(self, **kwargs):
         super(TreeDistribution, self).__init__(
             dtype={
-                'heights': DEFAULT_FLOAT_DTYPE_TF,
-                'topology': {
-                    'parent_indices': tf.int32
-                }
+                "heights": DEFAULT_FLOAT_DTYPE_TF,
+                "topology": {"parent_indices": tf.int32},
             },
             reparameterization_type=tfp.distributions.NOT_REPARAMETERIZED,
             **kwargs
@@ -18,7 +17,7 @@ class TreeDistribution(tfp.distributions.Distribution):
     # Borrwoed from JointDistribution
     # We need to bypass base Distribution reshaping/validation logic so we
     # tactically implement a few of the `_call_*` redirectors.
-    #def _call_sample_n(self, sample_shape, seed, name):
+    # def _call_sample_n(self, sample_shape, seed, name):
     #    with self._name_and_control_scope(name):
     #        return self._sample_n(
     #            sample_shape, seed=seed() if callable(seed) else seed)
@@ -28,20 +27,24 @@ class TreeDistribution(tfp.distributions.Distribution):
 
     def _call_sample_n(self, sample_shape, seed, name, **kwargs):
         with self._name_and_control_scope(name):
-            sample_shape = tf.cast(sample_shape, tf.int32, name='sample_shape')
-            sample_shape, n = self._expand_sample_shape_to_vector(sample_shape, 'sample_shape')
+            sample_shape = tf.cast(sample_shape, tf.int32, name="sample_shape")
+            sample_shape, n = self._expand_sample_shape_to_vector(
+                sample_shape, "sample_shape"
+            )
             tree_samples = self._sample_n(n, seed)
 
             def reshape_samples(samples):
                 batch_event_shape = tf.shape(samples)[1:]
                 final_shape = tf.concat([sample_shape, batch_event_shape], 0)
                 samples = tf.reshape(samples, final_shape)
-                #samples = self._set_sample_static_shape(samples, sample_shape)
+                # samples = self._set_sample_static_shape(samples, sample_shape)
                 return samples
 
             return {
-                'heights': reshape_samples(tree_samples['heights']),
-                'topology': {
-                    'parent_indices': reshape_samples(tree_samples['topology']['parent_indices'])
-                }
+                "heights": reshape_samples(tree_samples["heights"]),
+                "topology": {
+                    "parent_indices": reshape_samples(
+                        tree_samples["topology"]["parent_indices"]
+                    )
+                },
             }
