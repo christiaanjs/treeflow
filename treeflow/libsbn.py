@@ -1,9 +1,10 @@
-import libsbn
 import treeflow.tree_processing
 import numpy as np
 
 
 def get_instance(newick_file, dated=True, name="treeflow"):
+    import libsbn
+
     inst = libsbn.rooted_instance(name)
     inst.read_newick_file(newick_file)
     if dated:

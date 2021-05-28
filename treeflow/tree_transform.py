@@ -2,7 +2,6 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import treeflow.tf_util
 import numpy as np
-import libsbn
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 
@@ -116,6 +115,11 @@ class BranchBreaking(tfp.bijectors.Bijector):  # TODO: Broadcast over batch_dims
 class Ratio(BranchBreaking):
     def __init__(self, inst, *args, name="BranchBreaking", **kwargs):
         super(Ratio, self).__init__(*args, **kwargs)
+
+        import libsbn
+
+        self.libsbn = libsbn
+
         self.inst = inst
         self.tree = inst.tree_collection.trees[0]
         self.node_height_state = np.array(self.tree.node_heights, copy=False)
@@ -129,7 +133,7 @@ class Ratio(BranchBreaking):
     def _ratio_gradient_numpy(self, heights, dheights):
         self.node_height_state[-heights.shape[-1] :] = heights
         return np.array(
-            libsbn.ratio_gradient_of_height_gradient(self.tree, dheights, False),
+            self.libsbn.ratio_gradient_of_height_gradient(self.tree, dheights, False),
             dtype=heights.dtype,
         )
 

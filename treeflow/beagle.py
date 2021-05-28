@@ -1,4 +1,3 @@
-import libsbn
 import tensorflow as tf
 import treeflow.substitution_model
 import treeflow.libsbn
@@ -16,6 +15,8 @@ def log_prob_conditioned_branch_only(
     dated=True,
     **subst_model_params
 ):
+    import libsbn
+
     if isinstance(subst_model, treeflow.substitution_model.JC):
         subst_model_string = "JC69"
         param_updates = {}
