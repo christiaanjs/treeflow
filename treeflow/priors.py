@@ -94,6 +94,10 @@ def get_params_for_quantiles_lognormal_conjugate(
     )
 
 
+def precision_to_scale_np(x):
+    return np.sqrt(1.0 / x)
+
+
 def precision_to_scale(x):
     return tf.sqrt(1.0 / x)
 
