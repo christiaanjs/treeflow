@@ -11,8 +11,15 @@ lognormal_dist = tfp.distributions.LogNormal(
 )
 
 
+class MockJointDistribution:
+    def __init__(self, keys):
+        self.model = {x: 0 for x in keys}
+
+
+@pytest.mark.parametrize("prior_keys", [("clock_rate", "tree"), ("tree",)])
 @pytest.mark.parametrize("rate_approx", ["scaled", "mean_field"])
-def test_rate_approx_joint_sample_vector(hello_newick_file, rate_approx):
+def test_rate_approx_joint_sample_vector(hello_newick_file, rate_approx, prior_keys):
+    mock_prior = MockJointDistribution(prior_keys)
     tree_approx, _ = treeflow.model.construct_tree_approximation(hello_newick_file)
     blens = treeflow.sequences.get_branch_lengths(tree_approx.sample())
     rate_dist = tfp.distributions.LogNormal(tf.zeros_like(blens), tf.ones_like(blens))
@@ -21,7 +28,7 @@ def test_rate_approx_joint_sample_vector(hello_newick_file, rate_approx):
             clock_rate=lognormal_dist,
             tree=tree_approx,
             rates=treeflow.model.construct_rate_approximation(
-                rate_dist, approx_model=rate_approx
+                rate_dist, mock_prior, approx_model=rate_approx
             )[0],
         )
     )
@@ -63,8 +70,9 @@ def test_construct_prior_approx(hello_newick_file):
     prior = tfp.distributions.JointDistributionNamed(
         dict(clock_rate=lognormal_dist, pop_size=lognormal_dist)
     )
+    prior_sample = prior.sample()
     approx = tfp.distributions.JointDistributionNamed(
-        treeflow.model.construct_prior_approximation(prior)[0]
+        treeflow.model.construct_prior_approximation(prior, prior_sample)[0]
     )
     sample = approx.sample()
     for key in prior.sample():
