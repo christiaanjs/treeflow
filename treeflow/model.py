@@ -41,6 +41,13 @@ def lognormal_loc_mode_match(mode, scale=1.0):
     return tf.math.log(mode) + scale
 
 
+def get_normal_conjugate_approximation(param, prior_params, input_callable):
+    conjugate_dict = treeflow.clock_approx.get_normal_conjugate_posterior_dict(
+        **prior_params
+    )
+    return input_callable(conjugate_dict[param])
+
+
 def construct_distribution_approximation(
     model_name,
     dist_name,
@@ -48,7 +55,7 @@ def construct_distribution_approximation(
     init_mode=None,
     vars=None,
     approx=None,
-    **approx_kwargs
+    **approx_kwargs,
 ):
     if approx is None:
         approx = "mean_field"
@@ -129,7 +136,9 @@ def construct_distribution_approximation(
                 "Scaled approximation only valid for nonnegative support, not "
                 + support
             )
-
+    elif approx == "normal_conjugate":
+        dist = get_normal_conjugate_approximation(**approx_kwargs)
+        vars = {}
     return dist, vars
 
 
@@ -149,7 +158,7 @@ def construct_prior_approximation(
             dist,
             init_mode.get(name),
             vars.get(name),
-            **(approxs.get(name) or {})
+            **(approxs.get(name) or {}),
         )
         for name, dist in dists
     ]
@@ -203,7 +212,7 @@ def construct_tree_approximation(
             reinterpreted_batch_ndims=1,
         )
     else:
-        raise ValueError("Approximation not yet implemented for support: " + support)
+        raise ValueError(f"Approx model not yet implemented: {approx_model}")
 
     height_dist = treeflow.tree_transform.FixedLeafHeightDistribution(
         tfd.TransformedDistribution(pretransformed_distribution, bijector=tree_chain),
@@ -256,14 +265,25 @@ def construct_rate_approximation(
     return final_dist, vars
 
 
-def get_log_posterior(prior, likelihood, relaxed_clock=False):
-    if relaxed_clock:
-        return lambda **z: likelihood(
-            treeflow.sequences.get_branch_lengths(z["tree"])
+def get_log_posterior(prior, likelihood):
+    if "rates" in prior.model and "clock_rate" in prior.model:
+        blen_func = (
+            lambda **z: treeflow.sequences.get_branch_lengths(z["tree"])
             * z["clock_rate"]
             * z["rates"]
-        ) + prior.log_prob(z)
+        )
+    elif "rates" in prior.model:
+        blen_func = (
+            lambda **z: treeflow.sequences.get_branch_lengths(z["tree"]) * z["rates"]
+        )
+    elif "clock_rate" in prior.model:
+        blen_func = (
+            lambda **z: treeflow.sequences.get_branch_lengths(z["tree"])
+            * z["clock_rate"]
+        )
     else:
-        return lambda **z: likelihood(
-            treeflow.sequences.get_branch_lengths(z["tree"]) * z["clock_rate"]
-        ) + prior.log_prob(z)
+        raise ValueError(
+            "One or both of clock_rate and rates must be modelled in the prior"
+        )
+
+    return lambda **z: likelihood(blen_func(z)) + prior.log_prob(z)
