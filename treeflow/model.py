@@ -14,6 +14,7 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF
 distribution_class_supports = {
     tfd.Normal: "real",
     tfd.LogNormal: "nonnegative",
+    tfd.Gamma: "nonnegative",
     tfd.Beta: "01",
     tfd.Dirichlet: "simplex",
 }
@@ -142,11 +143,25 @@ def construct_distribution_approximation(
     return dist, vars
 
 
+def get_concrete_dist(dist, sample):
+    if isinstance(dist, tfp.distributions.Distribution):
+        return dist
+    else:
+        return dist(
+            *[
+                sample[arg]
+                for arg in tfp.distributions.joint_distribution_sequential._get_required_args(
+                    dist
+                )
+            ]
+        )
+
+
 def construct_prior_approximation(
-    prior, approx_name="q", init_mode={}, vars={}, approxs={}
+    prior, prior_sample, approx_name="q", init_mode={}, vars={}, approxs={}
 ):
     dists = [
-        (name, dist)
+        (name, get_concrete_dist(dist, prior_sample))
         for name, dist in prior.model.items()
         if name not in ["tree", "rates"]
     ]
@@ -228,7 +243,12 @@ def construct_tree_approximation(
 
 
 def construct_rate_approximation(
-    rate_dist, approx_name="q", dist_name="rates", approx_model="mean_field", vars=None
+    rate_dist,
+    prior,
+    approx_name="q",
+    dist_name="rates",
+    approx_model="mean_field",
+    vars=None,
 ):
     base_dist, vars = construct_distribution_approximation(
         approx_name, dist_name, rate_dist, vars=vars
@@ -241,25 +261,16 @@ def construct_rate_approximation(
         base_dist_callable = lambda **vars: construct_distribution_approximation(
             approx_name, dist_name, rate_dist, vars=vars
         )[0]
-        final_dist = (
-            lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(
-                base_dist_callable, tree, clock_rate, **vars
+        if "clock_rate" in prior.model:
+            final_dist = (
+                lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(
+                    base_dist_callable, tree, clock_rate, **vars
+                )
             )
-        )
-    elif approx_model == "tuneable":  # TODO: Remove tuneable?
-        base_dist_callable = lambda **vars: construct_distribution_approximation(
-            approx_name, dist_name, rate_dist, vars=vars
-        )[0]
-        scale_power_key = "scale_power_logit"
-        if scale_power_key not in vars:
-            vars[scale_power_key] = tf.Variable(
-                tf.zeros(rate_dist.event_shape, rate_dist.dtype),
-                name="{0}_{1}_{2}".format(approx_name, dist_name, scale_power_key),
+        else:
+            final_dist = lambda tree: treeflow.clock_approx.ScaledRateDistribution(
+                base_dist_callable, tree, **vars
             )
-        scale_power = tfp.util.DeferredTensor(vars[scale_power_key], tf.math.sigmoid)
-        final_dist = lambda tree, clock_rate: treeflow.clock_approx.TuneableScaledRateDistribution(
-            base_dist_callable, scale_power, tree, clock_rate, **vars
-        )
     else:
         raise ValueError("Rate approximation not known: " + approx_model)
     return final_dist, vars
