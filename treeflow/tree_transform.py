@@ -108,7 +108,7 @@ class BranchBreaking(tfp.bijectors.Bijector):  # TODO: Broadcast over batch_dims
 
     def _inverse_log_det_jacobian(self, y):
         return treeflow.tf_util.vectorize_1d_if_needed(
-            self._inverse_log_det_jacobian_1d, y, tf.shape(y).shape[0] - 1
+            self._inverse_log_det_jacobian_1d, y, tf.shape(tf.shape(y))[0] - 1
         )
 
 

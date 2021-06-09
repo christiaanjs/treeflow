@@ -297,4 +297,4 @@ def get_log_posterior(prior, likelihood):
             "One or both of clock_rate and rates must be modelled in the prior"
         )
 
-    return lambda **z: likelihood(blen_func(z)) + prior.log_prob(z)
+    return lambda **z: likelihood(blen_func(**z)) + prior.log_prob(z)
