@@ -250,27 +250,57 @@ def construct_rate_approximation(
     approx_model="mean_field",
     vars=None,
 ):
-    base_dist, vars = construct_distribution_approximation(
-        approx_name, dist_name, rate_dist, vars=vars
-    )  # TODO: Init mode
     if approx_model == "mean_field":
+
+        base_dist, vars = construct_distribution_approximation(
+            approx_name, dist_name, rate_dist, vars=vars
+        )  # TODO: Init mode
         final_dist = base_dist
     elif (
         approx_model == "scaled"
     ):  # TODO: Does it make sense to use construct_distribution_approximation here? Is DeferredTensor an issue?
-        base_dist_callable = lambda **vars: construct_distribution_approximation(
-            approx_name, dist_name, rate_dist, vars=vars
-        )[0]
-        if "clock_rate" in prior.model:
-            final_dist = (
-                lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(
-                    base_dist_callable, tree, clock_rate, **vars
+
+        if vars is None:
+            full_shape = rate_dist.batch_shape + rate_dist.event_shape
+            vars = get_normal_approx_vars(
+                rate_dist,
+                approx_name,
+                dist_name,
+                init_loc=None,
+            )
+            vars["corr_inv_softplus"] = tf.Variable(
+                tf.zeros(full_shape, dtype=rate_dist.dtype),
+                "{0}_{1}_corr_inv_softplus".format(approx_name, dist_name),
+            )
+
+        def base_rate_dist(tree):
+            def inner_rate_dist(loc, scale_inverse_softplus, corr_inv_softplus):
+                base_dist = tfd.Normal(
+                    loc=loc, scale=scale_constraint(scale_inverse_softplus)
                 )
-            )
-        else:
-            final_dist = lambda tree: treeflow.clock_approx.ScaledRateDistribution(
-                base_dist_callable, tree, **vars
-            )
+                blens = treeflow.sequences.get_branch_lengths(tree)
+                corr = scale_constraint(corr_inv_softplus)
+                log_d_dist = tfd.TransformedDistribution(
+                    base_dist, tfp.bijectors.Shift(corr * tf.math.log(blens))
+                )
+                return tfd.TransformedDistribution(log_d_dist, tfp.bijectors.Exp())
+
+            return inner_rate_dist
+
+        final_dist = lambda tree: treeflow.clock_approx.ScaledRateDistribution(
+            base_rate_dist(tree), tree, **vars
+        )
+
+    #     if "clock_rate" in prior.model:
+    #         final_dist = (
+    #             lambda tree, clock_rate: treeflow.clock_approx.ScaledRateDistribution(
+    #                 base_dist_callable, tree, clock_rate, **vars
+    #             )
+    #         )
+    #     else:
+    #         final_dist = lambda tree: treeflow.clock_approx.ScaledRateDistribution(
+    #             base_dist_callable, tree, **vars
+    #         )
     else:
         raise ValueError("Rate approximation not known: " + approx_model)
     return final_dist, vars
