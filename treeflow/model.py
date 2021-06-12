@@ -5,6 +5,7 @@ import treeflow.tf_util
 import treeflow.coalescent
 import treeflow.substitution_model
 import treeflow.clock_approx
+import treeflow.priors
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -137,9 +138,34 @@ def construct_distribution_approximation(
                 "Scaled approximation only valid for nonnegative support, not "
                 + support
             )
-    elif approx == "normal_conjugate":
+    elif approx == "normal_conjugate":  # concentration, rate, loc, precision_scale
+        if vars is None:
+            cast = lambda x: tf.convert_to_tensor(x, dtype=distribution.dtype)
+            prior_params = approx_kwargs["prior_params"]
+            vars = dict(
+                rate_concentration_inv_softplus=tf.Variable(
+                    tfp.math.softplus_inverse(cast(prior_params["concentration"])),
+                    name=f"{model_name}_{dist_name}_rate_concentration_inv_softplus",
+                ),
+                rate_rate_inv_softplus=tf.Variable(
+                    tfp.math.softplus_inverse(cast(prior_params["rate"])),
+                    name=f"{model_name}_{dist_name}_rate_rate_inv_softplus",
+                ),
+                rate_loc=tf.Variable(
+                    cast(prior_params["loc"]), name=f"{model_name}_{dist_name}_rate_loc"
+                ),
+                rate_precision_scale=tf.Variable(
+                    tfp.math.softplus_inverse(cast(prior_params["precision_scale"])),
+                    name=f"{model_name}_{dist_name}_rate_precision_scale_inv_softplus",
+                ),
+            )
+        approx_kwargs["prior_params"] = dict(
+            concentration=scale_constraint(vars["rate_concentration_inv_softplus"]),
+            rate=scale_constraint(vars["rate_rate_inv_softplus"]),
+            loc=vars["rate_loc"],
+            precision_scale=scale_constraint(vars["rate_precision_scale"]),
+        )
         dist = get_normal_conjugate_approximation(**approx_kwargs)
-        vars = {}
     return dist, vars
 
 
@@ -262,34 +288,49 @@ def construct_rate_approximation(
 
         if vars is None:
             full_shape = rate_dist.batch_shape + rate_dist.event_shape
-            vars = get_normal_approx_vars(
-                rate_dist,
-                approx_name,
-                dist_name,
-                init_loc=None,
+            vars = {}
+            vars["log_r_prior_loc"] = tf.Variable(
+                tf.zeros(rate_dist.batch_shape, dtype=rate_dist.dtype),
+                name="{0}_{1}_log_r_prior_loc".format(approx_name, dist_name),
             )
-            vars["corr_inv_softplus"] = tf.Variable(
+            vars["log_r_prior_precision_inv_softplus"] = tf.Variable(
+                tf.zeros(rate_dist.batch_shape, dtype=rate_dist.dtype),
+                name="{0}_{1}_log_r_prior_precision_inv_softplus".format(
+                    approx_name, dist_name
+                ),
+            )
+            vars["log_d"] = tf.Variable(
                 tf.zeros(full_shape, dtype=rate_dist.dtype),
-                "{0}_{1}_corr_inv_softplus".format(approx_name, dist_name),
+                name="{0}_{1}_log_d".format(approx_name, dist_name),
+            )
+            vars["log_r_precision_inv_softplus"] = tf.Variable(
+                tf.zeros(full_shape, dtype=rate_dist.dtype),
+                name="{0}_{1}_log_r_precision_inv_softplus".format(
+                    approx_name, dist_name
+                ),
             )
 
-        def base_rate_dist(tree):
-            def inner_rate_dist(loc, scale_inverse_softplus, corr_inv_softplus):
-                base_dist = tfd.Normal(
-                    loc=loc, scale=scale_constraint(scale_inverse_softplus)
-                )
-                blens = treeflow.sequences.get_branch_lengths(tree)
-                corr = scale_constraint(corr_inv_softplus)
-                log_d_dist = tfd.TransformedDistribution(
-                    base_dist, tfp.bijectors.Shift(corr * tf.math.log(blens))
-                )
-                return tfd.TransformedDistribution(log_d_dist, tfp.bijectors.Exp())
+        def rate_dist(tree):
+            log_blens = tf.math.log(treeflow.sequences.get_branch_lengths(tree))
+            observations = vars["log_d"] - log_blens
+            prior_precision = tf.expand_dims(
+                scale_constraint(vars["log_r_prior_precision_inv_softplus"]), -1
+            )
+            prior_loc = tf.expand_dims(vars["log_r_prior_loc"], -1)
+            sampling_precision = scale_constraint(vars["log_r_precision_inv_softplus"])
+            posterior_precision = prior_precision + sampling_precision
+            posterior_loc = (
+                prior_loc * prior_precision + observations * sampling_precision
+            ) / posterior_precision
+            return tfd.Independent(
+                tfd.LogNormal(
+                    loc=posterior_loc,
+                    scale=treeflow.priors.precision_to_scale(posterior_precision),
+                ),
+                reinterpreted_batch_ndims=1,
+            )
 
-            return inner_rate_dist
-
-        final_dist = lambda tree: treeflow.clock_approx.ScaledRateDistribution(
-            base_rate_dist(tree), tree, **vars
-        )
+        final_dist = rate_dist
 
     #     if "clock_rate" in prior.model:
     #         final_dist = (
