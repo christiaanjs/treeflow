@@ -101,7 +101,7 @@ def get_branch_lengths(tree):
     )
 
 
-def log_prob_conditioned(value, topology, category_count):
+def log_prob_conditioned(value, topology, category_count, custom_gradient=True):
 
     likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(
         category_count=category_count
@@ -125,80 +125,102 @@ def log_prob_conditioned(value, topology, category_count):
         def redict_params(subst_model_params):
             return dict(zip(subst_model_param_keys, subst_model_params))
 
-        @tf.custom_gradient
-        def log_prob_flat(
-            branch_lengths,
-            category_weights,
-            category_rates,
-            frequencies,
-            *subst_model_params_list
-        ):
-            subst_model_params = redict_params(subst_model_params_list)
-            eigendecomp = subst_model.eigen(frequencies, **subst_model_params)
-            transition_probs = treeflow.substitution_model.transition_probs(
-                eigendecomp, category_rates, branch_lengths
-            )
-            likelihood.compute_postorder_partials(transition_probs)
+        if custom_gradient:
 
-            def grad(dlog_prob):
-                likelihood.init_preorder_partials(frequencies)
-                likelihood.compute_preorder_partials(transition_probs)
-                q = subst_model.q_norm(frequencies, **subst_model_params)
-                q_freq_differentials = subst_model.q_norm_frequency_differentials(
-                    frequencies, **subst_model_params
+            @tf.custom_gradient
+            def log_prob_flat(
+                branch_lengths,
+                category_weights,
+                category_rates,
+                frequencies,
+                *subst_model_params_list
+            ):
+                subst_model_params = redict_params(subst_model_params_list)
+                eigendecomp = subst_model.eigen(frequencies, **subst_model_params)
+                transition_probs = treeflow.substitution_model.transition_probs(
+                    eigendecomp, category_rates, branch_lengths
                 )
-                freq_differentials = [
-                    treeflow.substitution_model.transition_probs_differential(
-                        q_freq_differentials[i],
-                        eigendecomp,
-                        branch_lengths,
-                        category_rates,
+                likelihood.compute_postorder_partials(transition_probs)
+
+                def grad(dlog_prob):
+                    likelihood.init_preorder_partials(frequencies)
+                    likelihood.compute_preorder_partials(transition_probs)
+                    q = subst_model.q_norm(frequencies, **subst_model_params)
+                    q_freq_differentials = subst_model.q_norm_frequency_differentials(
+                        frequencies, **subst_model_params
                     )
-                    for i in range(4)
-                ]
-                q_param_differentials = subst_model.q_norm_param_differentials(
-                    frequencies, **subst_model_params
-                )
-                param_grads = [
-                    likelihood.compute_derivative(
+                    freq_differentials = [
                         treeflow.substitution_model.transition_probs_differential(
-                            q_param_differentials[param_key],
+                            q_freq_differentials[i],
                             eigendecomp,
                             branch_lengths,
                             category_rates,
-                        ),
-                        category_weights,
+                        )
+                        for i in range(4)
+                    ]
+                    q_param_differentials = subst_model.q_norm_param_differentials(
+                        frequencies, **subst_model_params
                     )
-                    for param_key in subst_model_param_keys
-                ]
-                return [
-                    dlog_prob * grad
-                    for grad in (
-                        [
-                            likelihood.compute_branch_length_derivatives(
-                                q, category_rates, category_weights
+                    param_grads = [
+                        likelihood.compute_derivative(
+                            treeflow.substitution_model.transition_probs_differential(
+                                q_param_differentials[param_key],
+                                eigendecomp,
+                                branch_lengths,
+                                category_rates,
                             ),
-                            likelihood.compute_weight_derivatives(category_weights),
-                            likelihood.compute_rate_derivatives(
-                                q, branch_lengths, category_weights
-                            ),
-                            tf.stack(
-                                [
-                                    likelihood.compute_frequency_derivative(
-                                        freq_differentials[i], i, category_weights
-                                    )
-                                    for i in range(4)
-                                ]
-                            ),
-                        ]
-                        + param_grads
-                    )
-                ]
+                            category_weights,
+                        )
+                        for param_key in subst_model_param_keys
+                    ]
+                    return [
+                        dlog_prob * grad
+                        for grad in (
+                            [
+                                likelihood.compute_branch_length_derivatives(
+                                    q, category_rates, category_weights
+                                ),
+                                likelihood.compute_weight_derivatives(category_weights),
+                                likelihood.compute_rate_derivatives(
+                                    q, branch_lengths, category_weights
+                                ),
+                                tf.stack(
+                                    [
+                                        likelihood.compute_frequency_derivative(
+                                            freq_differentials[i], i, category_weights
+                                        )
+                                        for i in range(4)
+                                    ]
+                                ),
+                            ]
+                            + param_grads
+                        )
+                    ]
 
-            log_prob_val = likelihood.compute_likelihood_from_partials(
-                frequencies, category_weights
-            )
-            return log_prob_val, grad  # TODO: Cache site likelihoods
+                log_prob_val = likelihood.compute_likelihood_from_partials(
+                    frequencies, category_weights
+                )
+                return log_prob_val, grad  # TODO: Cache site likelihoods
+
+        else:
+
+            def log_prob_flat(
+                branch_lengths,
+                category_weights,
+                category_rates,
+                frequencies,
+                *subst_model_params_list
+            ):
+                subst_model_params = redict_params(subst_model_params_list)
+                eigendecomp = subst_model.eigen(frequencies, **subst_model_params)
+                transition_probs = treeflow.substitution_model.transition_probs(
+                    eigendecomp, category_rates, branch_lengths
+                )
+                likelihood.compute_postorder_partials(transition_probs)
+                log_prob_val = likelihood.compute_likelihood_from_partials(
+                    frequencies, category_weights
+                )
+                return log_prob_val
 
         def log_prob_1d(elems):
             branch_lengths, category_weights, category_rates, frequencies = elems[:4]

@@ -6,6 +6,20 @@ import treeflow.tree_processing
 import tensorflow as tf
 
 
+def test_log_prob_optional_custom_gradient(
+    hky_params, weights_rates, hello_newick_file, hello_fasta_file
+):
+    subst_model = treeflow.substitution_model.HKY()
+    category_weights, category_rates = weights_rates
+
+    tree, taxon_names = treeflow.tree_processing.parse_newick(hello_newick_file)
+
+    value = treeflow.sequences.get_encoded_sequences(hello_fasta_file, taxon_names)
+    log_prob_autodiff = treeflow.sequences.log_prob_conditioned(
+        value, tree["topology"], len(category_rates)
+    )
+
+
 @pytest.mark.parametrize(
     "grad_param", ["kappa", "frequencies", "rates", "weights", "branch_lengths"]
 )

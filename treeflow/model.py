@@ -214,17 +214,19 @@ def construct_tree_approximation(
     if approx_model == "mean_field":
         if vars is None:
             vars = dict(
-                m=tf.Variable(
+                loc=tf.Variable(
                     init_heights_trans,
                     name="{0}_{1}_loc".format(approx_name, dist_name),
                 ),
-                s=tf.Variable(
+                scale_inverse_softplus=tf.Variable(
                     tf.zeros_like(init_heights_trans),
                     name="{0}_{1}_scale_inv_softplus".format(approx_name, dist_name),
                 ),
             )
         pretransformed_distribution = tfd.Independent(
-            tfd.Normal(loc=vars["m"], scale=scale_constraint(vars["s"])),
+            tfd.Normal(
+                loc=vars["loc"], scale=scale_constraint(vars["scale_inverse_softplus"])
+            ),
             reinterpreted_batch_ndims=1,
         )
     else:
