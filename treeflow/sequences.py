@@ -270,38 +270,61 @@ def log_prob_conditioned_branch_only(
     category_weights,
     category_rates,
     frequencies,
+    custom_gradient=True,
     **subst_model_params
 ):
 
     likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(
         category_count=category_count
     )
-    likelihood.set_topology(topology)
+    likelihood.set_topology(treeflow.tree_processing.update_topology_dict(topology))
     likelihood.init_postorder_partials(
         value["sequences"],
         pattern_counts=(value["weights"] if "weights" in value else None),
     )
 
-    @tf.custom_gradient
-    def log_prob(branch_lengths):
-        eigendecomp = subst_model.eigen(frequencies, **subst_model_params)
-        transition_probs = treeflow.substitution_model.transition_probs(
-            eigendecomp, category_rates, branch_lengths
-        )
-        likelihood.compute_postorder_partials(transition_probs)
+    if custom_gradient:
 
-        def grad(dlog_prob):
-            likelihood.init_preorder_partials(frequencies)
-            likelihood.compute_preorder_partials(transition_probs)
-            q = subst_model.q_norm(frequencies, **subst_model_params)
-            return dlog_prob * likelihood.compute_branch_length_derivatives(
-                q, category_rates, category_weights
+        @tf.custom_gradient
+        def log_prob_1d(branch_lengths):
+            eigendecomp = subst_model.eigen(frequencies, **subst_model_params)
+            transition_probs = treeflow.substitution_model.transition_probs(
+                eigendecomp, category_rates, branch_lengths
             )
+            likelihood.compute_postorder_partials(transition_probs)
 
-        log_prob_val = likelihood.compute_likelihood_from_partials(
-            frequencies, category_weights
+            @tf.function
+            def grad(dlog_prob):
+                likelihood.init_preorder_partials(frequencies)
+                likelihood.compute_preorder_partials(transition_probs)
+                q = subst_model.q_norm(frequencies, **subst_model_params)
+                return dlog_prob * likelihood.compute_branch_length_derivatives(
+                    q, category_rates, category_weights
+                )
+
+            log_prob_val = likelihood.compute_likelihood_from_partials(
+                frequencies, category_weights
+            )
+            return log_prob_val, grad  # TODO: Cache site likelihoods
+
+    else:
+
+        def log_prob_1d(branch_lengths):
+            eigendecomp = subst_model.eigen(frequencies, **subst_model_params)
+            transition_probs = treeflow.substitution_model.transition_probs(
+                eigendecomp, category_rates, branch_lengths
+            )
+            likelihood.compute_postorder_partials(transition_probs)
+            log_prob_val = likelihood.compute_likelihood_from_partials(
+                frequencies, category_weights
+            )
+            return log_prob_val
+
+    def log_prob(branch_lengths):
+        batch_shape = branch_lengths.shape[:-1]
+        return treeflow.tf_util.vectorize_1d_if_needed(
+            log_prob_1d, branch_lengths, batch_shape.rank
         )
-        return log_prob_val, grad  # TODO: Cache site likelihoods
 
     return log_prob, likelihood
 
