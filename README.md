@@ -1,5 +1,7 @@
 # treeflow
 
+Phylogenetics in Tensorflow
+
 ## Development installation
 
 1. Build and install [`libsbn`](https://github.com/phylovi/libsbn)
