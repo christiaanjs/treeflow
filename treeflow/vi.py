@@ -55,13 +55,13 @@ def minimize_eager(
             loss=initial_loss,
             gradients=initial_grads,
             parameters=initial_parameters,
-            step=step,
+            step=tf.convert_to_tensor(step),
             has_converged=has_converged,
             convergence_criterion_state=initial_convergence_criterion_state,
         )
     )
     trace_arrays = tf.nest.map_structure(
-        lambda t: np.array(shape=(num_steps,) + t.shape, dtype=t.dtype),
+        lambda t: np.zeros((num_steps,) + t.numpy().shape, dtype=t.numpy().dtype),
         initial_traced_values,
     )
     tf.nest.map_structure(
@@ -70,6 +70,7 @@ def minimize_eager(
         initial_traced_values,
     )
 
+    convergence_criterion_state = initial_convergence_criterion_state
     for step in iter(1, num_steps):
         try:
             loss, grads, parameters = optimizer_step(step)
@@ -85,9 +86,9 @@ def minimize_eager(
                     loss=loss,
                     gradients=grads,
                     parameters=parameters,
-                    step=step,
+                    step=tf.convert_to_tensor(step),
                     has_converged=has_converged,
-                    convergence_criterion_state=initial_convergence_criterion_state,
+                    convergence_criterion_state=convergence_criterion_state,
                 )
             )
             tf.nest.map_structure(
@@ -101,7 +102,7 @@ def minimize_eager(
         except KeyboardInterrupt:
             print("Exiting after {0} iterations".format(step))
             break
-    return trace_arrays
+    return tf.nest.map_structure(lambda ta: ta[: step + 1], trace_arrays)
 
 
 def fit_surrogate_posterior(
