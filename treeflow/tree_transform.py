@@ -212,6 +212,12 @@ class Deterministic(tfp.distributions.Deterministic):
     def _prob(self, x):
         return tf.cast(super(Deterministic, self)._prob(x), dtype=self.prob_dtype)
 
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        return tfp.distributions.Deterministic._parameter_properties(
+            dtype, num_classes=num_classes
+        )
+
 
 class FixedTopologyDistribution(tfp.distributions.JointDistributionNamed):
     def __init__(self, height_distribution, topology, name="FixedTopologyDistribution"):

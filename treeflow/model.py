@@ -190,7 +190,12 @@ def construct_tree_approximation(
     inst=None,
     vars=None,
 ):
-    tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
+    if inst is None:
+        tree, _ = treeflow.tree_processing.parse_newick(newick_file)
+    else:
+        import treeflow.libsbn
+
+        tree = treeflow.libsbn.get_tree_info(inst).tree
     topology = treeflow.tree_processing.update_topology_dict(tree["topology"])
     taxon_count = (tree["heights"].shape[0] + 1) // 2
     anchor_heights = treeflow.tree_processing.get_node_anchor_heights(
