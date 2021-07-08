@@ -95,6 +95,7 @@ def newick_file(request):
         (hello_newick_file_(), False),
         (wnv_newick_file_(), True),
         (str(data_dir / "dengue.nwk"), True),
+        (str(data_dir / "tree=sim.newick"), True),
     ]
 )
 def newick_file_dated(request):

@@ -1,15 +1,12 @@
 from numpy.core.numeric import identity
 import tensorflow_probability as tfp
-from tensorflow_probability.python import math as tfp_math
 from tensorflow_probability.python.math.minimize import (
     MinimizeTraceableQuantities,
     _trace_loss,
 )
-from tensorflow_probability.python.vi import csiszar_divergence
-from tensorflow_probability.python.internal import nest_util
+from tensorflow_probability.python.vi.optimization import _reparameterized_elbo
 import numpy as np
 import tensorflow as tf
-import tqdm
 
 
 def minimize_eager(
@@ -110,16 +107,22 @@ def fit_surrogate_posterior(
     surrogate_posterior,
     optimizer,
     num_steps,
+    variational_loss_fn=_reparameterized_elbo,
+    sample_size=1,
     seed=None,
-    **min_kwargs
+    **opt_kwargs
 ):
-    def kl():
-        q_samples = surrogate_posterior.sample(seed=seed)
-        return surrogate_posterior.log_prob(q_samples) - nest_util.call_fn(
-            target_log_prob_fn, q_samples
+    def complete_variational_loss_fn():
+        return variational_loss_fn(
+            target_log_prob_fn, surrogate_posterior, sample_size=sample_size, seed=seed
         )
 
-    return minimize_eager(kl, num_steps=num_steps, optimizer=optimizer, **min_kwargs)
+    return minimize_eager(
+        complete_variational_loss_fn,
+        num_steps=num_steps,
+        optimizer=optimizer,
+        **opt_kwargs
+    )
 
 
 def _any_nonfinite(x):
