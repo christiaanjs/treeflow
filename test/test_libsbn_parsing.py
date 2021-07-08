@@ -1,3 +1,4 @@
+import pytest
 import treeflow.tree_processing
 import treeflow.libsbn
 from numpy.testing import assert_allclose, assert_equal
