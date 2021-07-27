@@ -30,49 +30,63 @@ class TensorflowLikelihood:
         return 2 * self.taxon_count - 1
 
     def init_postorder_partials(self, sequences_encoded, pattern_counts=None):
-        taxon_count = sequences_encoded.shape[0]
-        pattern_count = sequences_encoded.shape[1]
+        """
+        Sequence shape:
+        # Taxon, ..., pattern, character
+        Partial shape:
+        # Node, ..., category, pattern, character
+        """
+        self.taxon_count = sequences_encoded.shape[0]
+        self.pattern_count = sequences_encoded.shape[-2]
         self.pattern_counts = (
-            tf.ones([pattern_count]) if pattern_counts is None else pattern_counts
+            tf.ones([self.pattern_count]) if pattern_counts is None else pattern_counts
         )
-
-        leaf_partials = tf.broadcast_to(
-            tf.expand_dims(sequences_encoded, 2),
-            [taxon_count, pattern_count, self.category_count, 4],
+        self.batch_shape = sequences_encoded.shape[1:-2]
+        character_shape = sequences_encoded.shape[-1]
+        self.leaf_partials = tf.broadcast_to(
+            tf.expand_dims(sequences_encoded, -2),  # Add category
+            [self.taxon_count]
+            + self.batch_shape
+            + [self.pattern_count, self.category_count, character_shape],
         )
-        node_partials = tf.zeros(
-            [taxon_count - 1, pattern_count, self.category_count, 4],
-            dtype=DEFAULT_FLOAT_DTYPE_TF,
-        )
-        self.postorder_partials_init = tf.concat([leaf_partials, node_partials], 0)
 
     def compute_postorder_partials(self, transition_probs):
         node_indices = tf.reshape(self.node_indices_tensor, [-1, 1, 1])
         child_transition_probs = tf.gather(transition_probs, self.child_indices_tensor)
 
-        def do_integration(partials, elems):
-            node_index, node_child_transition_probs, node_child_indices = elems
-            child_partials = tf.gather(partials, node_child_indices)
+        partials = tf.TensorArray(
+            dtype=DEFAULT_FLOAT_DTYPE_TF,
+            size=self.get_vertex_count(),
+            element_shape=self.leaf_partials.shape[1:],
+        )
+        for i in range(self.taxon_count):
+            partials.write(i, self.leaf_partials[i])
+
+        for i in range(self.taxon_count - 1):
+            node_index = self.node_indices_tensor[i]
+            node_child_transition_probs = child_transition_probs[
+                i
+            ]  # child, ..., parent character, child character
+            node_child_indices = self.child_indices_tensor[i]
+            child_partials = partials.gather(
+                node_child_indices
+            )  # Child, ..., pattern, child character
             node_partials = tf.reduce_prod(
                 tf.reduce_sum(
-                    tf.expand_dims(node_child_transition_probs, 1)
-                    * tf.expand_dims(child_partials, 3),
-                    axis=4,
+                    tf.expand_dims(
+                        node_child_transition_probs, -3
+                    )  # child, ..., pattern, parent char, child char
+                    * tf.expand_dims(child_partials, -2),
+                    axis=-2,
                 ),
                 axis=0,
             )
-            return tf.tensor_scatter_nd_update(
-                partials, node_index, tf.expand_dims(node_partials, axis=0)
-            )
-
-        self.postorder_partials = tf.scan(
-            do_integration,
-            (node_indices, child_transition_probs, self.child_indices_tensor),
-            self.postorder_partials_init,
-        )[-1]
+            partials.write(node_index, node_partials)
+        self.postorder_partials = partials
 
     def compute_likelihood_from_partials(self, freqs, category_weights):
-        cat_likelihoods = tf.reduce_sum(freqs * self.postorder_partials[-1], axis=-1)
+        root_partials = self.postorder_partials.gather([-1])[0]
+        cat_likelihoods = tf.reduce_sum(freqs * root_partials, axis=-1)
         site_likelihoods = tf.reduce_sum(category_weights * cat_likelihoods, axis=-1)
         return tf.reduce_sum(
             tf.math.log(site_likelihoods) * self.pattern_counts, axis=-1
@@ -97,6 +111,7 @@ class TensorflowLikelihood:
         return self.compute_likelihood_from_partials(freqs, category_weights)
 
     def init_preorder_partials(self, frequencies):
+        return
         zeros = tf.zeros(
             [self.get_vertex_count(), len(self.pattern_counts), self.category_count, 4],
             dtype=DEFAULT_FLOAT_DTYPE_TF,
@@ -114,6 +129,7 @@ class TensorflowLikelihood:
         )
 
     def compute_preorder_partials(self, transition_probs):
+        return
         node_indices = tf.reshape(self.preorder_indices_tensor, [-1, 1, 1])
         preorder_transition_probs = tf.gather(
             transition_probs, self.preorder_indices_tensor
