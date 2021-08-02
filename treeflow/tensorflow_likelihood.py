@@ -3,6 +3,8 @@ import numpy as np
 import treeflow.substitution_model
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
+DEFAULT_INT_DTYPE_TF = tf.int32  # int32 required for TensorArray.gather
+
 
 class TensorflowLikelihood:
     def __init__(self, category_count=1, *args, **kwargs):
@@ -11,19 +13,32 @@ class TensorflowLikelihood:
     def set_topology(self, topology_dict):
         self.taxon_count = len(topology_dict["postorder_node_indices"]) + 1
         self.node_indices_tensor = tf.convert_to_tensor(
-            topology_dict["postorder_node_indices"]
+            topology_dict["postorder_node_indices"], dtype=DEFAULT_INT_DTYPE_TF
         )
-        self.child_indices_tensor = tf.gather(
-            topology_dict["child_indices"], topology_dict["postorder_node_indices"]
+        self.child_indices_tensor = tf.cast(
+            tf.gather(
+                topology_dict["child_indices"], topology_dict["postorder_node_indices"]
+            ),
+            dtype=DEFAULT_INT_DTYPE_TF,
         )
 
         preorder_indices = topology_dict["preorder_indices"][1:]
-        self.preorder_indices_tensor = tf.convert_to_tensor(preorder_indices)
-        self.preorder_sibling_indices_tensor = tf.gather(
-            topology_dict["sibling_indices"], preorder_indices
+        self.preorder_indices_tensor = tf.convert_to_tensor(
+            preorder_indices, dtype=DEFAULT_INT_DTYPE_TF
         )
-        self.preorder_parent_indices_tensor = tf.gather(
-            topology_dict["parent_indices"], preorder_indices
+        self.preorder_sibling_indices_tensor = tf.cast(
+            tf.gather(
+                topology_dict["sibling_indices"],
+                preorder_indices,
+            ),
+            dtype=DEFAULT_INT_DTYPE_TF,
+        )
+        self.preorder_parent_indices_tensor = tf.cast(
+            tf.gather(
+                topology_dict["parent_indices"],
+                preorder_indices,
+            ),
+            dtype=DEFAULT_INT_DTYPE_TF,
         )
 
     def get_vertex_count(self):
@@ -71,13 +86,15 @@ class TensorflowLikelihood:
             child_partials = partials.gather(
                 node_child_indices
             )  # Child, ..., pattern, child character
+            parent_child_probs = tf.expand_dims(
+                node_child_transition_probs, -3
+            ) * tf.expand_dims(  # child, ..., pattern, parent char, child char
+                child_partials, -2
+            )
             node_partials = tf.reduce_prod(
                 tf.reduce_sum(
-                    tf.expand_dims(
-                        node_child_transition_probs, -3
-                    )  # child, ..., pattern, parent char, child char
-                    * tf.expand_dims(child_partials, -2),
-                    axis=-2,
+                    parent_child_probs,
+                    axis=-1,
                 ),
                 axis=0,
             )
@@ -85,7 +102,7 @@ class TensorflowLikelihood:
         self.postorder_partials = partials
 
     def compute_likelihood_from_partials(self, freqs, category_weights):
-        root_partials = self.postorder_partials.gather([-1])[0]
+        root_partials = self.postorder_partials.gather([2 * self.taxon_count - 2])[0]
         cat_likelihoods = tf.reduce_sum(freqs * root_partials, axis=-1)
         site_likelihoods = tf.reduce_sum(category_weights * cat_likelihoods, axis=-1)
         return tf.reduce_sum(

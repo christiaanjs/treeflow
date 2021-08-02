@@ -9,6 +9,7 @@ import treeflow.sequences
 import treeflow.tree_processing
 
 
+@pytest.mark.parametrize("function_mode", [True, False])
 def test_hky_1cat_likelihood_beast(
     prep_likelihood,
     single_hky_params,
@@ -16,20 +17,29 @@ def test_hky_1cat_likelihood_beast(
     single_weights,
     hello_newick_file,
     hello_fasta_file,
+    function_mode,
 ):
     subst_model = treeflow.substitution_model.HKY()
-    tf_likelihood = prep_likelihood(
-        hello_newick_file,
-        hello_fasta_file,
-        subst_model,
-        single_rates,
-        single_weights,
-        **single_hky_params
-    )[0]
-    assert_allclose(
-        tf_likelihood.compute_likelihood_from_partials(
+
+    def f():
+        tf_likelihood = prep_likelihood(
+            hello_newick_file,
+            hello_fasta_file,
+            subst_model,
+            single_rates,
+            single_weights,
+            **single_hky_params
+        )[0]
+        return tf_likelihood.compute_likelihood_from_partials(
             single_hky_params["frequencies"], single_weights
-        ).numpy(),
+        )
+
+    if function_mode:
+        f = tf.function(f)
+    res = f()
+
+    assert_allclose(
+        res.numpy(),
         -88.86355638556158,
         atol=1e-4,
     )
