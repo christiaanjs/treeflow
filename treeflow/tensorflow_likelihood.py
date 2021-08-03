@@ -66,13 +66,13 @@ class TensorflowLikelihood:
         )
 
     def compute_postorder_partials(self, transition_probs):
-        self.postorder_partials = tf.TensorArray(
+        self.postorder_partials_ta = tf.TensorArray(
             dtype=DEFAULT_FLOAT_DTYPE_TF,
             size=self.get_vertex_count(),
             element_shape=self.leaf_partials.shape[1:],
         )
         for i in range(self.taxon_count):
-            self.postorder_partials = self.postorder_partials.write(
+            self.postorder_partials_ta = self.postorder_partials_ta.write(
                 i, self.leaf_partials[i]
             )
 
@@ -85,12 +85,12 @@ class TensorflowLikelihood:
                 i
             ]  # child, ..., parent character, child character
             node_child_indices = self.child_indices_tensor[i]
-            child_partials = self.postorder_partials.gather(
+            child_partials = self.postorder_partials_ta.gather(
                 node_child_indices
-            )  # Child, ..., pattern, child character
+            )  # Child, ..., category, pattern, child character
             parent_child_probs = tf.expand_dims(
-                node_child_transition_probs, -3
-            ) * tf.expand_dims(  # child, ..., pattern, parent char, child char
+                node_child_transition_probs, -4
+            ) * tf.expand_dims(  # child, ..., category, pattern, parent char, child char
                 child_partials, -2
             )
             node_partials = tf.reduce_prod(
@@ -100,12 +100,12 @@ class TensorflowLikelihood:
                 ),
                 axis=0,
             )
-            self.postorder_partials = self.postorder_partials.write(
+            self.postorder_partials_ta = self.postorder_partials_ta.write(
                 node_index, node_partials
             )
 
     def compute_likelihood_from_partials(self, freqs, category_weights):
-        root_partials = self.postorder_partials.gather([2 * self.taxon_count - 2])[0]
+        root_partials = self.postorder_partials_ta.gather([2 * self.taxon_count - 2])[0]
         cat_likelihoods = tf.reduce_sum(freqs * root_partials, axis=-1)
         site_likelihoods = tf.reduce_sum(category_weights * cat_likelihoods, axis=-1)
         return tf.reduce_sum(
@@ -130,27 +130,16 @@ class TensorflowLikelihood:
         self.compute_postorder_partials(transition_probs)
         return self.compute_likelihood_from_partials(freqs, category_weights)
 
-    def init_preorder_partials(self, frequencies):
-        return
-        zeros = tf.zeros(
-            [self.get_vertex_count(), len(self.pattern_counts), self.category_count, 4],
-            dtype=DEFAULT_FLOAT_DTYPE_TF,
-        )
-        self.preorder_partials = tf.tensor_scatter_nd_update(
-            zeros,
-            np.array([[self.get_vertex_count() - 1]]),
-            tf.expand_dims(
-                tf.broadcast_to(
-                    tf.reshape(frequencies, [1, 1, 4]),
-                    (len(self.pattern_counts), self.category_count, 4),
-                ),
-                0,
-            ),
+    def init_preorder_partials(
+        self, frequencies
+    ):  # Node, ..., category, pattern, character
+        self.root_preorder_partials = tf.broadcast_to(
+            tf.expand_dims(tf.expand_dims(frequencies, -2), -2),
+            self.leaf_partials.shape[1:],
         )
 
     def compute_preorder_partials(self, transition_probs):
-        return
-        node_indices = tf.reshape(self.preorder_indices_tensor, [-1, 1, 1])
+        self.postorder_partials = self.postorder_partials_ta.stack()
         preorder_transition_probs = tf.gather(
             transition_probs, self.preorder_indices_tensor
         )
@@ -166,34 +155,32 @@ class TensorflowLikelihood:
             axis=4,
         )
 
-        def do_integration(partials, elems):
-            (
-                node_index,
-                node_sibling_sums,
-                node_transition_probs,
-                node_parent_index,
-            ) = elems
-            parent_partials = partials[node_parent_index]
-            parent_prods = parent_partials * node_sibling_sums
+        self.preorder_partials_ta = tf.TensorArray(
+            dtype=DEFAULT_FLOAT_DTYPE_TF,
+            size=self.get_vertex_count(),
+            element_shape=self.leaf_partials.shape[1:],
+        )
+
+        self.preorder_partials_ta.write(
+            self.get_vertex_count() - 1, self.root_preorder_partials
+        )
+
+        for i in range(self.get_vertex_count() - 1):
+            node_index = self.preorder_indices_tensor[i]
+            parent_index = self.preorder_parent_indices_tensor[i]
+            parent_partials = self.preorder_partials_ta.gather([parent_index])[0]
+            parent_prods = parent_partials * sibling_sums[i]
+            node_transition_probs = preorder_transition_probs[i]
             node_partials = tf.reduce_sum(
                 tf.expand_dims(node_transition_probs, 0)
                 * tf.expand_dims(parent_prods, 3),
-                axis=2,
+                axis=-2,
             )
-            return tf.tensor_scatter_nd_update(
-                partials, node_index, tf.expand_dims(node_partials, axis=0)
+            self.preorder_partials_ta = self.preorder_partials_ta.write(
+                node_index, node_partials
             )
 
-        self.preorder_partials = tf.scan(
-            do_integration,
-            (
-                node_indices,
-                sibling_sums,
-                preorder_transition_probs,
-                self.preorder_parent_indices_tensor,
-            ),
-            self.preorder_partials,
-        )[-1]
+        self.preorder_partials = self.preorder_partials_ta.stack()
 
     def compute_cat_derivatives(self, differential_matrices, sum_branches=False):
         differential_transpose = tf.transpose(differential_matrices, perm=[0, 1, 3, 2])
