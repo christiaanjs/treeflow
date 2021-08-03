@@ -8,6 +8,8 @@ import treeflow.substitution_model
 import treeflow.tensorflow_likelihood
 import treeflow.tree_processing
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
+import os
+import shutil
 
 
 def our_convert_to_tensor(x):
@@ -189,3 +191,16 @@ def prep_likelihood():
 @pytest.fixture(params=[True, False])
 def function_mode(request):
     return request.param
+
+
+@pytest.fixture(scope="function")
+def tf_debug():
+    logdir = "/tmp/tfdbg2_logdir"
+    if os.path.exists(logdir):
+        shutil.rmtree(logdir)
+    os.mkdir(logdir)
+    tf.debugging.experimental.enable_dump_debug_info(
+        logdir, tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1
+    )
+    yield
+    shutil.rmtree(logdir)

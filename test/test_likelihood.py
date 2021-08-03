@@ -9,7 +9,6 @@ import treeflow.sequences
 import treeflow.tree_processing
 
 
-@pytest.mark.parametrize("function_mode", [True, False])
 def test_hky_1cat_likelihood_beast(
     prep_likelihood,
     single_hky_params,
@@ -35,8 +34,10 @@ def test_hky_1cat_likelihood_beast(
         )
 
     if function_mode:
-        f = tf.function(f)
-    res = f()
+        f_final = tf.function(f)
+    else:
+        f_final = f
+    res = f_final()
 
     assert_allclose(
         res.numpy(),

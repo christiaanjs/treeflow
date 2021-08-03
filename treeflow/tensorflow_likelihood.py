@@ -75,7 +75,7 @@ class TensorflowLikelihood:
             element_shape=self.leaf_partials.shape[1:],
         )
         for i in range(self.taxon_count):
-            partials.write(i, self.leaf_partials[i])
+            partials = partials.write(i, self.leaf_partials[i])
 
         for i in range(self.taxon_count - 1):
             node_index = self.node_indices_tensor[i]
@@ -98,7 +98,7 @@ class TensorflowLikelihood:
                 ),
                 axis=0,
             )
-            partials.write(node_index, node_partials)
+            partials = partials.write(node_index, node_partials)
         self.postorder_partials = partials
 
     def compute_likelihood_from_partials(self, freqs, category_weights):
