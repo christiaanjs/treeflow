@@ -66,16 +66,18 @@ class TensorflowLikelihood:
         )
 
     def compute_postorder_partials(self, transition_probs):
-        node_indices = tf.reshape(self.node_indices_tensor, [-1, 1, 1])
-        child_transition_probs = tf.gather(transition_probs, self.child_indices_tensor)
-
-        partials = tf.TensorArray(
+        self.postorder_partials = tf.TensorArray(
             dtype=DEFAULT_FLOAT_DTYPE_TF,
             size=self.get_vertex_count(),
             element_shape=self.leaf_partials.shape[1:],
         )
         for i in range(self.taxon_count):
-            partials = partials.write(i, self.leaf_partials[i])
+            self.postorder_partials = self.postorder_partials.write(
+                i, self.leaf_partials[i]
+            )
+
+        node_indices = tf.reshape(self.node_indices_tensor, [-1, 1, 1])
+        child_transition_probs = tf.gather(transition_probs, self.child_indices_tensor)
 
         for i in range(self.taxon_count - 1):
             node_index = self.node_indices_tensor[i]
@@ -83,7 +85,7 @@ class TensorflowLikelihood:
                 i
             ]  # child, ..., parent character, child character
             node_child_indices = self.child_indices_tensor[i]
-            child_partials = partials.gather(
+            child_partials = self.postorder_partials.gather(
                 node_child_indices
             )  # Child, ..., pattern, child character
             parent_child_probs = tf.expand_dims(
@@ -98,8 +100,9 @@ class TensorflowLikelihood:
                 ),
                 axis=0,
             )
-            partials = partials.write(node_index, node_partials)
-        self.postorder_partials = partials
+            self.postorder_partials = self.postorder_partials.write(
+                node_index, node_partials
+            )
 
     def compute_likelihood_from_partials(self, freqs, category_weights):
         root_partials = self.postorder_partials.gather([2 * self.taxon_count - 2])[0]

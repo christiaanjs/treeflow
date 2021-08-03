@@ -42,7 +42,50 @@ def test_hky_1cat_likelihood_beast(
     assert_allclose(
         res.numpy(),
         -88.86355638556158,
-        atol=1e-4,
+    )
+
+
+def test_hky_1cat_likelihood_twice(
+    init_likelihood,
+    single_hky_params,
+    single_rates,
+    single_weights,
+    hello_newick_file,
+    hello_fasta_file,
+    function_mode,
+):
+    subst_model = treeflow.substitution_model.HKY()
+
+    tf_likelihood, tree = init_likelihood(
+        hello_newick_file,
+        hello_fasta_file,
+        single_rates,
+        single_hky_params["frequencies"],
+    )
+    eigendecomp = subst_model.eigen(**single_hky_params)
+    init_branch_lengths = treeflow.sequences.get_branch_lengths(tree)
+    other_branch_lengths = init_branch_lengths + 1e-3
+
+    def f(branch_lengths):
+        branch_lengths = treeflow.sequences.get_branch_lengths(tree)
+        transition_probs = treeflow.substitution_model.transition_probs(
+            eigendecomp, single_rates, branch_lengths
+        )
+        tf_likelihood.compute_postorder_partials(transition_probs)
+        return tf_likelihood.compute_likelihood_from_partials(
+            single_hky_params["frequencies"], single_weights
+        )
+
+    if function_mode:
+        f_final = tf.function(f)
+    else:
+        f_final = f
+    res1 = f_final(other_branch_lengths)
+    res2 = f_final(init_branch_lengths)
+
+    assert_allclose(
+        res2.numpy(),
+        -88.86355638556158,
     )
 
 

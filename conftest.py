@@ -149,24 +149,13 @@ def weights_rates(request):
 
 
 @pytest.fixture
-def prep_likelihood():
-    def prep_likelihood_(
-        newick_file,
-        fasta_file,
-        subst_model,
-        rates,
-        weights,
-        frequencies,
-        **subst_params
-    ):
-        eigendecomp = subst_model.eigen(frequencies, **subst_params)
+def init_likelihood():
+    def init_likelihood_(newick_file, fasta_file, rates, frequencies):
         tf_likelihood = treeflow.tensorflow_likelihood.TensorflowLikelihood(
             category_count=len(rates)
         )
 
         tree, taxon_names = treeflow.tree_processing.parse_newick(newick_file)
-
-        branch_lengths = treeflow.sequences.get_branch_lengths(tree)
 
         tf_likelihood.set_topology(
             treeflow.tree_processing.update_topology_dict(tree["topology"])
@@ -176,12 +165,32 @@ def prep_likelihood():
         tf_likelihood.init_postorder_partials(
             alignment["sequences"], pattern_counts=alignment["weights"]
         )
+        tf_likelihood.init_preorder_partials(frequencies)
+        return tf_likelihood, tree
 
+    return init_likelihood_
+
+
+@pytest.fixture
+def prep_likelihood(init_likelihood):
+    def prep_likelihood_(
+        newick_file,
+        fasta_file,
+        subst_model,
+        rates,
+        weights,
+        frequencies,
+        **subst_params
+    ):
+        tf_likelihood, tree = init_likelihood(
+            newick_file, fasta_file, rates, frequencies
+        )
+        eigendecomp = subst_model.eigen(frequencies, **subst_params)
+        branch_lengths = treeflow.sequences.get_branch_lengths(tree)
         transition_probs = treeflow.substitution_model.transition_probs(
             eigendecomp, rates, branch_lengths
         )
         tf_likelihood.compute_postorder_partials(transition_probs)
-        tf_likelihood.init_preorder_partials(frequencies)
         tf_likelihood.compute_preorder_partials(transition_probs)
         return tf_likelihood, branch_lengths, eigendecomp
 
