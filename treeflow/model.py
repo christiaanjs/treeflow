@@ -1,3 +1,4 @@
+import treeflow
 import treeflow.tree_processing
 import treeflow.sequences
 import treeflow.tree_transform
@@ -193,9 +194,9 @@ def construct_tree_approximation(
     if inst is None:
         tree, _ = treeflow.tree_processing.parse_newick(newick_file)
     else:
-        import treeflow.libsbn
+        from treeflow.libsbn import get_tree_info as libsbn_get_tree_info
 
-        tree = treeflow.libsbn.get_tree_info(inst).tree
+        tree = libsbn_get_tree_info(inst).tree
     topology = treeflow.tree_processing.update_topology_dict(tree["topology"])
     taxon_count = (tree["heights"].shape[0] + 1) // 2
     anchor_heights = treeflow.tree_processing.get_node_anchor_heights(
