@@ -9,11 +9,13 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 def get_transforms(newick_file_dated):
     newick_file, dated = newick_file_dated
-    tree_info = treeflow.tree_processing.parse_tree_info(newick_file)
+
+    inst = treeflow.libsbn.get_instance(newick_file, dated=dated)
+
+    tree_info = treeflow.libsbn.get_tree_info(inst)
     transform_args = treeflow.tree_transform.get_transform_args(tree_info)
     tf_transform = treeflow.tree_transform.BranchBreaking(**transform_args)
 
-    inst = treeflow.libsbn.get_instance(newick_file, dated=dated)
     libsbn_transform = treeflow.tree_transform.Ratio(inst, **transform_args)
     return tf_transform, libsbn_transform, tree_info
 

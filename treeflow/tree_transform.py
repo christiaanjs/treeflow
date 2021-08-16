@@ -133,7 +133,7 @@ class Ratio(BranchBreaking):
     def _ratio_gradient_numpy(self, heights, dheights):
         self.node_height_state[-heights.shape[-1] :] = heights
         return np.array(
-            self.libsbn.ratio_gradient_of_height_gradient(self.tree, dheights, False),
+            self.libsbn.ratio_gradient_of_height_gradient(self.tree, dheights),
             dtype=heights.dtype,
         )
 
