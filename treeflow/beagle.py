@@ -32,6 +32,7 @@ def log_prob_conditioned_branch_only(
         rates = np.ones(6)
         rates[1] = kappa
         rates[4] = kappa
+        rates = rates / np.sum(rates)
         param_updates = {"GTR rates": rates, "frequencies": np.array(frequencies)}
     else:
         raise ValueError("Unsupported substitution model")
@@ -61,9 +62,9 @@ def log_prob_conditioned_branch_only(
         """Wrapping likelihood and gradient evaluation via libsbn."""
         branch_lengths[:-1] = x
         gradient = inst.phylo_gradients()[0]
-        grad_array = np.array(gradient.branch_lengths, dtype=DEFAULT_FLOAT_DTYPE_NP)[
-            :-1
-        ]
+        grad_array = np.array(
+            gradient.gradient["branch_lengths"], dtype=DEFAULT_FLOAT_DTYPE_NP
+        )[:-1]
         return (
             np.array(gradient.log_likelihood, dtype=DEFAULT_FLOAT_DTYPE_NP),
             grad_array,
