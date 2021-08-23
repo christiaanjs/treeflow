@@ -15,6 +15,7 @@ class BirthDeath(treeflow.tree.TreeDistribution):
         name="BirthDeath",
     ):
         super(BirthDeath, self).__init__(
+            taxon_count=taxon_count,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             parameters=dict(locals()),

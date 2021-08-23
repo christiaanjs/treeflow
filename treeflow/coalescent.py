@@ -45,6 +45,7 @@ class ConstantCoalescent(treeflow.tree.TreeDistribution):
         name="ConstantCoalescent",
     ):
         super(ConstantCoalescent, self).__init__(
+            taxon_count=taxon_count,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             parameters=dict(locals()),

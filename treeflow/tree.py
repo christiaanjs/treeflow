@@ -4,7 +4,7 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 
 class TreeDistribution(tfp.distributions.Distribution):
-    def __init__(self, **kwargs):
+    def __init__(self, taxon_count, **kwargs):
         super(TreeDistribution, self).__init__(
             dtype={
                 "heights": DEFAULT_FLOAT_DTYPE_TF,
@@ -13,6 +13,22 @@ class TreeDistribution(tfp.distributions.Distribution):
             reparameterization_type=tfp.distributions.NOT_REPARAMETERIZED,
             **kwargs,
         )
+        self._taxon_count = taxon_count
+
+    def _event_shape(self):
+        return {
+            "heights": tf.TensorShape([2 * self._taxon_count - 1]),
+            "topology": {"parent_indices": tf.TensorShape([2 * self._taxon_count - 2])},
+        }
+
+    def _event_shape_tensor(self):
+        taxon_count_tensor = tf.convert_to_tensor(self._taxon_count)
+        return {
+            "heights": tf.TensorShape([2 * taxon_count_tensor - 1]),
+            "topology": {
+                "parent_indices": tf.TensorShape([2 * taxon_count_tensor - 2])
+            },
+        }
 
     # Borrwoed from JointDistribution
     # We need to bypass base Distribution reshaping/validation logic so we

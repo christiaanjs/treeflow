@@ -49,3 +49,35 @@ def test_coalescent_heterochronous(pop_size, expected):
         dict(heights=heights, topology=dict(parent_indices=parent_indices))
     )
     assert_allclose(res.numpy(), expected)
+
+
+def test_coalescent_event_shape():
+    pop_size = 1.2
+    pop_size_tensor = tf.convert_to_tensor(pop_size, dtype=DEFAULT_FLOAT_DTYPE_TF)
+    sampling_times = tf.convert_to_tensor(
+        [0.0, 0.1, 0.4, 0.0], dtype=DEFAULT_FLOAT_DTYPE_TF
+    )
+    taxon_count = tf.shape(sampling_times)[-1]
+    coalescent = ConstantCoalescent(taxon_count, pop_size_tensor, sampling_times)
+    event_shape = coalescent.event_shape
+
+
+@pytest.mark.parametrize(
+    "pop_size", [2.0]
+)  # TODO: Test and fix for vectorisation over pop size
+def test_coalescent_sample(pop_size):
+    pop_size_tensor = tf.convert_to_tensor(pop_size, dtype=DEFAULT_FLOAT_DTYPE_TF)
+    batch_shape = pop_size_tensor.shape
+    sampling_times = tf.convert_to_tensor(
+        [0.0, 0.1, 0.4, 0.0], dtype=DEFAULT_FLOAT_DTYPE_TF
+    )
+    taxon_count = sampling_times.shape[-1]
+    coalescent = ConstantCoalescent(taxon_count, pop_size_tensor, sampling_times)
+    sample = coalescent.sample()
+    assert isinstance(sample, dict)
+    assert sample["heights"].shape == (2 * taxon_count - 1,) + batch_shape
+    assert isinstance(sample["topology"], dict)
+    assert (
+        sample["topology"]["parent_indices"].shape
+        == (2 * taxon_count - 2,) + batch_shape
+    )
