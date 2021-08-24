@@ -270,7 +270,7 @@ def log_prob_conditioned_branch_only(
     category_weights,
     category_rates,
     frequencies,
-    custom_gradient=True,
+    custom_gradient=False,
     **subst_model_params
 ):
 
@@ -293,7 +293,6 @@ def log_prob_conditioned_branch_only(
             )
             likelihood.compute_postorder_partials(transition_probs)
 
-            @tf.function
             def grad(dlog_prob):
                 likelihood.init_preorder_partials(frequencies)
                 likelihood.compute_preorder_partials(transition_probs)
