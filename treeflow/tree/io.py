@@ -2,7 +2,7 @@ import ete3
 import numpy as np
 from treeflow import DEFAULT_FLOAT_DTYPE_NP
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
-from treeflow.tree.taxon_set import TaxonSet
+from treeflow.tree.taxon_set import DictTaxonSet
 
 
 def parse_newick(newick_file: str) -> NumpyRootedTree:
@@ -20,7 +20,7 @@ def parse_newick(newick_file: str) -> NumpyRootedTree:
     heights = root_height - root_distances
 
     taxon_count = (len(ordered_nodes) + 1) // 2
-    taxon_set = TaxonSet([x.name for x in ordered_nodes[:taxon_count]])
+    taxon_set = DictTaxonSet([x.name for x in ordered_nodes[:taxon_count]])
     return NumpyRootedTree(
         heights=heights, parent_indices=parent_indices, taxon_set=taxon_set
     )

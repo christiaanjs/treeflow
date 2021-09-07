@@ -1,9 +1,17 @@
+from functools import wraps
 import numpy as np
 from numpy.typing import ArrayLike
 import typing as tp
 
 
 def _get_child_indices_flat(parent_indices: np.ndarray) -> np.ndarray:
+    """
+    Get parent indices
+
+    Params
+    ------
+    parent_indices
+    """
     node_count = parent_indices.shape[-1] + 1
     child_indices = np.full((node_count, 2), -1)
     current_child = np.zeros(node_count, dtype=int)
@@ -29,6 +37,13 @@ get_child_indices: tp.Callable[[ArrayLike], np.ndarray] = np.vectorize(
 
 
 def _get_preorder_indices_flat(child_indices: np.ndarray):
+    """
+    Get preorder indices
+
+    Params
+    ------
+    child_indices
+    """
     node_count = child_indices.shape[-2]
 
     def is_leaf(node_index):

@@ -1,4 +1,4 @@
-from treeflow.tree.taxon_set import TaxonSet
+from treeflow.tree.taxon_set import TupleTaxonSet
 import pytest
 from pathlib import Path
 from treeflow.tree.io import parse_newick
@@ -19,6 +19,6 @@ def test_parse_newick(hello_newick_file: str):
     expected_parent_indices = np.array([3, 3, 4, 4])
     expected_taxon_names = ["mars", "saturn", "jupiter"]
 
-    assert tree.taxon_set == TaxonSet(expected_taxon_names)
+    assert tree.taxon_set == TupleTaxonSet(expected_taxon_names)
     assert_allclose(tree.heights, expected_heights, atol=1e-16)
     assert_allclose(tree.topology.parent_indices, expected_parent_indices)
