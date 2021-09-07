@@ -2,10 +2,10 @@ import typing as tp
 
 # from treeflow.tf_util.dict_wrapper import DictWrapper
 from abc import abstractproperty
-
-__all__ = ["TreeTopology"]
+from treeflow.tree.taxon_set import TaxonSet
 
 TDataType = tp.TypeVar("TDataType")
+TShapeType = tp.TypeVar("TShapeType")
 import attr
 
 
@@ -14,7 +14,9 @@ class BaseTreeTopology(tp.Generic[TDataType]):
     parent_indices: TDataType
 
 
-class AbstractTreeTopology(BaseTreeTopology[TDataType], tp.Generic[TDataType]):
+class AbstractTreeTopology(
+    BaseTreeTopology[TDataType], tp.Generic[TDataType, TShapeType]
+):
     @abstractproperty
     def child_indices(self) -> TDataType:
         pass
@@ -24,5 +26,16 @@ class AbstractTreeTopology(BaseTreeTopology[TDataType], tp.Generic[TDataType]):
         pass
 
     @abstractproperty
-    def taxon_count(self) -> TDataType:
+    def taxon_count(self) -> TShapeType:
         pass
+
+    @property
+    def postorder_node_indices(self) -> TDataType:
+        pass
+
+    @abstractproperty
+    def taxon_set(self) -> tp.Optional[TaxonSet]:
+        pass
+
+
+__all__ = [BaseTreeTopology.__name__, AbstractTreeTopology.__name__]
