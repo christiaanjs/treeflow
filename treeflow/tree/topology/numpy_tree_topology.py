@@ -11,9 +11,11 @@ from treeflow.tree.topology.numpy_topology_operations import (
 
 
 @attr.attrs(auto_attribs=True)
-class NumpyTreeTopology(AbstractTreeTopology[np.ndarray, int]):
+class NumpyTreeTopologyAttrs(AbstractTreeTopology[np.ndarray, int]):
     parent_indices: np.ndarray  # Convenience type hint
 
+
+class NumpyTreeTopology(NumpyTreeTopologyAttrs):
     def __init__(self, parent_indices: np.ndarray, taxon_set=tp.Optional[TaxonSet]):
         super().__init__(parent_indices=parent_indices)
         self._taxon_set = taxon_set

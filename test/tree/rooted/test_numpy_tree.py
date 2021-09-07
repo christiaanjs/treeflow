@@ -27,7 +27,6 @@ parent_indices = ([parent_indices_single] * 3) + [np.stack([parent_indices_singl
 def test_numpy_tree_get_branch_lengths(
     heights, parent_indices, expected_branch_lengths
 ):
-    topology = NumpyTreeTopology(parent_indices)
-    tree = NumpyRootedTree(topology, heights)
+    tree = NumpyRootedTree(heights=heights, parent_indices=parent_indices)
     branch_lengths = tree.branch_lengths
     assert_allclose(branch_lengths, expected_branch_lengths)

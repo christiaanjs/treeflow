@@ -2,10 +2,17 @@ import typing as tp
 
 
 class TaxonSet(tp.Dict[str, None]):
-    def __init__(
-        self, *dict_args, taxa: tp.Optional[tp.Iterable[str]] = None, **dict_kwargs
-    ):
-        if taxa is not None:
-            super().__init__([(taxon, None) for taxon in taxa])
+    def __init__(self, taxa: tp.Iterable[str]):
+        super().__init__([(taxon, None) for taxon in taxa])
+
+    def __eq__(self, o: object) -> bool:
+        if isinstance(o, tp.Iterable):
+            return tuple(self) == tuple(o)
         else:
-            super().__init__(*dict_args, **dict_kwargs)
+            return False
+
+    def __ne__(self, o: object) -> bool:
+        if isinstance(o, tp.Iterable):
+            return tuple(self) != tuple(o)
+        else:
+            return True

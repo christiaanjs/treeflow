@@ -8,9 +8,32 @@ import typing as tp
 
 
 @attr.attrs(auto_attribs=True)
-class NumpyRootedTree(AbstractRootedTree[np.ndarray, int]):
-    topology: NumpyTreeTopology
+class NumpyRootedTreeAttrs(
+    AbstractRootedTree[np.ndarray, int]
+):  # Convenience type hint
     heights: np.ndarray
+    topology: NumpyTreeTopology
+
+
+class NumpyRootedTree(
+    NumpyRootedTreeAttrs,
+):
+    def __init__(
+        self,
+        heights: np.ndarray,
+        topology: tp.Optional[NumpyTreeTopology] = None,
+        parent_indices: tp.Optional[np.ndarray] = None,
+        taxon_set: tp.Optional[np.ndarray] = None,
+    ):
+        if topology is not None:
+            super().__init__(heights=heights, topology=topology)
+        elif parent_indices is not None:
+            new_topology = NumpyTreeTopology(
+                parent_indices=parent_indices, taxon_set=taxon_set
+            )
+            super().__init__(heights=heights, topology=new_topology)
+        else:
+            raise ValueError("Either `topology` or `parent_indices` must be specified")
 
     @property
     def branch_lengths(self) -> np.ndarray:

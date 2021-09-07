@@ -19,8 +19,10 @@ class AbstractTree(tp.Generic[TDataType, TShapeType]):
     def branch_lengths(self) -> TDataType:
         pass
 
+    @property
     def taxon_set(self) -> tp.Optional[TaxonSet]:
         return self.topology.taxon_set
 
+    @property
     def taxon_count(self) -> TShapeType:
         return self.topology.taxon_count
