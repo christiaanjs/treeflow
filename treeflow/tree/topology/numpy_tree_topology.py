@@ -16,7 +16,9 @@ class NumpyTreeTopologyAttrs(AbstractTreeTopology[np.ndarray, int]):
 
 
 class NumpyTreeTopology(NumpyTreeTopologyAttrs):
-    def __init__(self, parent_indices: np.ndarray, taxon_set=tp.Optional[TaxonSet]):
+    def __init__(
+        self, parent_indices: np.ndarray, taxon_set: tp.Optional[TaxonSet] = None
+    ):
         super().__init__(parent_indices=parent_indices)
         self._taxon_set = taxon_set
 

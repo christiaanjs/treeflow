@@ -7,7 +7,7 @@ import attr
 import typing as tp
 
 
-@attr.attrs(auto_attribs=True)
+@attr.attrs(auto_attribs=True, slots=True)
 class NumpyRootedTreeAttrs(
     AbstractRootedTree[np.ndarray, int]
 ):  # Convenience type hint
@@ -53,3 +53,6 @@ class NumpyRootedTree(
     @property
     def sampling_times(self) -> np.ndarray:
         return self.heights[..., : self.taxon_count]
+
+
+__all__ = [NumpyRootedTree.__name__]

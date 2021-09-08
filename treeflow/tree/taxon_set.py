@@ -1,19 +1,30 @@
 from abc import abstractmethod
 import typing as tp
-from collections.abc import Set
 from typing_extensions import Protocol
 
 
-class TaxonSet(Protocol, tp.Collection[str]):
+class TaxonSet(Protocol):
     """
     Interface for taxon sets.
     """
 
+    def __init__(self, taxa: tp.Iterable[str]):
+        ...
+
     def __eq__(self, o: object) -> bool:
-        pass
+        ...
+
+    def __len__(self) -> int:
+        ...
+
+    def __iter__(self) -> tp.Iterator[str]:
+        ...
+
+    def __contains__(self, value: str):
+        ...
 
 
-class DictTaxonSet(tp.Dict[str, None], TaxonSet):
+class DictTaxonSet(tp.Dict[str, None]):
     """
     Dict-based taxon set.
     Dictionary is used an ordered set (of keys)
@@ -35,7 +46,7 @@ class DictTaxonSet(tp.Dict[str, None], TaxonSet):
             return True
 
 
-class TupleTaxonSet(tp.Tuple[str, ...], TaxonSet):
+class TupleTaxonSet(tp.Tuple[str, ...]):
     """
     Tuple-based taxon set.
     Required for AutoCompositeTensor.

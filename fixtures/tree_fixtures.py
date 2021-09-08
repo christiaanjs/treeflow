@@ -1,8 +1,6 @@
-import numpy as np
 import pytest
-from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
-from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
-from numpy.testing import assert_allclose
+import numpy as np
+from collections import namedtuple
 
 branch_lengths_flat = [
     np.array(x) for x in [[0.3, 0.4, 1.2, 0.7], [0.9, 0.2, 2.3, 1.4]]
@@ -19,14 +17,23 @@ heights = heights_flat + ([heights_stacked] * 2)
 branch_lengths = branch_lengths_flat + ([branch_lengths_stacked] * 2)
 parent_indices = ([parent_indices_single] * 3) + [np.stack([parent_indices_single] * 2)]
 
-
-@pytest.mark.parametrize(
-    ["heights", "parent_indices", "expected_branch_lengths"],
-    zip(heights, parent_indices, branch_lengths),
+TreeTestData = namedtuple(
+    "TreeTestData", ["parent_indices", "heights", "branch_lengths"]
 )
-def test_numpy_tree_get_branch_lengths(
-    heights, parent_indices, expected_branch_lengths
-):
-    tree = NumpyRootedTree(heights=heights, parent_indices=parent_indices)
-    branch_lengths = tree.branch_lengths
-    assert_allclose(branch_lengths, expected_branch_lengths)
+
+
+@pytest.fixture(
+    params=[
+        TreeTestData(*args) for args in zip(parent_indices, heights, branch_lengths)
+    ]
+)
+def tree_test_data(request):
+    return request.param
+
+
+_flat_tree_test_data = TreeTestData(parent_indices[0], heights[0], branch_lengths[0])
+
+
+@pytest.fixture()
+def flat_tree_test_data():
+    return _flat_tree_test_data
