@@ -1,4 +1,3 @@
-import numpy
 import tensorflow as tf
 import attr
 from treeflow.tree.rooted.base_rooted_tree import AbstractRootedTree
@@ -7,15 +6,15 @@ from treeflow.tree.topology.tensorflow_tree_topology import (
     numpy_topology_to_tensor,
     TensorflowTreeTopology,
 )
-from tensorflow_probability.python.experimental import (
-    AutoCompositeTensor,
-    auto_composite_tensor,
-)
+from treeflow.tf_util import AttrsLengthMixin
 import tensorflow_probability.python.internal.prefer_static as ps
 
 
 @attr.attrs(auto_attribs=True, slots=True)
-class TensorflowRootedTreeAttrs(AbstractRootedTree[tf.Tensor, tf.Tensor]):
+class TensorflowRootedTreeAttrs(
+    AbstractRootedTree[tf.Tensor, tf.Tensor], AttrsLengthMixin
+):
+
     heights: tf.Tensor
     topology: TensorflowTreeTopology
 

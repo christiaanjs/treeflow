@@ -7,6 +7,7 @@ from treeflow.tree.topology.base_tree_topology import AbstractTreeTopology
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 import treeflow.tree.topology.numpy_topology_operations as np_top_ops
 import tensorflow_probability.python.internal.prefer_static as ps
+from treeflow.tf_util import AttrsLengthMixin
 
 
 def tensor_taxon_count(parent_indices: tf.Tensor) -> tf.Tensor:
@@ -14,7 +15,9 @@ def tensor_taxon_count(parent_indices: tf.Tensor) -> tf.Tensor:
 
 
 @attr.attrs(auto_attribs=True, slots=True)
-class TensorflowTreeTopologyAttrs(AbstractTreeTopology[tf.Tensor, tf.Tensor]):
+class TensorflowTreeTopologyAttrs(
+    AbstractTreeTopology[tf.Tensor, tf.Tensor], AttrsLengthMixin
+):
     parent_indices: tf.Tensor  # Convenience type hint
     child_indices: tf.Tensor
     preorder_indices: tf.Tensor
