@@ -6,6 +6,7 @@ from treeflow.tree.topology.base_tree_topology import (
 )
 import attr
 import typing as tp
+from treeflow.tree.taxon_set import TaxonSet
 
 TDataType = tp.TypeVar("TDataType")
 TShapeType = tp.TypeVar("TShapeType")

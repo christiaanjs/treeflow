@@ -8,6 +8,7 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.base_tree import AbstractTree
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from tensorflow_probability.python.internal import reparameterization
+from tensorflow_probability.python.internal import nest_util
 
 TTree = tp.TypeVar("TTree", bound=AbstractTree[tf.Tensor, tf.Tensor])
 
@@ -29,6 +30,7 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
         validate_args=False,
         allow_nan_stats=True,
         name="TreeDistribution",
+        parameters=None,
     ):
         self.taxon_count = taxon_count
         super().__init__(
@@ -37,6 +39,7 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=name,
+            parameters=parameters,
         )
 
     def _call_sample_n(self, sample_shape, seed, name: str, **kwargs) -> TTree:
@@ -60,6 +63,21 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
             samples = tf.nest.map_structure(reshape_samples, flat_samples)
             samples = self._set_sample_static_shape(samples, sample_shape)
             return samples
+
+    def _call_log_prob(self, value, name, **kwargs):
+        """Wrapper around _log_prob."""
+        value = tf.nest.pack_sequence_as(self.dtype, tf.nest.flatten(value))
+        value = nest_util.convert_to_nested_tensor(
+            value, name="value", dtype_hint=self.dtype, allow_packing=True
+        )
+        with self._name_and_control_scope(name, value, kwargs):
+            if hasattr(self, "_log_prob"):
+                return self._log_prob(value, **kwargs)
+            if hasattr(self, "_prob"):
+                return tf.math.log(self._prob(value, **kwargs))
+            raise NotImplementedError(
+                "log_prob is not implemented: {}".format(type(self).__name__)
+            )
 
     @abstractmethod
     def _event_shape(self) -> TTree:

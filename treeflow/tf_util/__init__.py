@@ -7,3 +7,6 @@ class AttrsLengthMixin:
         warnings.warn("Temporary hotfix")
         assert nest._is_attrs(self)
         return len(nest._get_attrs_items(self))
+
+
+__all__ = [AttrsLengthMixin.__name__]

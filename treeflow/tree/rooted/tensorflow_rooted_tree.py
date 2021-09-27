@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 import attr
 from treeflow.tree.rooted.base_rooted_tree import AbstractRootedTree
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
@@ -8,6 +9,8 @@ from treeflow.tree.topology.tensorflow_tree_topology import (
 )
 from treeflow.tf_util import AttrsLengthMixin
 import tensorflow_probability.python.internal.prefer_static as ps
+import typing as tp
+from treeflow.tree.taxon_set import TaxonSet
 
 
 @attr.attrs(auto_attribs=True, slots=True)
@@ -50,4 +53,27 @@ def convert_tree_to_tensor(numpy_tree: NumpyRootedTree) -> TensorflowRootedTree:
     )
 
 
-__all__ = [TensorflowRootedTree.__name__, convert_tree_to_tensor.__name__]
+def tree_from_arrays(
+    heights: tp.Union[np.ndarray, tf.Tensor],
+    parent_indices: tp.Union[np.ndarray, tf.Tensor],
+    taxon_set: tp.Optional[TaxonSet] = None,
+) -> TensorflowRootedTree:
+
+    heights_np = heights.numpy() if isinstance(heights, tf.Tensor) else heights
+    parent_indices_np = (
+        parent_indices.numpy()
+        if isinstance(parent_indices, tf.Tensor)
+        else parent_indices
+    )
+
+    numpy_tree = NumpyRootedTree(
+        heights=heights_np, parent_indices=parent_indices_np, taxon_set=taxon_set
+    )
+    return convert_tree_to_tensor(numpy_tree)
+
+
+__all__ = [
+    TensorflowRootedTree.__name__,
+    convert_tree_to_tensor.__name__,
+    tree_from_arrays.__name__,
+]
