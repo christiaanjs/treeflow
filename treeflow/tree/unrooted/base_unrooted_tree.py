@@ -13,12 +13,20 @@ TShapeType = tp.TypeVar("TShapeType")
 
 @attr.s(auto_attribs=True, slots=True)
 class BaseUnrootedTree(
-    AbstractTree[TDataType, TShapeType],
-    tp.Generic[TDataType, TShapeType],
+    tp.Generic[TDataType],
     AttrsLengthMixin,
 ):
-    topopology: BaseTreeTopology[TDataType]
+    topology: BaseTreeTopology[TDataType]
     branch_lengths: TDataType
 
 
-__all__ = [BaseUnrootedTree.__name__]
+@attr.s(auto_attribs=True, slots=True)
+class AbstractUnrootedTree(
+    BaseUnrootedTree,
+    AbstractTree[TDataType, TShapeType],
+    tp.Generic[TDataType, TShapeType],
+):
+    topology: AbstractTreeTopology[TDataType, TShapeType]
+
+
+__all__ = [BaseUnrootedTree.__name__, AbstractUnrootedTree.__name__]

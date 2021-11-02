@@ -35,13 +35,13 @@ class AbstractRootedTree(
     tp.Generic[TDataType, TShapeType, TRootedTreeType],
 ):
 
-    UnrootedTreeType: tp.Type[TRootedTreeType] = BaseUnrootedTree
+    UnrootedTreeType: tp.Type = BaseUnrootedTree  # TODO: Better type hint
 
     @abstractproperty
     def sampling_times(self) -> TDataType:
         pass
 
-    def unrooted_tree(self) -> TRootedTreeType:
+    def get_unrooted_tree(self) -> TRootedTreeType:
         return type(self).UnrootedTreeType(
             topology=self.topology, branch_lengths=self.branch_lengths
         )
