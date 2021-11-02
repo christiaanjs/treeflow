@@ -7,7 +7,7 @@ from treeflow.tree.topology.tensorflow_tree_topology import (
     numpy_topology_to_tensor,
     TensorflowTreeTopology,
 )
-from treeflow.tf_util import AttrsLengthMixin
+from treeflow.tree.unrooted.tensorflow_unrooted_tree import TensorflowUnrootedTree
 import tensorflow_probability.python.internal.prefer_static as ps
 import typing as tp
 from treeflow.tree.taxon_set import TaxonSet
@@ -15,7 +15,7 @@ from treeflow.tree.taxon_set import TaxonSet
 
 @attr.attrs(auto_attribs=True, slots=True)
 class TensorflowRootedTreeAttrs(
-    AbstractRootedTree[tf.Tensor, tf.Tensor], AttrsLengthMixin
+    AbstractRootedTree[tf.Tensor, tf.Tensor, TensorflowUnrootedTree]
 ):
 
     heights: tf.Tensor
@@ -23,12 +23,14 @@ class TensorflowRootedTreeAttrs(
 
 
 class TensorflowRootedTree(TensorflowRootedTreeAttrs):
+    UnrootedTreeType = TensorflowUnrootedTree
+
     @property
     def branch_lengths(self) -> tf.Tensor:
         height_shape = tf.shape(self.heights)
         indices_shape = tf.shape(self.topology.parent_indices)
         batch_shape = ps.broadcast_shape(height_shape[:-1], indices_shape[:-1])
-
+        # Implement with tf_util
         heights_b = tf.broadcast_to(
             self.heights, tf.concat([batch_shape, height_shape[-1:]], 0)
         )

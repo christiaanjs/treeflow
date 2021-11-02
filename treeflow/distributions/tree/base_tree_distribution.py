@@ -10,7 +10,7 @@ from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopolo
 from tensorflow_probability.python.internal import reparameterization
 from tensorflow_probability.python.internal import nest_util
 
-TTree = tp.TypeVar("TTree", bound=AbstractTree[tf.Tensor, tf.Tensor])
+TTree = tp.TypeVar("TTree", bound=AbstractTree)
 
 
 # TODO: Think carefully about the type hierarchy

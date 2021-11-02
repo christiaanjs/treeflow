@@ -2,6 +2,7 @@ from treeflow.tree import topology
 from treeflow.tree.rooted.base_rooted_tree import AbstractRootedTree
 from treeflow.tree.taxon_set import TaxonSet
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
+from treeflow.tree.unrooted.numpy_unrooted_tree import NumpyUnrootedTree
 import numpy as np
 import attr
 import typing as tp
@@ -9,7 +10,7 @@ import typing as tp
 
 @attr.attrs(auto_attribs=True, slots=True)
 class NumpyRootedTreeAttrs(
-    AbstractRootedTree[np.ndarray, int]
+    AbstractRootedTree[np.ndarray, int, NumpyUnrootedTree]
 ):  # Convenience type hint
     heights: np.ndarray
     topology: NumpyTreeTopology
@@ -18,12 +19,14 @@ class NumpyRootedTreeAttrs(
 class NumpyRootedTree(
     NumpyRootedTreeAttrs,
 ):
+    UnrootedTreeType = NumpyUnrootedTree
+
     def __init__(
         self,
         heights: np.ndarray,
         topology: tp.Optional[NumpyTreeTopology] = None,
         parent_indices: tp.Optional[np.ndarray] = None,
-        taxon_set: tp.Optional[np.ndarray] = None,
+        taxon_set: tp.Optional[TaxonSet] = None,
     ):
         if topology is not None:
             super().__init__(heights=heights, topology=topology)
