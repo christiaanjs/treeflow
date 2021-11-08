@@ -7,11 +7,11 @@ from treeflow.evolution.substitution.nucleotide.alphabet import A, C, G, T
 
 
 def pack_matrix(mat):
-    return tf.concat([tf.concat(row, axis=-1) for row in mat], axis=-2)
+    return tf.stack([tf.stack(row, axis=-1) for row in mat], axis=-2)
 
 
 def pack_matrix_transposed(mat):
-    return tf.concat([tf.concat(col, axis=-1) for col in mat], axis=-1)
+    return tf.stack([tf.stack(col, axis=-1) for col in mat], axis=-1)
 
 
 class HKY(EigendecompositionSubstitutionModel):
@@ -30,13 +30,13 @@ class HKY(EigendecompositionSubstitutionModel):
         beta = -1.0 / (2.0 * (piR * piY + kappa * (piA * piG + piC * piT)))
 
         batch_shape = tf.shape(kappa)  # TODO: Should this use prefer_static?
-        one = tf.broadcast_to(1.0, batch_shape)
-        zero = tf.broadcast_to(0.0, batch_shape)
+        one = tf.ones_like(kappa)
+        zero = tf.zeros_like(kappa)
         minus_one = -one
 
-        eigenvalues = tf.concat(
+        eigenvalues = tf.stack(
             [
-                0.0,
+                zero,
                 beta,
                 beta * (piY * kappa + piR),
                 beta * (piY + piR * kappa),
@@ -49,19 +49,19 @@ class HKY(EigendecompositionSubstitutionModel):
                 [1.0 / piR, -1.0 / piY, 1.0 / piR, -1.0 / piY],
                 [zero, piT / piY, zero, -piC / piY],
                 [piG / piR, zero, -piA / piR, zero],
-            ]
+            ],
         )
         inverse_eigenvectors = pack_matrix_transposed(
             [
                 [piA, piC, piG, piT],
-                [piA * piY, -piC * piR, pi[G] * piY, -piT * piR],
+                [piA * piY, -piC * piR, piG * piY, -piT * piR],
                 [zero, one, zero, minus_one],
                 [one, zero, minus_one, zero],
-            ]
+            ],
         )
 
         return Eigendecomposition(
-            eigenvalues,
+            eigenvalues=eigenvalues,
             eigenvectors=eigenvectors,
             inverse_eigenvectors=inverse_eigenvectors,
         )

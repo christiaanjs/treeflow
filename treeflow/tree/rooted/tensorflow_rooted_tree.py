@@ -11,6 +11,7 @@ from treeflow.tree.unrooted.tensorflow_unrooted_tree import TensorflowUnrootedTr
 import tensorflow_probability.python.internal.prefer_static as ps
 import typing as tp
 from treeflow.tree.taxon_set import TaxonSet
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 
 @attr.attrs(auto_attribs=True, slots=True)
@@ -48,10 +49,13 @@ class TensorflowRootedTree(TensorflowRootedTreeAttrs):
         return self.heights[..., : self.taxon_count]
 
 
-def convert_tree_to_tensor(numpy_tree: NumpyRootedTree) -> TensorflowRootedTree:
+def convert_tree_to_tensor(
+    numpy_tree: NumpyRootedTree, height_dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF
+) -> TensorflowRootedTree:
     topology = numpy_topology_to_tensor(numpy_tree.topology)
     return TensorflowRootedTree(
-        heights=tf.convert_to_tensor(numpy_tree.heights), topology=topology
+        heights=tf.convert_to_tensor(numpy_tree.heights, dtype=height_dtype),
+        topology=topology,
     )
 
 
@@ -59,6 +63,7 @@ def tree_from_arrays(
     heights: tp.Union[np.ndarray, tf.Tensor],
     parent_indices: tp.Union[np.ndarray, tf.Tensor],
     taxon_set: tp.Optional[TaxonSet] = None,
+    height_dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF,
 ) -> TensorflowRootedTree:
 
     heights_np = heights.numpy() if isinstance(heights, tf.Tensor) else heights
@@ -71,7 +76,7 @@ def tree_from_arrays(
     numpy_tree = NumpyRootedTree(
         heights=heights_np, parent_indices=parent_indices_np, taxon_set=taxon_set
     )
-    return convert_tree_to_tensor(numpy_tree)
+    return convert_tree_to_tensor(numpy_tree, height_dtype=height_dtype)
 
 
 __all__ = [

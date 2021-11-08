@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import pathlib
 from collections import namedtuple
 
 branch_lengths_flat = [
