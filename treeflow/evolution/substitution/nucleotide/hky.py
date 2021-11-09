@@ -16,7 +16,20 @@ def pack_matrix_transposed(mat):
 
 class HKY(EigendecompositionSubstitutionModel):
     def q(self, frequencies: tf.Tensor, kappa: tf.Tensor) -> tf.Tensor:
-        pass
+        pi = frequencies
+
+        piA = pi[..., A]
+        piC = pi[..., C]
+        piT = pi[..., T]
+        piG = pi[..., G]
+        return pack_matrix(
+            [
+                [-(piC + kappa * piG + piT), piC, kappa * piG, piT],
+                [piA, -(piA + piG + kappa * piT), piG, kappa * piT],
+                [kappa * piA, piC, -(kappa * piA + piC + piT), piT],
+                [piA, kappa * piC, piG, -(piA + kappa * piC + piG)],
+            ],
+        )
 
     def eigen(self, frequencies: tf.Tensor, kappa: tf.Tensor) -> Eigendecomposition:
         pi = frequencies
@@ -29,7 +42,6 @@ class HKY(EigendecompositionSubstitutionModel):
 
         beta = -1.0 / (2.0 * (piR * piY + kappa * (piA * piG + piC * piT)))
 
-        batch_shape = tf.shape(kappa)  # TODO: Should this use prefer_static?
         one = tf.ones_like(kappa)
         zero = tf.zeros_like(kappa)
         minus_one = -one
@@ -43,7 +55,7 @@ class HKY(EigendecompositionSubstitutionModel):
             ],
             axis=-1,
         )
-        eigenvectors = pack_matrix(
+        eigenvectors = pack_matrix_transposed(
             [
                 [one, one, one, one],
                 [1.0 / piR, -1.0 / piY, 1.0 / piR, -1.0 / piY],
@@ -51,7 +63,7 @@ class HKY(EigendecompositionSubstitutionModel):
                 [piG / piR, zero, -piA / piR, zero],
             ],
         )
-        inverse_eigenvectors = pack_matrix_transposed(
+        inverse_eigenvectors = pack_matrix(
             [
                 [piA, piC, piG, piT],
                 [piA * piY, -piC * piR, piG * piY, -piT * piR],

@@ -16,14 +16,14 @@ def branch_lengths(tensor_constant, request):
     return tensor_constant(request.param)
 
 
-def test_get_transition_probabilities_eigen_hky_rowsum(hky_params, branch_lengths):
+def test_get_transition_probabilities_eigen_hky_rowsum(
+    branch_lengths,
+    hky_params,
+):
     eigen_batch = (
         HKY().eigen(**hky_params).add_inner_batch_dimensions(branch_lengths.shape.rank)
     )
+
     res = get_transition_probabilities_eigen(eigen_batch, branch_lengths)
     row_sums = tf.reduce_sum(res, axis=-1)
     assert_allclose(1.0, row_sums)
-
-
-def test_get_transition_probabilities_eigen_jc():
-    pass

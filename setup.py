@@ -8,6 +8,7 @@ setuptools.setup(
         "biopython==1.76",
         "ete3",
         "numdifftools",  # Test dependency
+        "pytest",
     ],
     extras_require=dict(accelerated=["libsbn"]),
 )

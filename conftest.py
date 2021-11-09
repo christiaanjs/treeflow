@@ -1,9 +1,15 @@
 import os
+import sys
 import pathlib
 import pytest
 import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from functools import partial
+
+
+conftest_dir = pathlib.Path(__file__).parents[0]
+sys.path.append(str(conftest_dir / "test" / "helpers"))
+sys.path.append(str(conftest_dir / "test" / "fixtures"))
 
 
 @pytest.fixture
@@ -12,9 +18,9 @@ def tensor_constant():
 
 
 pytest_plugins = [
-    "fixtures.tree_fixtures",
-    "fixtures.data_fixtures",
-    "fixtures.substitution_fixtures",
+    "tree_fixtures",
+    "data_fixtures",
+    "substitution_fixtures",
 ]
 
 if os.getenv("_PYTEST_RAISE", "0") != "0":

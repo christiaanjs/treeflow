@@ -7,6 +7,9 @@ from treeflow.evolution.substitution.nucleotide.hky import (
 from functools import reduce
 import tensorflow as tf
 from numpy.testing import assert_allclose
+from treeflow_test_helpers.substitution_helpers import (
+    EigenSubstitutionModelHelper,
+)
 
 
 @pytest.mark.parametrize("batch_shape", [(1, 2), ()])
@@ -49,11 +52,12 @@ def test_pack_matrix_transpose(batch_shape):
             assert_allclose(elements[i][j], element.numpy())
 
 
-def test_hky_eigendecomposition(hky_params):
-    res = HKY().eigen(**hky_params)
-    assert res.eigenvalues.shape == (4,)
-    assert res.eigenvectors.shape == (4, 4)
-    assert res.inverse_eigenvectors.shape == (4, 4)
+class TestHKY(EigenSubstitutionModelHelper):
+    ClassUnderTest = HKY
 
+    def _init(self, hky_params):
+        self.params = hky_params
 
-# TODO: Test for batch
+    def test_eigendecomposition(self, hky_params):
+        self._init(hky_params)
+        super().test_eigendecomposition()

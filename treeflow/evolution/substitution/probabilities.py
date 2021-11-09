@@ -21,5 +21,5 @@ def get_transition_probabilities_eigen(
     Tensor
         Transition probabilities with shape [..., state, state] where ... is batch shape
     """
-    diag = tf.linalg.diag(tf.expand_dims(t, -1) * eigen.eigenvalues)
+    diag = tf.linalg.diag(tf.exp(tf.expand_dims(t, -1) * eigen.eigenvalues))
     return eigen.eigenvectors @ diag @ eigen.inverse_eigenvectors

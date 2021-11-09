@@ -1,5 +1,7 @@
+import typing as tp
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 import tensorflow as tf
+import numpy as np
 from treeflow.evolution.substitution.eigendecomposition import Eigendecomposition
 from treeflow.evolution.substitution.base_substitution_model import (
     EigendecompositionSubstitutionModel,
@@ -9,7 +11,7 @@ from treeflow.evolution.substitution.base_substitution_model import (
 class JC(EigendecompositionSubstitutionModel):
     @staticmethod
     def frequencies(dtype=DEFAULT_FLOAT_DTYPE_TF):
-        return tf.constant(tf.fill(4, 1 / 4))
+        return tf.constant([1 / 4] * 4, dtype=dtype)
 
     def q(self, frequencies: tf.Tensor, dtype=DEFAULT_FLOAT_DTYPE_TF) -> tf.Tensor:
         return tf.constant(
@@ -23,7 +25,9 @@ class JC(EigendecompositionSubstitutionModel):
         )
 
     def eigen(
-        self, frequencies: tf.Tensor, dtype=DEFAULT_FLOAT_DTYPE_TF
+        self,
+        frequencies: tp.Optional[tf.Tensor] = None,
+        dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF,
     ) -> Eigendecomposition:
         return Eigendecomposition(
             eigenvectors=tf.constant(
