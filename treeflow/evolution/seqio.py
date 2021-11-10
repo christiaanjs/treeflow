@@ -66,11 +66,16 @@ def compress_sites(
 def encode_sequence_mapping(
     sequence_mapping: SequenceMappingType, taxon_names: tp.Iterable[str]
 ) -> np.ndarray:
-    return np.array(
-        [
-            [init_partials_dict[char] for char in sequence_mapping[taxon_name]]
-            for taxon_name in taxon_names
-        ]
+    """Returns array with shape [sites, taxa, states, states]"""
+    return np.moveaxis(
+        np.array(
+            [
+                [init_partials_dict[char] for char in sequence_mapping[taxon_name]]
+                for taxon_name in taxon_names
+            ]
+        ),
+        1,
+        0,
     )
 
 

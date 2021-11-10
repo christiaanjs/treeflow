@@ -1,4 +1,15 @@
 import tensorflow as tf
+from tensorflow_probability.python.internal import prefer_static as ps
+
+
+def move_indices_to_outside(x, start, size):
+    rank = tf.shape(tf.shape(x))[0]
+    indices = tf.range(rank)
+    end = start + size
+    return tf.transpose(
+        x,
+        tf.concat([indices[start:end], indices[:start], indices[end:]], 0),
+    )
 
 
 def phylogenetic_likelihood(
@@ -7,6 +18,7 @@ def phylogenetic_likelihood(
     frequencies: tf.Tensor,
     postorder_node_indices: tf.Tensor,
     child_indices: tf.Tensor,
+    batch_shape=(),
 ):
     """
     Per-site phylogenetic likelihood.
@@ -26,22 +38,26 @@ def phylogenetic_likelihood(
         Tensor with shape [internal_node,  children]
     """
     taxon_count = tf.shape(sequences_onehot)[-2]
-    probs_shape = tf.shape(transition_probs)
-    batch_shape = probs_shape[:-3]
-    state_shape = probs_shape[-2:]
-    leaf_partials = tf.broadcast_to(
-        tf.expand_dims(sequences_onehot, -2),
-        tf.concat([tf.expand_dims(taxon_count, -1), batch_shape, state_shape]),
-    )
+    probs_shape = ps.shape(transition_probs)
+    state_shape = probs_shape[-1:]
+    partials_shape = ps.concat([batch_shape, state_shape], axis=0)
+    batch_rank = tf.shape(batch_shape)[0]
 
     postorder_partials_ta = tf.TensorArray(
         dtype=transition_probs.dtype,
         size=(2 * taxon_count - 1),
-        element_shape=tf.shape(leaf_partials)[1:],
+        element_shape=None if isinstance(partials_shape, tf.Tensor) else partials_shape,
     )
-    child_transition_probs = tf.gather(transition_probs, child_indices, axis=-3)
+    child_transition_probs = move_indices_to_outside(
+        tf.gather(transition_probs, child_indices, axis=-3), batch_rank, 2
+    )  # TODO: Move child dimension to beginning [node, child, ..., state, state]
 
     for i in tf.range(taxon_count):
+        postorder_partials_ta = postorder_partials_ta.write(
+            i, sequences_onehot[..., i, :]
+        )
+
+    for i in tf.range(taxon_count - 1):
         node_index = postorder_node_indices[i]
         node_child_transition_probs = child_transition_probs[
             i

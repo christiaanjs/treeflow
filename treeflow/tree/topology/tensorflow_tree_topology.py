@@ -1,17 +1,20 @@
 from types import prepare_class
 import typing as tp
 import attr
+import numpy as np
 import tensorflow as tf
 from treeflow.tree.taxon_set import TaxonSet, TupleTaxonSet
 from treeflow.tree.topology.base_tree_topology import AbstractTreeTopology
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 import treeflow.tree.topology.numpy_topology_operations as np_top_ops
 import tensorflow_probability.python.internal.prefer_static as ps
+import tensorflow_probability.python.internal.dtype_util as dtype_util
 from treeflow.tf_util import AttrsLengthMixin
 
 
 def tensor_taxon_count(parent_indices: tf.Tensor) -> tf.Tensor:
-    return (ps.shape(parent_indices)[-1] + 2) // 2
+    parent_index_count = ps.shape(parent_indices)[-1]
+    return ps.cast((parent_index_count + 2) // 2, parent_index_count.dtype)
 
 
 @attr.attrs(auto_attribs=True, slots=True)
@@ -29,7 +32,11 @@ class TensorflowTreeTopologyAttrs(
     @property
     def postorder_node_indices(self) -> tf.Tensor:
         taxon_count = self.taxon_count
-        return tf.range(taxon_count, 2 * taxon_count - 1)
+        return tf.range(taxon_count, 2 * taxon_count - 1, dtype=taxon_count.dtype)
+
+    @property
+    def node_child_indices(self) -> tf.Tensor:
+        return self.child_indices[self.taxon_count :]
 
 
 class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
@@ -54,14 +61,16 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
         return self._taxon_set
 
 
-def numpy_topology_to_tensor(topology: NumpyTreeTopology) -> TensorflowTreeTopology:
+def numpy_topology_to_tensor(
+    topology: NumpyTreeTopology, dtype=tf.int32
+) -> TensorflowTreeTopology:
     parent_indices = topology.parent_indices
     child_indices = np_top_ops.get_child_indices(parent_indices)
     preorder_indices = np_top_ops.get_preorder_indices(child_indices)
     return TensorflowTreeTopology(
-        parent_indices=tf.convert_to_tensor(parent_indices),
-        child_indices=tf.convert_to_tensor(child_indices),
-        preorder_indices=tf.convert_to_tensor(preorder_indices),
+        parent_indices=tf.constant(parent_indices, dtype=dtype),
+        child_indices=tf.constant(child_indices, dtype=dtype),
+        preorder_indices=tf.constant(preorder_indices, dtype=dtype),
         taxon_set=(
             None if topology.taxon_set is None else TupleTaxonSet(topology.taxon_set)
         ),
