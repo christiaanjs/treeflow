@@ -50,7 +50,7 @@ def phylogenetic_likelihood(
     )
     child_transition_probs = move_indices_to_outside(
         tf.gather(transition_probs, child_indices, axis=-3), batch_rank, 2
-    )  # TODO: Move child dimension to beginning [node, child, ..., state, state]
+    )  # [node, child, ..., state, state]
 
     for i in tf.range(taxon_count):
         postorder_partials_ta = postorder_partials_ta.write(

@@ -8,3 +8,8 @@ from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopolo
 class TensorflowUnrootedTree(AbstractUnrootedTree[tf.Tensor, tf.Tensor]):
     topology: TensorflowTreeTopology
     branch_lengths: tf.Tensor
+
+    def with_branch_lengths(self, branch_lengths):
+        return TensorflowUnrootedTree(
+            topology=self.topology, branch_lengths=branch_lengths
+        )

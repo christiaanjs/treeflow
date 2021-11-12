@@ -1,4 +1,5 @@
-from types import prepare_class
+from __future__ import annotations
+
 import typing as tp
 import attr
 import numpy as np
@@ -59,6 +60,12 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
     @property
     def taxon_set(self) -> tp.Optional[TaxonSet]:
         return self._taxon_set
+
+    @classmethod
+    def get_event_ndims(cls) -> TensorflowTreeTopology:
+        return TensorflowTreeTopology(
+            parent_indices=1, child_indices=2, preorder_indices=1
+        )
 
 
 def numpy_topology_to_tensor(

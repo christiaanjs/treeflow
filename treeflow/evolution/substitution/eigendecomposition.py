@@ -28,7 +28,7 @@ class Eigendecomposition:
         """
         Add batch dimensions before the state dimensions
         """
-        # TODO: Make this work with dynamic `batch_dims`
+        # TODO: Reimplement with reshape
         assert batch_dims >= 0
         if batch_dims > 0:
             return nest.map_structure(

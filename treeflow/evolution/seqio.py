@@ -46,7 +46,7 @@ def parse_fasta(filename: PathLikeType) -> tp.Dict[str, str]:
     return dict([process_block(block) for block in text.split(">")[1:]])
 
 
-SequenceMappingType = tp.Mapping[str, tp.Iterable[str]]
+SequenceMappingType = tp.Mapping[str, tp.Collection[str]]
 
 
 def compress_sites(
@@ -95,6 +95,9 @@ class Alignment:
             raise ValueError(
                 "Either `sequence_mapping` or `fasta_file` must be supplied"
             )
+        sequence_lengths = set(len(x) for x in self.sequence_mapping.values())
+        assert len(sequence_lengths) == 1
+        self.site_count = next(iter(sequence_lengths))
 
     def get_encoded_sequence_array(self, taxon_names: tp.Iterable[str]) -> np.ndarray:
         return encode_sequence_mapping(self.sequence_mapping, taxon_names)
