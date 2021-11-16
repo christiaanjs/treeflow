@@ -20,6 +20,7 @@ def tensor_constant():
 pytest_plugins = [
     "tree_fixtures",
     "data_fixtures",
+    "ratio_fixtures",
     "substitution_fixtures",
 ]
 
