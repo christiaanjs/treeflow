@@ -3,13 +3,16 @@ from __future__ import annotations
 import typing as tp
 import attr
 import numpy as np
+from numpy.core.fromnumeric import transpose
 import tensorflow as tf
 from treeflow.tree.taxon_set import TaxonSet, TupleTaxonSet
-from treeflow.tree.topology.base_tree_topology import AbstractTreeTopology
+from treeflow.tree.topology.base_tree_topology import (
+    AbstractTreeTopology,
+    BaseTreeTopology,
+)
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 import treeflow.tree.topology.numpy_topology_operations as np_top_ops
 import tensorflow_probability.python.internal.prefer_static as ps
-import tensorflow_probability.python.internal.dtype_util as dtype_util
 from treeflow.tf_util import AttrsLengthMixin
 
 
@@ -39,6 +42,15 @@ class TensorflowTreeTopologyAttrs(
     def node_child_indices(self) -> tf.Tensor:
         return self.child_indices[self.taxon_count :]
 
+    @property
+    def preorder_node_indices(self) -> tf.Tensor:
+        preorder_indices = self.preorder_indices
+        return tf.boolean_mask(
+            preorder_indices,
+            preorder_indices >= self.taxon_count,
+            axis=tf.rank(preorder_indices) - 1,
+        )
+
 
 class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
     def __init__(
@@ -66,6 +78,26 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
         return TensorflowTreeTopology(
             parent_indices=1, child_indices=2, preorder_indices=1
         )
+
+    def get_prefer_static_rank(
+        self,
+    ) -> TensorflowTreeTopology:
+        return tf.nest.map_structure(ps.rank, self)
+
+    @classmethod
+    def rank_to_has_batch_dimensions(cls, rank: TensorflowTreeTopology):
+        event_ndims = cls.get_event_ndims()
+        batch_ndims = tf.nest.map_structure(
+            lambda elem_rank, elem_event_ndims: elem_rank - elem_event_ndims,
+            rank,
+            event_ndims,
+        )
+        has_batch_dims_array = ps.stack(tf.nest.flatten(batch_ndims)) > 0
+        return ps.reduce_any(has_batch_dims_array)
+
+    def has_batch_dimensions(self) -> tp.Union[bool, tf.Tensor]:
+        rank = self.get_prefer_static_rank()
+        return type(self).rank_to_has_batch_dimensions(rank)
 
 
 def numpy_topology_to_tensor(

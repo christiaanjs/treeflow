@@ -77,14 +77,17 @@ class LeafCTMC(Distribution):
         # TODO: Handle topology batch dims
         sample_and_batch_shape = ps.shape(x)[:-2]
         transition_probs = self._broadcast_transition_probs(sample_and_batch_shape)
-        return phylogenetic_likelihood(
-            x,
-            transition_probs,
-            self.frequencies,
-            self.transition_probs_tree.topology.postorder_node_indices,
-            self.transition_probs_tree.topology.node_child_indices,
-            batch_shape=sample_and_batch_shape,
-        )
+        if self.transition_probs_tree.topology.has_batch_dimensions():
+            raise NotImplementedError("Topology batching not yet supported")
+        else:
+            return phylogenetic_likelihood(
+                x,
+                transition_probs,
+                self.frequencies,
+                self.transition_probs_tree.topology.postorder_node_indices,
+                self.transition_probs_tree.topology.node_child_indices,
+                batch_shape=sample_and_batch_shape,
+            )
 
 
 __all__ = [LeafCTMC.__name__]

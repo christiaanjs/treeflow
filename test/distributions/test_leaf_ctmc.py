@@ -35,13 +35,13 @@ def transition_prob_tree(flat_tree_test_data):
     )
 
 
-def test_leaf_ctmc_event_shape(transition_prob_tree, hky_params):
+def test_LeafCTMC_event_shape(transition_prob_tree, hky_params):
     state_count = transition_prob_tree.branch_lengths.numpy().shape[-1]
     dist = LeafCTMC(transition_prob_tree, hky_params["frequencies"])
     assert dist.event_shape == (transition_prob_tree.taxon_count, state_count)
 
 
-def test_leaf_ctmc_event_shape_tensor(transition_prob_tree, hky_params):
+def test_LeafCTMC_event_shape_tensor(transition_prob_tree, hky_params):
     state_count = transition_prob_tree.branch_lengths.numpy().shape[-1]
     dist = LeafCTMC(transition_prob_tree, hky_params["frequencies"])
     assert tuple(dist.event_shape_tensor().numpy()) == (
@@ -50,7 +50,7 @@ def test_leaf_ctmc_event_shape_tensor(transition_prob_tree, hky_params):
     )
 
 
-def test_leaf_ctmc_log_prob_over_sites(
+def test_LeafCTMC_log_prob_over_sites(
     hello_tensor_tree: TensorflowRootedTree,
     hello_alignment: Alignment,
     hky_params,
