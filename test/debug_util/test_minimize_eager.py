@@ -1,41 +1,16 @@
 import tensorflow as tf
-import pytest
-import treeflow
-import treeflow.vi
-import tensorflow_probability as tfp
+from tensorflow_probability.python.optimizer.convergence_criteria.loss_not_decreasing import (
+    LossNotDecreasing,
+)
+import tensorflow as tf
+from tensorflow_probability.python.math.minimize import minimize as tfp_minimize
+from treeflow.debug.minimize_eager import minimize_eager
+from treeflow_test_helpers.optimization_helpers import obj, vars, optimizer_builder
 from numpy.testing import assert_allclose
 
 
-def vars(prefix=""):
-    return dict(
-        a=tf.Variable(
-            tf.convert_to_tensor(1.0, dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF),
-            name=f"{prefix}a",
-        ),
-        b=tf.Variable(
-            tf.convert_to_tensor([1.2, 3.2], dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF),
-            name=f"{prefix}b",
-        ),
-    )
-
-
-obs = tf.convert_to_tensor([0.8, 1.2], dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF)
-
-
-def obj(vars):
-    return lambda: tf.math.square(vars["a"]) + tf.math.reduce_sum(
-        tf.math.square(vars["a"] - vars["b"]) + tf.math.square(vars["b"] - obs)
-    )
-
-
-def optimizer_builder():
-    return tf.optimizers.SGD(learning_rate=1e-2)
-
-
 def criterion_builder():
-    return tfp.optimizer.convergence_criteria.LossNotDecreasing(
-        atol=1e-3, min_num_steps=5, window_size=3
-    )
+    return LossNotDecreasing(atol=1e-3, min_num_steps=5, window_size=3)
 
 
 def test_minimize_eager_matches():
@@ -51,12 +26,8 @@ def test_minimize_eager_matches():
     trace_fn = lambda x: (x.step, x.loss, x.parameters)
 
     num_steps = 10
-    eager_res = treeflow.vi.minimize_eager(
-        _obj, num_steps, optimizer, trace_fn=trace_fn
-    )
-    other_res = tfp.math.minimize(
-        other_obj, num_steps, other_optimizer, trace_fn=trace_fn
-    )
+    eager_res = minimize_eager(_obj, num_steps, optimizer, trace_fn=trace_fn)
+    other_res = tfp_minimize(other_obj, num_steps, other_optimizer, trace_fn=trace_fn)
 
     tf.nest.map_structure(assert_allclose, eager_res, other_res)
 
@@ -69,7 +40,7 @@ def test_minimize_eager_convergence():
     optimizer = optimizer_builder()
     _vars = vars()
     _obj = obj(_vars)
-    eager_res = treeflow.vi.minimize_eager(
+    eager_res = minimize_eager(
         _obj,
         num_steps,
         optimizer,
@@ -81,7 +52,7 @@ def test_minimize_eager_convergence():
     other_optimizer = optimizer_builder()
     other_vars = vars("other_")
     other_obj = obj(other_vars)
-    other_res = tfp.math.minimize(
+    other_res = tfp_minimize(
         other_obj,
         num_steps,
         other_optimizer,
