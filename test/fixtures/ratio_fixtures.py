@@ -1,21 +1,6 @@
-from _pytest.config import parse_warning_filter
 import pytest
 import numpy as np
-from collections import namedtuple
-from treeflow import DEFAULT_FLOAT_DTYPE_NP
-
-RatioTestData = namedtuple(
-    "RatioTestData",
-    [
-        "heights",
-        "node_parent_indices",
-        "parent_indices",
-        "preorder_node_indices",
-        "ratios",
-        "anchor_heights",
-        "sampling_times",
-    ],
-)
+from treeflow_test_helpers.ratio_helpers import RatioTestData
 
 sampling_times_flat = [
     np.array(x) for x in [[0.0, 0.0, 0.0, 0.0, 0.0], [0.1, 0.2, 0.0, 0.3, 0.2]]
