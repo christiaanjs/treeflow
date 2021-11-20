@@ -10,5 +10,5 @@ setuptools.setup(
         "numdifftools",  # Test dependency
         "pytest",
     ],
-    extras_require=dict(accelerated=["libsbn"]),
+    extras_require=dict(accelerated=["bito"]),
 )

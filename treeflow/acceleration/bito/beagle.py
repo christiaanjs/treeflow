@@ -1,11 +1,13 @@
+import bito
+import typing as tp
 import tensorflow as tf
-import treeflow.substitution_model
-import treeflow.libsbn
+import treeflow.acceleration.bito.instance as bito_instance
+import treeflow.evolution.substitution as treeflow_subst
 import numpy as np
 from treeflow import DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_NP
 
 
-def log_prob_conditioned_branch_only(
+def phylogenetic_likelihood(
     fasta_file,
     subst_model,
     frequencies,
@@ -14,19 +16,12 @@ def log_prob_conditioned_branch_only(
     newick_file=None,
     dated=True,
     **subst_model_params
-):
-    import libsbn
+) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], object]:
 
-    if isinstance(subst_model, treeflow.substitution_model.JC):
+    if isinstance(subst_model, treeflow_subst.JC):
         subst_model_string = "JC69"
         param_updates = {}
-    elif isinstance(subst_model, treeflow.substitution_model.GTR):
-        subst_model_string = "GTR"
-        param_updates = {
-            "GTR rates": np.array(subst_model_params["rates"]),
-            "frequencies": np.array(frequencies),
-        }
-    elif isinstance(subst_model, treeflow.substitution_model.HKY):
+    elif isinstance(subst_model, treeflow_subst.HKY):
         subst_model_string = "GTR"
         kappa = subst_model_params["kappa"]
         rates = np.ones(6)
@@ -39,11 +34,11 @@ def log_prob_conditioned_branch_only(
 
     if inst is None:
         if newick_file is None:
-            raise ValueError("Either a libsbn instance or Newick file must be supplied")
-        inst = treeflow.libsbn.get_instance(newick_file, dated=dated)
+            raise ValueError("Either a bito instance or Newick file must be supplied")
+        inst = bito_instance.get_instance(newick_file, dated=dated)
     inst.read_fasta_file(fasta_file)
     inst.set_rescaling(rescaling)
-    model_specification = libsbn.PhyloModelSpecification(
+    model_specification = bito.PhyloModelSpecification(
         subst_model_string, "constant", "strict"
     )
     inst.prepare_for_phylo_likelihood(model_specification, 1)
@@ -54,12 +49,10 @@ def log_prob_conditioned_branch_only(
     for key, value in param_updates.items():
         phylo_model_param_block_map[key][:] = value
 
-    parent_id_vector = np.array(inst.tree_collection.trees[0].parent_id_vector())
-
     branch_lengths = np.array(inst.tree_collection.trees[0].branch_lengths, copy=False)
 
-    def libsbn_func(x):
-        """Wrapping likelihood and gradient evaluation via libsbn."""
+    def bito_func(x):
+        """Wrapping likelihood and gradient evaluation via beagle."""
         branch_lengths[:-1] = x
         gradient = inst.phylo_gradients()[0]
         grad_array = np.array(
@@ -70,16 +63,16 @@ def log_prob_conditioned_branch_only(
             grad_array,
         )
 
-    libsbn_func_vec = np.vectorize(
-        libsbn_func,
+    bito_func_vec = np.vectorize(
+        bito_func,
         [DEFAULT_FLOAT_DTYPE_NP, DEFAULT_FLOAT_DTYPE_NP],
         signature="(n)->(),(n)",
     )
 
     @tf.custom_gradient
-    def libsbn_tf_func(x):
+    def bito_tf_func(x):
         logp, grad_val = tf.numpy_function(
-            libsbn_func_vec, [x], [DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_TF]
+            bito_func_vec, [x], [DEFAULT_FLOAT_DTYPE_TF, DEFAULT_FLOAT_DTYPE_TF]
         )
 
         def grad(dlogp):
@@ -87,4 +80,4 @@ def log_prob_conditioned_branch_only(
 
         return logp, grad
 
-    return libsbn_tf_func, inst
+    return bito_tf_func, inst
