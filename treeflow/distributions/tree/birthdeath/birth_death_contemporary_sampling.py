@@ -88,8 +88,12 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
             + taxon_count * tf.math.log(1 - a)
         )
 
-        mrhs = -tf.expand_dims(r, -1) * heights
-        zs = tf.expand_dims(tf.math.log(rho + ((1 - rho) - a)), -1) * tf.math.exp(mrhs)
+        mrhs = tf.expand_dims(-r, -1) * heights
+
+        zs = tf.math.log(
+            tf.expand_dims(rho, -1)
+            + tf.expand_dims((1 - rho) - a, -1) * tf.math.exp(mrhs)
+        )
         ls = -2 * zs + mrhs
         root_term = mrhs[..., -1] - zs[..., -1]
 
