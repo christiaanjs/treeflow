@@ -43,10 +43,10 @@ def test_log_prob_conditioned_hky(hky_params, newick_fasta_file_dated):
         tf_ll = treeflow_func(blens)
     tf_gradient = tf_t.gradient(tf_ll, blens)
 
-    with tf.GradientTape() as libsbn_t:
-        libsbn_t.watch(blens)
-        libsbn_ll = beagle_func(blens)
-    libsbn_gradient = libsbn_t.gradient(libsbn_ll, blens)
+    with tf.GradientTape() as bito_t:
+        bito_t.watch(blens)
+        bito_ll = beagle_func(blens)
+    bito_gradient = bito_t.gradient(bito_ll, blens)
 
-    assert_allclose(tf_ll.numpy(), libsbn_ll.numpy())
-    assert_allclose(tf_gradient.numpy(), libsbn_gradient.numpy())
+    assert_allclose(tf_ll.numpy(), bito_ll.numpy())
+    assert_allclose(tf_gradient.numpy(), bito_gradient.numpy())
