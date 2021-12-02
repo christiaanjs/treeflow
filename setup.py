@@ -11,4 +11,8 @@ setuptools.setup(
         "pytest",
     ],
     extras_require=dict(accelerated=["bito"]),
+    entry_points="""
+        [console_scripts]
+        treeflow_benchmark=treeflow.cli.benchmark:treeflow_benchmark
+    """,
 )

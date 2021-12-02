@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import tensorflow as tf
 import numpy as np
 import attr
+from tensorflow.python.framework.ops import to_raw_op
 from treeflow.tree.rooted.base_rooted_tree import AbstractRootedTree
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
 from treeflow.tree.topology.tensorflow_tree_topology import (
@@ -47,6 +50,25 @@ class TensorflowRootedTree(TensorflowRootedTreeAttrs):
     @property
     def sampling_times(self) -> tf.Tensor:
         return self.heights[..., : self.taxon_count]
+
+    @property
+    def internal_node_heights(self) -> tf.Tensor:
+        return self.heights[..., self.taxon_count :]
+
+    def numpy(self) -> NumpyRootedTree:
+        return NumpyRootedTree(
+            heights=self.heights.numpy(),
+            topology=self.topology.numpy(),
+        )
+
+    def with_heights(self, heights: tf.Tensor) -> TensorflowRootedTree:
+        return TensorflowRootedTree(heights=heights, topology=self.topology)
+
+    def with_internal_node_heights(
+        self, node_heights: tf.Tensor
+    ) -> TensorflowRootedTree:
+        heights = tf.concat([self.sampling_times, node_heights], axis=-1)
+        return self.with_heights(heights)
 
 
 def convert_tree_to_tensor(

@@ -57,5 +57,9 @@ class NumpyRootedTree(
     def sampling_times(self) -> np.ndarray:
         return self.heights[..., : self.taxon_count]
 
+    @property
+    def internal_node_heights(self) -> np.ndarray:
+        return self.heights[..., self.taxon_count :]
+
 
 __all__ = [NumpyRootedTree.__name__]

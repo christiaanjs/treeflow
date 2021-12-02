@@ -49,7 +49,7 @@ class LeafCTMC(Distribution):
 
     def _event_shape(self) -> tf.TensorShape:
         return tf.TensorShape(
-            [self.leaf_count, tf.shape(self.transition_probs_tree.branch_lengths)[-1]]
+            [self.leaf_count, ps.shape(self.transition_probs_tree.branch_lengths)[-1]]
         )
 
     def _event_shape_tensor(self) -> tf.Tensor:

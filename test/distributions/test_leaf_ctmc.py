@@ -35,10 +35,19 @@ def transition_prob_tree(flat_tree_test_data):
     )
 
 
-def test_LeafCTMC_event_shape(transition_prob_tree, hky_params):
+@pytest.mark.parametrize("function_mode", [True, False])
+def test_LeafCTMC_event_shape(transition_prob_tree, hky_params, function_mode):
     state_count = transition_prob_tree.branch_lengths.numpy().shape[-1]
-    dist = LeafCTMC(transition_prob_tree, hky_params["frequencies"])
-    assert dist.event_shape == (transition_prob_tree.taxon_count, state_count)
+
+    def event_shape_function(transition_prob_tree, frequencies):
+        dist = LeafCTMC(transition_prob_tree, frequencies)
+        return dist.event_shape
+
+    if function_mode:
+        event_shape_function = tf.function(event_shape_function)
+
+    res = event_shape_function(transition_prob_tree, hky_params["frequencies"])
+    assert tuple(res.numpy()) == (transition_prob_tree.taxon_count, state_count)
 
 
 def test_LeafCTMC_event_shape_tensor(transition_prob_tree, hky_params):
@@ -50,20 +59,29 @@ def test_LeafCTMC_event_shape_tensor(transition_prob_tree, hky_params):
     )
 
 
+@pytest.mark.parametrize("function_mode", [True, False])
 def test_LeafCTMC_log_prob_over_sites(
     hello_tensor_tree: TensorflowRootedTree,
     hello_alignment: Alignment,
     hky_params,
     hello_hky_log_likelihood,
+    function_mode: bool,
 ):
     """Integration-style test"""
-    transition_prob_tree = get_transition_probabilities_tree(
-        hello_tensor_tree.get_unrooted_tree(), HKY(), **hky_params
-    )  # TODO: Better solution for batch dimensions
-    dist = Sample(
-        LeafCTMC(transition_prob_tree, hky_params["frequencies"]),
-        sample_shape=hello_alignment.site_count,
-    )
+
+    def log_prob_fn(tree, sequences):
+        transition_prob_tree = get_transition_probabilities_tree(
+            tree.get_unrooted_tree(), HKY(), **hky_params
+        )  # TODO: Better solution for batch dimensions
+        dist = Sample(
+            LeafCTMC(transition_prob_tree, hky_params["frequencies"]),
+            sample_shape=hello_alignment.site_count,
+        )
+        return dist.log_prob(sequences)
+
     sequences = hello_alignment.get_encoded_sequence_tensor(hello_tensor_tree.taxon_set)
-    res = dist.log_prob(sequences)
+
+    if function_mode:
+        log_prob_fn = tf.function(log_prob_fn)
+    res = log_prob_fn(hello_tensor_tree, sequences)
     assert_allclose(res, hello_hky_log_likelihood)
