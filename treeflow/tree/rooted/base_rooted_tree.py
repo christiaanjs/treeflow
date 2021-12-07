@@ -41,6 +41,10 @@ class AbstractRootedTree(
     def sampling_times(self) -> TDataType:
         pass
 
+    @abstractproperty
+    def internal_node_heights(self) -> TDataType:
+        pass
+
     def get_unrooted_tree(self) -> TRootedTreeType:
         return type(self).UnrootedTreeType(
             topology=self.topology, branch_lengths=self.branch_lengths

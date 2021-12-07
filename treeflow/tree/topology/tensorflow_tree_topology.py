@@ -99,6 +99,11 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
         rank = self.get_prefer_static_rank()
         return type(self).rank_to_has_batch_dimensions(rank)
 
+    def numpy(self) -> NumpyTreeTopology:
+        return NumpyTreeTopology(
+            parent_indices=self.parent_indices, taxon_set=self.taxon_set
+        )
+
 
 def numpy_topology_to_tensor(
     topology: NumpyTreeTopology, dtype=tf.int32

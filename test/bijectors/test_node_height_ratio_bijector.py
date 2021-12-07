@@ -43,3 +43,28 @@ def test_NodeHeightRatioBijector_inverse_log_det_jacobian(
     log_det = np.log(np_det(jac.numpy()))
     res = bijector.inverse_log_det_jacobian(heights)
     assert_allclose(res.numpy(), log_det)
+
+
+def test_NodeHeightRatioBijector_forward_log_det_jacobian_gradient(
+    flat_ratio_test_data: RatioTestData,
+):
+    ratio_test_data = flat_ratio_test_data
+    bijector = bijector_from_ratio_test_data(ratio_test_data)
+    heights = tf.convert_to_tensor(ratio_test_data.heights)
+    ratios = tf.constant(bijector.inverse(heights).numpy())
+    # Gradient gets weird when we use this tensor directly because of caching
+    with tf.GradientTape() as t:
+        t.watch(ratios)
+        log_det_jacobian_res = bijector.forward_log_det_jacobian(ratios)
+    grad_res = t.gradient(log_det_jacobian_res, ratios)
+
+    with tf.GradientTape() as outer_t:
+        outer_t.watch(ratios)
+        with tf.GradientTape() as inner_t:
+            inner_t.watch(ratios)
+            forward_res = bijector.forward(ratios)
+        jac = inner_t.jacobian(forward_res, ratios)
+        manual_log_det_jacobian_res = tf.math.log(tf.linalg.det(jac))
+    manual_grad_res = outer_t.gradient(manual_log_det_jacobian_res, ratios)
+
+    assert_allclose(grad_res.numpy(), manual_grad_res.numpy())

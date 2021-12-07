@@ -12,6 +12,7 @@ def move_indices_to_outside(x, start, size):
     )
 
 
+@tf.function
 def phylogenetic_likelihood(
     sequences_onehot: tf.Tensor,
     transition_probs: tf.Tensor,

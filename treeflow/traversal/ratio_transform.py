@@ -9,6 +9,7 @@ def move_outside_axis_to_inside(x):
     return tf.transpose(x, perm)
 
 
+@tf.function
 def ratios_to_node_heights(
     preorder_node_indices: tf.Tensor,
     parent_indices: tf.Tensor,
@@ -23,7 +24,7 @@ def ratios_to_node_heights(
         clear_after_read=False,
     )
 
-    node_heights_ta.write(
+    node_heights_ta = node_heights_ta.write(
         node_count - 1,
         ratios[..., node_count - 1] + anchor_heights[..., node_count - 1],
     )
@@ -32,6 +33,6 @@ def ratios_to_node_heights(
         anchor_height = anchor_heights[..., i]
         proportion = ratios[..., i]
         node_height = (parent_height - anchor_height) * proportion + anchor_height
-        node_heights_ta.write(i, node_height)
+        node_heights_ta = node_heights_ta.write(i, node_height)
 
     return move_outside_axis_to_inside(node_heights_ta.stack())
