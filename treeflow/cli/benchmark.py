@@ -211,6 +211,9 @@ DTYPE_MAPPING = dict(float32=tf.float32, float64=tf.float64)
     default=1.0,
     help="Scale branch lengths",
 )
+@click.option(
+    "-e", "--eager", type=bool, default=False, help="Include eager mode in benchmark"
+)
 def treeflow_benchmark(
     input: str,
     tree: str,
@@ -219,6 +222,7 @@ def treeflow_benchmark(
     dtype: str,
     scaler: float,
     precompile: bool,
+    eager: bool,
 ):
     print("Parsing input...")
     alignment = Alignment(input)
@@ -229,7 +233,7 @@ def treeflow_benchmark(
 
     computations = ["treelikelihood", "ratio_transform_jacobian", "constant_coalescent"]
     tasks = ["gradient", "evaluation"]
-    jits = [True, False]
+    jits = [True, False] if eager else [True]
 
     if output:
         output.write("function,mode,JIT,time,logprob\n")
