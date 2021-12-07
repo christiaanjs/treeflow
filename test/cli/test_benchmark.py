@@ -6,7 +6,7 @@ def test_benchmark(hello_fasta_file, hello_newick_file):
     runner = CliRunner()
     res = runner.invoke(
         treeflow_benchmark,
-        ["-i", hello_fasta_file, "-t", hello_newick_file, "-r", str(3)],
+        ["-i", hello_fasta_file, "-t", hello_newick_file, "-r", str(1)],
         catch_exceptions=False,
     )
     print(res)

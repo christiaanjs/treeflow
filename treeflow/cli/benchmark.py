@@ -73,14 +73,18 @@ def get_ratio_transform_jacobian_computation(
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
 
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
-    bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
-    ratios = bijector.inverse(tree.internal_node_heights)
+    init_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
+    ratios = tf.constant(
+        init_bijector.inverse(tree.internal_node_heights).numpy(), dtype=dtype
+    )
 
-    def ratio_transform_log_det_jacobian(ratios: tf.Tensor):
-        internal_heights = bijector.forward(ratios)
-        return bijector.forward_log_det_jacobian(internal_heights)
+    def log_det_jacobian(ratios):
+        bijector = NodeHeightRatioBijector(
+            tree.topology, anchor_heights
+        )  # Avoid caching
+        return bijector.forward_log_det_jacobian(ratios)
 
-    return ratio_transform_log_det_jacobian, ratios
+    return log_det_jacobian, ratios
 
 
 def get_constant_coalescent_computation(
@@ -109,7 +113,8 @@ def get_gradient_fn(
             for arg in args:
                 t.watch(arg)
             res = task_fn(*args)
-        return t.gradient(res, args)
+        gradient_res = t.gradient(res, args)
+        return gradient_res
 
     return gradient
 
@@ -146,7 +151,7 @@ def benchmark(
     if task == "gradient":
         fn = get_gradient_fn(task_fn)
     elif task == "evaluation":
-        fn = lambda args: (task_fn(*args))
+        fn = lambda *args: (task_fn(*args),)
     else:
         raise ValueError(f"Unknown task: {task}")
 
@@ -154,7 +159,7 @@ def benchmark(
         fn = tf.function(fn)
     if precompile:
         print("Precompiling...")
-        fn(args)
+        fn(*args)
 
     print("Running benchmark...")
     timed_fn = time_fn(fn)
@@ -223,7 +228,7 @@ def treeflow_benchmark(
     scaler_tensor = tf.constant(scaler, dtype=tf_dtype)
 
     computations = ["treelikelihood", "ratio_transform_jacobian", "constant_coalescent"]
-    tasks = ["gradient", "evaluations"]
+    tasks = ["gradient", "evaluation"]
     jits = [True, False]
 
     if output:

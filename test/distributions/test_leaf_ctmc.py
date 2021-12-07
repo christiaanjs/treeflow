@@ -47,7 +47,9 @@ def test_LeafCTMC_event_shape(transition_prob_tree, hky_params, function_mode):
         event_shape_function = tf.function(event_shape_function)
 
     res = event_shape_function(transition_prob_tree, hky_params["frequencies"])
-    assert tuple(res.numpy()) == (transition_prob_tree.taxon_count, state_count)
+    if function_mode:
+        res = res.numpy()
+    assert tuple(res) == (transition_prob_tree.taxon_count, state_count)
 
 
 def test_LeafCTMC_event_shape_tensor(transition_prob_tree, hky_params):

@@ -44,3 +44,16 @@ preorder_node_indices = np.array([8, 7, 5, 6]) - 5
 )
 def ratio_test_data(request):
     return request.param
+
+
+@pytest.fixture
+def flat_ratio_test_data():
+    return RatioTestData(
+        heights=heights[0],
+        parent_indices=parent_indices,
+        node_parent_indices=node_parent_indices,
+        preorder_node_indices=preorder_node_indices,
+        ratios=ratios[0],
+        anchor_heights=anchor_heights[0],
+        sampling_times=sampling_times[0],
+    )
