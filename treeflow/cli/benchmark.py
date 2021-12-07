@@ -104,7 +104,7 @@ def get_constant_coalescent_computation(
 def get_gradient_fn(
     task_fn: tp.Callable[..., tf.Tensor]
 ) -> tp.Callable[..., tp.Iterable[tf.Tensor]]:
-    def gradient(args: tp.Iterable[tf.Tensor]):
+    def gradient(*args: tp.Iterable[tf.Tensor]):
         with tf.GradientTape() as t:
             for arg in args:
                 t.watch(arg)
@@ -246,7 +246,7 @@ def treeflow_benchmark(
             replicates,
         )
         print("\n")
-        np_value = np.squeeze(value.numpy())
+        np_value = [np.squeeze(element.numpy()) for element in value]
         if output:
             output.write(f"{computation},{task},{jit},{time},{np_value}")
     print("Benchmark complete")
