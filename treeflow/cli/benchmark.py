@@ -107,14 +107,14 @@ def get_constant_coalescent_computation(
 
 def get_gradient_fn(
     task_fn: tp.Callable[..., tf.Tensor]
-) -> tp.Callable[..., tp.Iterable[tf.Tensor]]:
+) -> tp.Callable[..., tf.Tensor]:
     def gradient(*args: tp.Iterable[tf.Tensor]):
         with tf.GradientTape() as t:
             for arg in args:
                 t.watch(arg)
             res = task_fn(*args)
         gradient_res = t.gradient(res, args)
-        return gradient_res
+        return res
 
     return gradient
 
@@ -147,11 +147,11 @@ def benchmark(
     else:
         raise ValueError(f"Unknown computation: {computation}")
 
-    fn: tp.Callable[[tp.Iterable[tf.Tensor]], tp.Iterable[tf.Tensor]]
+    fn: tp.Callable[..., tf.Tensor]
     if task == "gradient":
         fn = get_gradient_fn(task_fn)
     elif task == "evaluation":
-        fn = lambda *args: (task_fn(*args),)
+        fn = task_fn
     else:
         raise ValueError(f"Unknown task: {task}")
 
@@ -165,7 +165,7 @@ def benchmark(
     timed_fn = time_fn(fn)
     time, value = timed_fn(replicates, args)
 
-    print(f"Value: {[element.numpy() for element in value]}")
+    print(f"Value: {value.numpy()}")
     print(f"Time: {time}")
     return time, value
 
@@ -251,7 +251,7 @@ def treeflow_benchmark(
             replicates,
         )
         print("\n")
-        np_value = [np.squeeze(element.numpy()) for element in value]
+        np_value = np.squeeze(value.numpy())
         if output:
-            output.write(f"{computation},{task},{jit},{time},{np_value}")
+            output.write(f"{computation},{task},{jit},{time},{np_value}\n")
     print("Benchmark complete")
