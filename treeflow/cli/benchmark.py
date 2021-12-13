@@ -212,7 +212,20 @@ DTYPE_MAPPING = dict(float32=tf.float32, float64=tf.float64)
     help="Scale branch lengths",
 )
 @click.option(
-    "-e", "--eager", type=bool, default=False, help="Include eager mode in benchmark"
+    "-e",
+    "--eager",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Include eager mode in benchmark",
+)
+@click.option(
+    "-m",
+    "--memory",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Profile maximum memory usage in benchmark",
 )
 def treeflow_benchmark(
     input: str,
@@ -223,7 +236,10 @@ def treeflow_benchmark(
     scaler: float,
     precompile: bool,
     eager: bool,
+    memory: bool,
 ):
+    from memory_profiler import memory_usage
+
     print("Parsing input...")
     alignment = Alignment(input)
     numpy_tree = parse_newick(tree)
@@ -236,14 +252,17 @@ def treeflow_benchmark(
     jits = [True, False] if eager else [True]
 
     if output:
-        output.write("function,mode,JIT,time,logprob\n")
+        output.write("function,mode,JIT,time,logprob")
+        if memory:
+            output.write(",max_mem")
+        output.write("\n")
 
     print("Starting benchmark...")
     for (computation, task, jit) in product(computations, tasks, jits):
         print(
             f"Benchmarking {computation} {task}{' in function mode' if jit else ''}..."
         )
-        time, value = benchmark(
+        benchmark_args = (
             tensor_tree,
             alignment,
             tf_dtype,
@@ -254,8 +273,25 @@ def treeflow_benchmark(
             precompile,
             replicates,
         )
-        print("\n")
+        max_mem: tp.Optional[float]
+        if memory:
+            max_mem, (time, value) = memory_usage(
+                (benchmark, benchmark_args),
+                retval=True,
+                max_usage=True,
+                max_iterations=1,
+            )
+        else:
+            time, value = benchmark(*benchmark_args)
+            max_mem = None
         np_value = np.squeeze(value.numpy())
         if output:
-            output.write(f"{computation},{task},{jit},{time},{np_value}\n")
+            jit_str = "on" if jit else "off"
+            output.write(f"{computation},{task},{jit_str},{time},{np_value}")
+            if max_mem is not None:
+                output.write(f",{max_mem}")
+            output.write("\n")
+        if max_mem is not None:
+            print(f"Max memory usage: {max_mem}")
+        print("\n")
     print("Benchmark complete")
