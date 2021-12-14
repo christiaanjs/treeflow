@@ -261,7 +261,7 @@ def treeflow_benchmark(
 
     print("Parsing input...")
     alignment = Alignment(input)
-    numpy_tree = parse_newick(tree)
+    numpy_tree = parse_newick(tree, remove_zero_edges=True)
     tf_dtype = DTYPE_MAPPING[dtype]
     tensor_tree = convert_tree_to_tensor(numpy_tree, height_dtype=tf_dtype)
     scaler_tensor = tf.constant(scaler, dtype=tf_dtype)
