@@ -2,10 +2,9 @@ import click
 from timeit import default_timer as timer
 import io
 import typing as tp
-import numpy as np
 import tensorflow as tf
 from treeflow.tree.io import parse_newick
-from treeflow.evolution.seqio import Alignment, WeightedAlignment
+from treeflow.evolution.seqio import Alignment
 from treeflow.tree.rooted.tensorflow_rooted_tree import (
     convert_tree_to_tensor,
     TensorflowRootedTree,
@@ -68,23 +67,34 @@ def get_tree_likelihood_computation(
     return log_prob, base_unrooted_tree.branch_lengths
 
 
-def get_ratio_transform_jacobian_computation(
+def get_ratio_transform_computation(
     tree: TensorflowRootedTree, dtype: tf.DType
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
 
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
     init_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
-    ratios = tf.constant(
-        init_bijector.inverse(tree.internal_node_heights).numpy(), dtype=dtype
-    )
+    init_ratios = tf.constant(init_bijector.inverse(tree.internal_node_heights))
 
-    def log_det_jacobian(ratios):
+    def ratio_transform_forward(ratios):
         bijector = NodeHeightRatioBijector(
             tree.topology, anchor_heights
         )  # Avoid caching
-        return bijector.forward_log_det_jacobian(ratios)
+        return bijector.forward(ratios)
 
-    return log_det_jacobian, ratios
+    return ratio_transform_forward, init_ratios
+
+
+def get_ratio_transform_jacobian_computation(
+    tree: TensorflowRootedTree, dtype: tf.DType
+) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
+
+    anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
+
+    def log_det_jacobian(heights):
+        bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
+        return -bijector.inverse_log_det_jacobian(heights)
+
+    return log_det_jacobian, tf.constant(tree.internal_node_heights)
 
 
 def get_constant_coalescent_computation(
@@ -106,14 +116,15 @@ def get_constant_coalescent_computation(
 
 
 def get_gradient_fn(
-    task_fn: tp.Callable[..., tf.Tensor]
+    task_fn: tp.Callable[..., tf.Tensor],
+    output_gradients: tp.Optional[tf.Tensor] = None,
 ) -> tp.Callable[..., tf.Tensor]:
     def gradient(*args: tp.Iterable[tf.Tensor]):
         with tf.GradientTape() as t:
             for arg in args:
                 t.watch(arg)
             res = task_fn(*args)
-        gradient_res = t.gradient(res, args)
+        gradient_res = t.gradient(res, args, output_gradients=output_gradients)
         return res
 
     return gradient
@@ -129,19 +140,24 @@ def benchmark(
     jit: bool,
     precompile: bool,
     replicates: int,
-) -> tp.Tuple[float, tf.Tensor]:
+) -> tp.Tuple[float, tp.Optional[float]]:
 
     task_fn: tp.Callable[..., tf.Tensor]
     args: tp.Iterable[tf.Tensor]
+    output_gradients: tp.Optional[tf.Tensor] = None
     if computation == "treelikelihood":
         (
             task_fn,
             branch_lengths,
         ) = get_tree_likelihood_computation(tree, input, dtype)
         args = (branch_lengths * scaler,)
-    elif computation == "ratio_transform_jacobian":
-        task_fn, ratios = get_ratio_transform_jacobian_computation(tree, dtype)
+    elif computation == "ratio_transform":
+        task_fn, ratios = get_ratio_transform_computation(tree, dtype)
+        output_gradients = tf.ones_like(ratios)
         args = (ratios,)
+    elif computation == "ratio_transform_jacobian":
+        task_fn, heights = get_ratio_transform_jacobian_computation(tree, dtype)
+        args = (heights,)
     elif computation == "constant_coalescent":
         task_fn, args = get_constant_coalescent_computation(tree, dtype=dtype)
     else:
@@ -149,7 +165,7 @@ def benchmark(
 
     fn: tp.Callable[..., tf.Tensor]
     if task == "gradient":
-        fn = get_gradient_fn(task_fn)
+        fn = get_gradient_fn(task_fn, output_gradients=output_gradients)
     elif task == "evaluation":
         fn = task_fn
     else:
@@ -165,9 +181,12 @@ def benchmark(
     timed_fn = time_fn(fn)
     time, value = timed_fn(replicates, args)
 
-    print(f"Value: {value.numpy()}")
+    squeezed = tf.squeeze(value)
+    numpy_value = squeezed.numpy() if squeezed.shape.rank == 0 else None
+
+    print(f"Value: {numpy_value if numpy_value else 'nonscalar'}")
     print(f"Time: {time}")
-    return time, value
+    return time, numpy_value
 
 
 DTYPE_MAPPING = dict(float32=tf.float32, float64=tf.float64)
@@ -211,6 +230,22 @@ DTYPE_MAPPING = dict(float32=tf.float32, float64=tf.float64)
     default=1.0,
     help="Scale branch lengths",
 )
+@click.option(
+    "-e",
+    "--eager",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Include eager mode in benchmark",
+)
+@click.option(
+    "-m",
+    "--memory",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Profile maximum memory usage in benchmark",
+)
 def treeflow_benchmark(
     input: str,
     tree: str,
@@ -219,27 +254,39 @@ def treeflow_benchmark(
     dtype: str,
     scaler: float,
     precompile: bool,
+    eager: bool,
+    memory: bool,
 ):
+    from memory_profiler import memory_usage
+
     print("Parsing input...")
     alignment = Alignment(input)
-    numpy_tree = parse_newick(tree)
+    numpy_tree = parse_newick(tree, remove_zero_edges=True)
     tf_dtype = DTYPE_MAPPING[dtype]
     tensor_tree = convert_tree_to_tensor(numpy_tree, height_dtype=tf_dtype)
     scaler_tensor = tf.constant(scaler, dtype=tf_dtype)
 
-    computations = ["treelikelihood", "ratio_transform_jacobian", "constant_coalescent"]
+    computations = [
+        "treelikelihood",
+        "ratio_transform",
+        "ratio_transform_jacobian",
+        "constant_coalescent",
+    ]
     tasks = ["gradient", "evaluation"]
-    jits = [True, False]
+    jits = [True, False] if eager else [True]
 
     if output:
-        output.write("function,mode,JIT,time,logprob\n")
+        output.write("function,mode,JIT,time,logprob")
+        if memory:
+            output.write(",max_mem")
+        output.write("\n")
 
     print("Starting benchmark...")
     for (computation, task, jit) in product(computations, tasks, jits):
         print(
             f"Benchmarking {computation} {task}{' in function mode' if jit else ''}..."
         )
-        time, value = benchmark(
+        benchmark_args = (
             tensor_tree,
             alignment,
             tf_dtype,
@@ -250,8 +297,26 @@ def treeflow_benchmark(
             precompile,
             replicates,
         )
-        print("\n")
-        np_value = np.squeeze(value.numpy())
+        max_mem: tp.Optional[float]
+        if memory:
+            max_mem, (time, value) = memory_usage(
+                (benchmark, benchmark_args),
+                retval=True,
+                max_usage=True,
+                max_iterations=1,
+            )
+        else:
+            time, value = benchmark(*benchmark_args)
+            max_mem = None
         if output:
-            output.write(f"{computation},{task},{jit},{time},{np_value}\n")
+            jit_str = "on" if jit else "off"
+            output.write(
+                f"{computation},{task},{jit_str},{time},{value if value else ''}"
+            )
+            if max_mem is not None:
+                output.write(f",{max_mem}")
+            output.write("\n")
+        if max_mem is not None:
+            print(f"Max memory usage: {max_mem}")
+        print("\n")
     print("Benchmark complete")
