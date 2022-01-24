@@ -18,7 +18,8 @@ TRootedTreeType = tp.TypeVar("TRootedTreeType")
 @attr.s(auto_attribs=True, slots=True)
 class BaseRootedTree(tp.Generic[TDataType], AttrsLengthMixin):
     topology: BaseTreeTopology[TDataType]
-    heights: TDataType
+    node_heights: TDataType
+    sampling_times: TDataType
 
 
 @attr.s(auto_attribs=True, slots=True)
@@ -38,11 +39,7 @@ class AbstractRootedTree(
     UnrootedTreeType: tp.Type = BaseUnrootedTree  # TODO: Better type hint
 
     @abstractproperty
-    def sampling_times(self) -> TDataType:
-        pass
-
-    @abstractproperty
-    def internal_node_heights(self) -> TDataType:
+    def heights(self) -> TDataType:
         pass
 
     def get_unrooted_tree(self) -> TRootedTreeType:

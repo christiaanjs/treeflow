@@ -48,8 +48,9 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
         )
         super().__init__(
             taxon_count,
-            height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-            height_dtype=dtype,
+            sampling_time_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            node_height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            time_dtype=dtype,
             parameters=dict(locals()),
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,

@@ -80,8 +80,9 @@ class ConstantCoalescent(RootedTreeDistribution):
     ):
         super().__init__(
             taxon_count=taxon_count,
-            height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-            height_dtype=sampling_times.dtype,
+            node_height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            sampling_time_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            time_dtype=sampling_times.dtype,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             parameters=dict(locals()),

@@ -1,3 +1,4 @@
+from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 import tensorflow as tf
 import numpy as np
@@ -10,7 +11,7 @@ from treeflow.distributions.tree.coalescent.constant_coalescent import (
 )
 from treeflow.tree.rooted.tensorflow_rooted_tree import (
     TensorflowRootedTree,
-    tree_from_arrays,
+    convert_tree_to_tensor,
 )
 
 taxon_count = 3
@@ -36,7 +37,9 @@ sampling_times = heights[:taxon_count]
     ],
 )
 def test_coalescent_homochronous(pop_size, heights, parent_indices, function_mode):
-    tree = tree_from_arrays(heights=heights, parent_indices=parent_indices)
+    tree = convert_tree_to_tensor(
+        NumpyRootedTree(heights=heights, parent_indices=parent_indices)
+    )
     dist = ConstantCoalescent(
         taxon_count,
         pop_size,
@@ -60,25 +63,11 @@ def test_coalescent_heterochronous(pop_size, expected):
     heights = tf.concat([sampling_times, [0.2, 0.5, 0.8]], axis=0)
     parent_indices = tf.convert_to_tensor([4, 4, 5, 6, 5, 6])
     dist = ConstantCoalescent(4, pop_size, sampling_times)
-    tree = tree_from_arrays(heights=heights, parent_indices=parent_indices)
+    tree = convert_tree_to_tensor(
+        NumpyRootedTree(heights=heights, parent_indices=parent_indices)
+    )
     res = dist.log_prob(tree)
     assert_allclose(res.numpy(), expected)
-
-
-def test_coalescent_event_shape_tensor():
-    pop_size = 1.2
-    pop_size_tensor = tf.convert_to_tensor(pop_size, dtype=DEFAULT_FLOAT_DTYPE_TF)
-    sampling_times = tf.convert_to_tensor(
-        [0.0, 0.1, 0.4, 0.0], dtype=DEFAULT_FLOAT_DTYPE_TF
-    )
-    taxon_count = tf.shape(sampling_times)[-1]
-    coalescent = ConstantCoalescent(taxon_count, pop_size_tensor, sampling_times)
-    event_shape = coalescent.event_shape_tensor()
-    taxon_count_int = taxon_count.numpy()
-    assert tuple(event_shape.heights.numpy()) == (2 * taxon_count_int - 1,)
-    assert tuple(event_shape.topology.parent_indices.numpy()) == (
-        2 * taxon_count_int - 2,
-    )
 
 
 @pytest.mark.parametrize(

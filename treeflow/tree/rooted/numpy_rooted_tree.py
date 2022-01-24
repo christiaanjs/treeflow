@@ -1,3 +1,4 @@
+from platform import node
 from treeflow.tree import topology
 from treeflow.tree.rooted.base_rooted_tree import AbstractRootedTree
 from treeflow.tree.taxon_set import TaxonSet
@@ -12,7 +13,8 @@ import typing as tp
 class NumpyRootedTreeAttrs(
     AbstractRootedTree[np.ndarray, int, NumpyUnrootedTree]
 ):  # Convenience type hint
-    heights: np.ndarray
+    node_heights: np.ndarray
+    sampling_times: np.ndarray
     topology: NumpyTreeTopology
 
 
@@ -23,20 +25,34 @@ class NumpyRootedTree(
 
     def __init__(
         self,
-        heights: np.ndarray,
+        heights: tp.Optional[np.ndarray] = None,
+        node_heights: tp.Optional[np.ndarray] = None,
+        sampling_times: tp.Optional[np.ndarray] = None,
         topology: tp.Optional[NumpyTreeTopology] = None,
         parent_indices: tp.Optional[np.ndarray] = None,
         taxon_set: tp.Optional[TaxonSet] = None,
     ):
-        if topology is not None:
-            super().__init__(heights=heights, topology=topology)
-        elif parent_indices is not None:
-            new_topology = NumpyTreeTopology(
+        if topology is None:
+            assert (
+                parent_indices is not None
+            ), "Either `topology` or `parent_indices` must be specified"
+            topology = NumpyTreeTopology(
                 parent_indices=parent_indices, taxon_set=taxon_set
             )
-            super().__init__(heights=heights, topology=new_topology)
+        taxon_count = topology.taxon_count
+        if node_heights is not None:
+            if sampling_times is None:
+                sampling_times = np.zeros(
+                    node_heights.shape[:-1] + (taxon_count,),
+                    dtype=node_heights.dtype,
+                )
         else:
-            raise ValueError("Either `topology` or `parent_indices` must be specified")
+            assert heights is not None
+            sampling_times = heights[..., :taxon_count]
+            node_heights = heights[..., taxon_count:]
+        super().__init__(
+            node_heights=node_heights, sampling_times=sampling_times, topology=topology
+        )
 
     @property
     def branch_lengths(self) -> np.ndarray:
@@ -54,12 +70,8 @@ class NumpyRootedTree(
         )
 
     @property
-    def sampling_times(self) -> np.ndarray:
-        return self.heights[..., : self.taxon_count]
-
-    @property
-    def internal_node_heights(self) -> np.ndarray:
-        return self.heights[..., self.taxon_count :]
+    def heights(self) -> np.ndarray:
+        return np.concatenate((self.sampling_times, self.node_heights), axis=-1)
 
 
 __all__ = [NumpyRootedTree.__name__]

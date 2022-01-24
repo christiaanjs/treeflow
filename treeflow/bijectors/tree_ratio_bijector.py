@@ -1,5 +1,6 @@
 import typing as tp
 import tensorflow as tf
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from tensorflow_probability.python.bijectors.bijector import Bijector
 from tensorflow_probability.python.bijectors.identity import Identity, _NoOpCache
 from tensorflow_probability.python.bijectors import JointMap
@@ -19,6 +20,7 @@ class TopologyIdentityBijector(Identity):
         self,
         name="TopologyIdentityBijector",
         validate_args=False,
+        prob_dtype=DEFAULT_FLOAT_DTYPE_TF,
     ):
         parameters = dict(locals())
         with tf.name_scope(name) as name:
@@ -30,22 +32,29 @@ class TopologyIdentityBijector(Identity):
                 parameters=parameters,
                 name=name,
             )
+        self.prob_dtype = prob_dtype
 
         # Override superclass private fields to eliminate caching, avoiding a memory
         # leak caused by the `y is x` characteristic of this bijector.
         self._from_x = self._from_y = _NoOpCache()
 
+    def _inverse_log_det_jacobian(self, y):
+        return tf.constant(0, dtype=self.prob_dtype)
+
 
 class RootedTreeBijector(JointMap):
     def __init__(
         self,
-        height_bijector: Bijector,
+        node_height_bijector: Bijector,
+        sampling_time_bijector: Bijector,
         name="RootedTreeBijector",
         validate_args=False,
     ):
         super().__init__(
             TensorflowRootedTree(
-                heights=height_bijector, topology=TopologyIdentityBijector()
+                node_heights=node_height_bijector,
+                sampling_times=sampling_time_bijector,
+                topology=TopologyIdentityBijector(),
             ),
             name=name,
             validate_args=validate_args,
@@ -64,8 +73,10 @@ class TreeRatioBijector(RootedTreeBijector):
         validate_args=False,
     ):
         height_bijector = NodeHeightRatioBijector(topology, anchor_heights)
+        sampling_time_bijector = Identity()
         super().__init__(
-            height_bijector=height_bijector,
+            node_height_bijector=height_bijector,
+            sampling_time_bijector=sampling_time_bijector,
             name=name,
             validate_args=validate_args,
         )

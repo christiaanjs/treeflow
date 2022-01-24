@@ -7,7 +7,12 @@ import pytest
 
 class DumbRootedTreeDistribution(RootedTreeDistribution):
     def __init__(self, taxon_count, name="DumbRootedTreeDistribution"):
-        super().__init__(taxon_count, reparameterization.NOT_REPARAMETERIZED, name=name)
+        super().__init__(
+            taxon_count=taxon_count,
+            node_height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            sampling_time_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            name=name,
+        )
 
     def _parameter_properties(self, num_classes=None):
         return dict()
@@ -34,3 +39,12 @@ def test_rooted_tree_distribution_sample(sample_shape):
     taxon_count = 4
     distribution_instance = DumbRootedTreeDistribution(taxon_count)
     samples = distribution_instance.sample(sample_shape)
+
+
+def test_rooted_tree_distribution_event_shape_tensor_fully_defined():
+    taxon_count = 4
+    distribution_instance = DumbRootedTreeDistribution(taxon_count)
+    event_shape = distribution_instance.event_shape_tensor()
+    assert tuple(event_shape.node_heights.numpy()) == (taxon_count - 1,)
+    assert tuple(event_shape.sampling_times.numpy()) == (taxon_count,)
+    assert tuple(event_shape.topology.parent_indices.numpy()) == (2 * taxon_count - 2,)

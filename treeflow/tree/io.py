@@ -42,7 +42,9 @@ def parse_newick(
     taxon_count = (len(ordered_nodes) + 1) // 2
     taxon_set = DictTaxonSet([x.name for x in ordered_nodes[:taxon_count]])
     tree = NumpyRootedTree(
-        heights=heights, parent_indices=parent_indices, taxon_set=taxon_set
+        heights=heights,
+        parent_indices=parent_indices,
+        taxon_set=taxon_set,
     )
     if remove_zero_edges:
         tree = _remove_zero_edges_func(tree, epsilon=epsilon)
