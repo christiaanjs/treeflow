@@ -2,7 +2,7 @@ import typing as tp
 import tensorflow as tf
 from treeflow.traversal.ratio_transform import ratios_to_node_heights
 from tensorflow_probability.python.bijectors.bijector import Bijector
-from treeflow.tree import topology
+from tensorflow_probability.python.internal import tensor_util
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
@@ -18,6 +18,7 @@ class NodeHeightRatioBijector(Bijector):
         name="NodeHeightRatioBijector",
         validate_args=False,
     ):
+        parameters = locals()
         self.topology = topology
         self.taxon_count = topology.taxon_count
         self.node_parent_indices = (
@@ -29,13 +30,14 @@ class NodeHeightRatioBijector(Bijector):
                 topology.taxon_count - 1, dtype=DEFAULT_FLOAT_DTYPE_TF
             )
         else:
-            self.anchor_heights = anchor_heights
+            self.anchor_heights = tensor_util.convert_nonref_to_tensor(anchor_heights)
         super().__init__(
             validate_args=validate_args,
             dtype=self.anchor_heights.dtype,
             forward_min_event_ndims=1,
             inverse_min_event_ndims=1,
             name=name,
+            parameters=parameters,
         )
 
     def _forward(self, ratios: tf.Tensor) -> tf.Tensor:
