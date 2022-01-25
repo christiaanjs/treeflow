@@ -42,16 +42,21 @@ class NumpyRootedTree(
         taxon_count = topology.taxon_count
         if node_heights is not None:
             if sampling_times is None:
-                sampling_times = np.zeros(
+                final_sampling_times = np.zeros(
                     node_heights.shape[:-1] + (taxon_count,),
                     dtype=node_heights.dtype,
                 )
+            else:
+                final_sampling_times = sampling_times
+
         else:
             assert heights is not None
-            sampling_times = heights[..., :taxon_count]
+            final_sampling_times = heights[..., :taxon_count]
             node_heights = heights[..., taxon_count:]
         super().__init__(
-            node_heights=node_heights, sampling_times=sampling_times, topology=topology
+            node_heights=node_heights,
+            sampling_times=final_sampling_times,
+            topology=topology,
         )
 
     @property
