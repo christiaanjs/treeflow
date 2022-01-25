@@ -13,6 +13,7 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
 )
 from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioBijector
 from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution
+from tensorflow_probability.python.bijectors import softplus as softplus_bijector
 
 
 class TopologyIdentityBijector(Identity):
@@ -59,9 +60,6 @@ class RootedTreeBijector(JointMap):
             name=name,
             validate_args=validate_args,
         )
-        # self._dtype = TensorflowRootedTree(
-        #     heights=height_bijector.dtype, topology=BaseTreeDistribution._topology_dtype
-        # )
 
 
 class TreeRatioBijector(RootedTreeBijector):
@@ -69,14 +67,22 @@ class TreeRatioBijector(RootedTreeBijector):
         self,
         topology: TensorflowTreeTopology,
         anchor_heights: tp.Optional[tf.Tensor] = None,
+        fixed_sampling_times: bool = True,
         name="TreeRatioBijector",
         validate_args=False,
     ):
         height_bijector = NodeHeightRatioBijector(topology, anchor_heights)
-        sampling_time_bijector = Identity()
+        sampling_time_bijector = (
+            Identity()
+            if fixed_sampling_times
+            else softplus_bijector.Softplus(validate_args=validate_args)
+        )
         super().__init__(
             node_height_bijector=height_bijector,
             sampling_time_bijector=sampling_time_bijector,
             name=name,
             validate_args=validate_args,
         )
+
+
+__all__ = [RootedTreeBijector.__name__]

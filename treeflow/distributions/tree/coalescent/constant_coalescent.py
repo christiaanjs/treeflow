@@ -4,12 +4,15 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from treeflow.tf_util.vectorize import broadcast_structure, vectorize_over_batch_dims
 from treeflow.distributions.tree.rooted_tree_distribution import RootedTreeDistribution
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from tensorflow_probability.python.internal import reparameterization
 from tensorflow_probability.python.internal import tensor_util
 from tensorflow_probability.python.util import ParameterProperties
 from tensorflow_probability.python.bijectors import softplus as softplus_bijector
 from tensorflow_probability.python.internal import dtype_util
+from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
+from treeflow.traversal.anchor_heights import get_anchor_heights_tensor
 
 COALESCENCE, SAMPLING, OTHER = -1, 1, 0
 
@@ -137,4 +140,11 @@ class ConstantCoalescent(RootedTreeDistribution):
                     lambda: softplus_bijector.Softplus(low=dtype_util.eps(dtype))
                 ),
             ),
+        )
+
+    def _default_event_space_bijector(self, topology: TensorflowTreeTopology):
+        return TreeRatioBijector(
+            topology=topology,
+            anchor_heights=get_anchor_heights_tensor(topology, self.sampling_times),
+            fixed_sampling_times=True,
         )
