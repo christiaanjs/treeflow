@@ -1,17 +1,23 @@
-from re import I
-from black import out
+import typing as tp
+from importlib_metadata import Distribution
 from tensorflow_probability.python.distributions import (
+    Distribution,
     JointDistribution,
     TransformedDistribution,
 )
 from tensorflow_probability.python.bijectors import Restructure
-import typing as tp
+
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 
 
 def flatten_trees(
     model: JointDistribution, trees: tp.Iterable[str], name="FlattenedDistribution"
-) -> JointDistribution:
+) -> Distribution:
+    """
+    Take a joint distribution containing tree distributions and flatten the tree-structured
+    distributions into the dict structure of the joint distribution
+    """
     tree_set = set(trees)
     event_shape = model.event_shape
 
