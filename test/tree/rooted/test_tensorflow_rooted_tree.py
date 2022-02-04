@@ -7,17 +7,7 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
 )
 import tensorflow as tf
 from numpy.testing import assert_allclose
-from treeflow_test_helpers.tree_helpers import TreeTestData
-
-
-def test_data_to_tensor_tree(tree_test_data: TreeTestData):
-    numpy_tree = NumpyRootedTree(
-        node_heights=tree_test_data.node_heights,
-        sampling_times=tree_test_data.sampling_times,
-        parent_indices=tree_test_data.parent_indices,
-    )
-    tf_tree = convert_tree_to_tensor(numpy_tree)
-    return tf_tree
+from treeflow_test_helpers.tree_helpers import TreeTestData, test_data_to_tensor_tree
 
 
 def test_TensorflowRootedTree_from_numpy(tree_test_data: TreeTestData):

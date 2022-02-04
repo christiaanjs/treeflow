@@ -1,12 +1,19 @@
 from collections import defaultdict
+from functools import partial
+import typing as tp
 import tensorflow as tf
 import tensorflow_probability.python.distributions as tfd
 import tensorflow_probability.python.bijectors as tfb
 from tensorflow_probability.python.experimental.vi.util import (
     build_trainable_linear_operator_block,
 )
-from torch import distributions
+from tensorflow_probability.python.distributions.joint_distribution import (
+    _DefaultJointBijector,
+)
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
+from treeflow.bijectors.tree_ratio_bijector import RootedTreeBijector
+from treeflow.bijectors.fixed_topology_bijector import FixedTopologyRootedTreeBijector
 
 
 def get_base_distribution(flat_event_size, dtype=DEFAULT_FLOAT_DTYPE_TF):
@@ -55,10 +62,24 @@ def inverse_with_nones(bijector: tfb.Composition, val):
     )
 
 
+def get_default_event_space_bijector(model: tfd.JointDistribution) -> tfb.Composition:
+    return model.experimental_default_event_space_bijector()
+
+
+def event_shape_fn(model: tfd.JointDistribution):
+    return model.event_shape_tensor()
+
+
 def get_mean_field_approximation(
-    model: tfd.JointDistribution, init_loc=None, dtype=DEFAULT_FLOAT_DTYPE_TF
+    model: tfd.JointDistribution,
+    init_loc=None,
+    dtype=DEFAULT_FLOAT_DTYPE_TF,
+    joint_bijector_func: tp.Callable[
+        [tfd.JointDistribution], tfb.Composition
+    ] = get_default_event_space_bijector,
+    event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
 ):
-    event_shape = model.event_shape_tensor()
+    event_shape = event_shape_fn(model)
     flat_event_shape = tf.nest.flatten(event_shape)
     flat_event_size = tf.nest.map_structure(tf.reduce_prod, flat_event_shape)
     operator_classes = get_mean_field_operator_classes(flat_event_size)
@@ -72,9 +93,7 @@ def get_mean_field_approximation(
     else:
         init_loc = defaultdict(lambda: None, init_loc)  # TODO: Handle nesting
 
-    event_space_bijector: tfb.Composition = (
-        model.experimental_default_event_space_bijector()
-    )
+    event_space_bijector = joint_bijector_func(model)
     unflatten_bijector = tfb.Restructure(
         tf.nest.pack_sequence_as(event_shape, range(len(flat_event_shape)))
     )
@@ -101,3 +120,67 @@ def get_mean_field_approximation(
     )
     distribution = tfd.TransformedDistribution(base_standard_dist, chain_bijector)
     return distribution
+
+
+def get_fixed_topology_bijector(
+    dist: tfd.Distribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
+):
+    name = dist.name
+    if dist.name in topology_pins:
+        tree_bijector: RootedTreeBijector = (
+            dist.experimental_default_event_space_bijector()
+        )
+        return FixedTopologyRootedTreeBijector(
+            topology_pins[name], tree_bijector.bijectors.node_heights
+        )
+    else:
+        return dist.experimental_default_event_space_bijector()
+
+
+def get_fixed_topology_joint_bijector(
+    model: tfd.JointDistribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
+) -> tfb.Composition:
+    bijector_fn = partial(get_fixed_topology_bijector, topology_pins=topology_pins)
+    return _DefaultJointBijector(model, bijector_fn=bijector_fn)
+
+
+def get_fixed_topology_event_shape(
+    model: tfd.JointDistribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
+):
+    pinned_topologies = set(topology_pins.keys())
+    single_sample_distributions = model._get_single_sample_distributions()
+    event_shape_tensors = model._map_attr_over_dists(
+        "event_shape_tensor",
+    )
+    pinned_event_shape_tensors = (
+        (
+            event_shape_tensor.heights
+            if dist.name in pinned_topologies
+            else event_shape_tensor
+        )
+        for event_shape_tensor, dist in zip(
+            event_shape_tensors, single_sample_distributions
+        )
+    )
+    return model._model_unflatten(pinned_event_shape_tensors)
+
+
+def get_fixed_topology_mean_field_approximation(
+    model: tfd.JointDistribution,
+    init_loc=None,
+    dtype=DEFAULT_FLOAT_DTYPE_TF,
+    topology_pins=tp.Dict[str, TensorflowTreeTopology],
+):
+    bijector_func = partial(
+        get_fixed_topology_joint_bijector, topology_pins=topology_pins
+    )
+    event_shape_fn = partial(
+        get_fixed_topology_event_shape, topology_pins=topology_pins
+    )
+    return get_mean_field_approximation(
+        model,
+        init_loc=init_loc,
+        dtype=dtype,
+        joint_bijector_func=bijector_func,
+        event_shape_fn=event_shape_fn,
+    )
