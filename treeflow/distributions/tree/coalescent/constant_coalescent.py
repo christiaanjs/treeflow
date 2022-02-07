@@ -80,6 +80,7 @@ class ConstantCoalescent(RootedTreeDistribution):
         validate_args=False,
         allow_nan_stats=True,
         name="ConstantCoalescent",
+        tree_name: tp.Optional[str] = None,
     ):
         super().__init__(
             taxon_count=taxon_count,
@@ -90,6 +91,7 @@ class ConstantCoalescent(RootedTreeDistribution):
             allow_nan_stats=allow_nan_stats,
             parameters=dict(locals()),
             name=name,
+            tree_name=tree_name,
         )
         self.pop_size = tensor_util.convert_nonref_to_tensor(pop_size)
         self.sampling_times = tensor_util.convert_nonref_to_tensor(sampling_times)

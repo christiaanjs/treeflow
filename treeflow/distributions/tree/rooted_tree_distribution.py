@@ -1,3 +1,4 @@
+import typing as tp
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
@@ -14,6 +15,7 @@ class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
         time_dtype=DEFAULT_FLOAT_DTYPE_TF,
         validate_args=False,
         allow_nan_stats=True,
+        tree_name: tp.Optional[str] = None,
         name="RootedTreeDistribution",
         parameters=None,
     ):
@@ -32,6 +34,7 @@ class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=name,
+            tree_name=tree_name,
             parameters=parameters,
         )
 

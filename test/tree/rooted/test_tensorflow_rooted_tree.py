@@ -7,11 +7,11 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
 )
 import tensorflow as tf
 from numpy.testing import assert_allclose
-from treeflow_test_helpers.tree_helpers import TreeTestData, test_data_to_tensor_tree
+from treeflow_test_helpers.tree_helpers import TreeTestData, data_to_tensor_tree
 
 
 def test_TensorflowRootedTree_from_numpy(tree_test_data: TreeTestData):
-    tf_tree = test_data_to_tensor_tree(tree_test_data)
+    tf_tree = data_to_tensor_tree(tree_test_data)
     assert_allclose(tf_tree.sampling_times.numpy(), tree_test_data.sampling_times)
     assert_allclose(tf_tree.node_heights.numpy(), tree_test_data.node_heights)
     assert_allclose(
@@ -20,7 +20,7 @@ def test_TensorflowRootedTree_from_numpy(tree_test_data: TreeTestData):
 
 
 def test_TensorflowRootedTree_heights(tree_test_data: TreeTestData):
-    tf_tree = test_data_to_tensor_tree(tree_test_data)
+    tf_tree = data_to_tensor_tree(tree_test_data)
     heights_res = tf_tree.heights
     expected_heights = np.concatenate(
         (tree_test_data.sampling_times, tree_test_data.node_heights), axis=-1
@@ -33,7 +33,7 @@ def test_TensorflowRootedTree_get_branch_lengths(
     function_mode, tree_test_data: TreeTestData
 ):
     """Also tests composite tensor functionality"""
-    tf_tree = test_data_to_tensor_tree(tree_test_data)
+    tf_tree = data_to_tensor_tree(tree_test_data)
 
     def blen_func(tree: TensorflowRootedTree):
         return tree.branch_lengths

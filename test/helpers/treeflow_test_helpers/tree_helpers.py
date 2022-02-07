@@ -12,7 +12,7 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
 )
 
 
-def test_data_to_tensor_tree(tree_test_data: TreeTestData) -> TensorflowRootedTree:
+def data_to_tensor_tree(tree_test_data: TreeTestData) -> TensorflowRootedTree:
     numpy_tree = NumpyRootedTree(
         node_heights=tree_test_data.node_heights,
         sampling_times=tree_test_data.sampling_times,

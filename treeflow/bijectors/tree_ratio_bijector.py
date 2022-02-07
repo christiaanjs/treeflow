@@ -85,4 +85,4 @@ class TreeRatioBijector(RootedTreeBijector):
         )
 
 
-__all__ = [RootedTreeBijector.__name__]
+__all__ = [RootedTreeBijector.__name__, TreeRatioBijector.__name__]

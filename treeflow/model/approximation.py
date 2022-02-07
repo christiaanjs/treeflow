@@ -14,6 +14,7 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.bijectors.tree_ratio_bijector import RootedTreeBijector
 from treeflow.bijectors.fixed_topology_bijector import FixedTopologyRootedTreeBijector
+from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution
 
 
 def get_base_distribution(flat_event_size, dtype=DEFAULT_FLOAT_DTYPE_TF):
@@ -56,10 +57,15 @@ def get_trainable_shift_bijector(
     )
 
 
-def inverse_with_nones(bijector: tfb.Composition, val):
-    return bijector._walk_inverse(
-        lambda bij, element: element if element is None else bij.inverse(element), val
-    )
+def inverse_with_nones(bijector: tfb.Bijector, val):
+    if val is None:
+        return None
+    else:
+        return bijector.inverse(val)
+
+
+def joint_inverse_with_nones(bijector: tfb.Composition, val):
+    return bijector._walk_inverse(inverse_with_nones, val)
 
 
 def get_default_event_space_bijector(model: tfd.JointDistribution) -> tfb.Composition:
@@ -101,9 +107,9 @@ def get_mean_field_approximation(
         tf.nest.map_structure(tfb.Reshape, flat_event_shape)
     )
 
-    init_loc_unconstrained = inverse_with_nones(event_space_bijector, init_loc)
+    init_loc_unconstrained = joint_inverse_with_nones(event_space_bijector, init_loc)
     init_loc_flat = unflatten_bijector.inverse(init_loc_unconstrained)
-    init_loc_1d = inverse_with_nones(reshape_bijector, init_loc_flat)
+    init_loc_1d = joint_inverse_with_nones(reshape_bijector, init_loc_flat)
     loc_bijector = get_trainable_shift_bijector(
         flat_event_size, init_loc_1d, dtype=dtype
     )
@@ -125,13 +131,13 @@ def get_mean_field_approximation(
 def get_fixed_topology_bijector(
     dist: tfd.Distribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
 ):
-    name = dist.name
-    if dist.name in topology_pins:
+    if isinstance(dist, BaseTreeDistribution) and dist.tree_name in topology_pins:
+        topology = topology_pins[dist.tree_name]
         tree_bijector: RootedTreeBijector = (
-            dist.experimental_default_event_space_bijector()
+            dist.experimental_default_event_space_bijector(topology=topology)
         )
         return FixedTopologyRootedTreeBijector(
-            topology_pins[name], tree_bijector.bijectors.node_heights
+            topology, tree_bijector.bijectors.node_heights
         )
     else:
         return dist.experimental_default_event_space_bijector()
@@ -149,19 +155,18 @@ def get_fixed_topology_event_shape(
 ):
     pinned_topologies = set(topology_pins.keys())
     single_sample_distributions = model._get_single_sample_distributions()
-    event_shape_tensors = model._map_attr_over_dists(
-        "event_shape_tensor",
-    )
-    pinned_event_shape_tensors = (
+    event_shape_tensors = model._model_flatten(model.event_shape_tensor())
+    pinned_event_shape_tensors = [
         (
-            event_shape_tensor.heights
-            if dist.name in pinned_topologies
+            event_shape_tensor.node_heights
+            if isinstance(dist, BaseTreeDistribution)
+            and dist.tree_name in pinned_topologies
             else event_shape_tensor
         )
         for event_shape_tensor, dist in zip(
             event_shape_tensors, single_sample_distributions
         )
-    )
+    ]
     return model._model_unflatten(pinned_event_shape_tensors)
 
 
