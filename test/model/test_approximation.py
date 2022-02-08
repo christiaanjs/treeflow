@@ -1,6 +1,7 @@
 import pytest
 import typing as tp
 import numpy as np
+from numpy.testing import assert_allclose
 import tensorflow as tf
 import tensorflow_probability.python.distributions as tfd
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
@@ -80,6 +81,9 @@ def test_get_mean_field_approximation_tree(
         )
         .numpy()
         .item()
+    )
+    assert_allclose(
+        sample["tree"].sampling_times.numpy(), test_tree.sampling_times.numpy()
     )
     model_log_prob = pinned.unnormalized_log_prob(sample)
     approx_log_prob = approximation.log_prob(sample)

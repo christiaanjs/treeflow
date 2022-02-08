@@ -22,6 +22,7 @@ class SampleWeighted(Sample):
             Tensor with shape `sample_shape`
         """
         self.weights = weights
+        parameters = dict(locals())
         super().__init__(
             distribution=distribution,
             sample_shape=sample_shape,
@@ -29,6 +30,7 @@ class SampleWeighted(Sample):
             experimental_use_kahan_sum=experimental_use_kahan_sum,
             name=name,
         )
+        self._parameters = parameters
 
     def _finish_log_prob(self, lp, aux):
         (sample_ndims, extra_sample_ndims, batch_ndims) = aux

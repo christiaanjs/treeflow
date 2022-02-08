@@ -12,7 +12,7 @@ from tensorflow_probability.python.distributions.joint_distribution import (
 )
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
-from treeflow.bijectors.tree_ratio_bijector import RootedTreeBijector
+from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
 from treeflow.bijectors.fixed_topology_bijector import FixedTopologyRootedTreeBijector
 from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution
 
@@ -133,11 +133,13 @@ def get_fixed_topology_bijector(
 ):
     if isinstance(dist, BaseTreeDistribution) and dist.tree_name in topology_pins:
         topology = topology_pins[dist.tree_name]
-        tree_bijector: RootedTreeBijector = (
+        tree_bijector: TreeRatioBijector = (
             dist.experimental_default_event_space_bijector(topology=topology)
         )
         return FixedTopologyRootedTreeBijector(
-            topology, tree_bijector.bijectors.node_heights
+            topology,
+            tree_bijector.bijectors.node_heights,
+            sampling_times=dist.sampling_times,  # TODO: Make sure dist has fixed sampling times
         )
     else:
         return dist.experimental_default_event_space_bijector()

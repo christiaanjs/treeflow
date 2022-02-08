@@ -22,7 +22,7 @@ def fit_fixed_topology_variational_approximation(
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
     approximation = get_fixed_topology_mean_field_approximation(
-        model, init_loc=init_loc, topologies=topologies
+        model, init_loc=init_loc, topology_pins=topologies
     )
     opt_res = fit_surrogate_posterior(
         model.unnormalized_log_prob,

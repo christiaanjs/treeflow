@@ -32,7 +32,12 @@ class TensorflowRootedTree(TensorflowRootedTreeAttrs):
 
     @property
     def heights(self) -> tf.Tensor:
-        return tf.concat((self.sampling_times, self.node_heights), axis=-1)
+        batch_shape = tf.shape(self.node_heights)[:-1]
+        sampling_time_shape = tf.concat(
+            [batch_shape, tf.shape(self.sampling_times)], axis=0
+        )
+        sampling_times = tf.broadcast_to(self.sampling_times, sampling_time_shape)
+        return tf.concat((sampling_times, self.node_heights), axis=-1)
 
     @property
     def branch_lengths(self) -> tf.Tensor:

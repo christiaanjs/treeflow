@@ -17,6 +17,7 @@ def get_anchor_heights(tree: NumpyRootedTree) -> np.ndarray:
     return anchor_heights[..., taxon_count:]
 
 
+@tf.function
 def get_anchor_heights_tensor(
     topology: TensorflowTreeTopology, sampling_times: tf.Tensor
 ):
