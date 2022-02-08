@@ -84,7 +84,7 @@ def get_mean_field_approximation(
         [tfd.JointDistribution], tfb.Composition
     ] = get_default_event_space_bijector,
     event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
-):
+) -> tfd.Distribution:
     event_shape = event_shape_fn(model)
     flat_event_shape = tf.nest.flatten(event_shape)
     flat_event_size = tf.nest.map_structure(tf.reduce_prod, flat_event_shape)
@@ -172,10 +172,10 @@ def get_fixed_topology_event_shape(
 
 def get_fixed_topology_mean_field_approximation(
     model: tfd.JointDistribution,
+    topology_pins: tp.Dict[str, TensorflowTreeTopology],
     init_loc=None,
     dtype=DEFAULT_FLOAT_DTYPE_TF,
-    topology_pins=tp.Dict[str, TensorflowTreeTopology],
-):
+) -> tfd.Distribution:
     bijector_func = partial(
         get_fixed_topology_joint_bijector, topology_pins=topology_pins
     )
