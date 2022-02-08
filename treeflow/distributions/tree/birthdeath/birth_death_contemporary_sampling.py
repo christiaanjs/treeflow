@@ -37,6 +37,7 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
         validate_args=False,
         allow_nan_stats=True,
         name="BirthDeathContemporarySampling",
+        tree_name: tp.Optional[str] = None,
     ):
         self.birth_diff_rate = tensor_util.convert_nonref_to_tensor(birth_diff_rate)
         dtype = self.birth_diff_rate.dtype
@@ -48,12 +49,14 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
         )
         super().__init__(
             taxon_count,
-            height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-            height_dtype=dtype,
+            sampling_time_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            node_height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            time_dtype=dtype,
             parameters=dict(locals()),
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=name,
+            tree_name=tree_name,
         )
 
     def _sample_n(self, n, seed=None):

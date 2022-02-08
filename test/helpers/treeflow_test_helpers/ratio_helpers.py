@@ -37,9 +37,8 @@ def topology_from_ratio_test_data(
 
 def numpy_tree_from_ratio_test_data(ratio_test_data: RatioTestData) -> NumpyRootedTree:
     return NumpyRootedTree(
-        heights=np.concatenate(
-            [ratio_test_data.sampling_times, ratio_test_data.heights], axis=-1
-        ),
+        sampling_times=ratio_test_data.sampling_times,
+        node_heights=ratio_test_data.heights,
         topology=numpy_topology_from_ratio_test_data(ratio_test_data),
     )
 

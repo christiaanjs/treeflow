@@ -55,4 +55,4 @@ class JC(EigendecompositionSubstitutionModel):
         )
 
 
-__all__ = [JC.__name__]
+__all__ = ["JC"]

@@ -29,10 +29,12 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
         dtype,
         validate_args=False,
         allow_nan_stats=True,
+        tree_name: tp.Optional[str] = None,
         name="TreeDistribution",
         parameters=None,
     ):
         self.taxon_count = taxon_count
+        self.tree_name = tree_name
         super().__init__(
             dtype=dtype,
             reparameterization_type=reparameterization_type,
@@ -79,6 +81,27 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
                 "log_prob is not implemented: {}".format(type(self).__name__)
             )
 
+    def _call_unnormalized_log_prob(self, value, name, **kwargs):
+        """Wrapper around _unnormalized_log_prob."""
+        value = tf.nest.pack_sequence_as(self.dtype, tf.nest.flatten(value))
+        value = nest_util.convert_to_nested_tensor(
+            value, name="value", dtype_hint=self.dtype, allow_packing=True
+        )
+        with self._name_and_control_scope(name, value, kwargs):
+            if hasattr(self, "_unnormalized_log_prob"):
+                return self._unnormalized_log_prob(value, **kwargs)
+            if hasattr(self, "_unnormalized_prob"):
+                return tf.math.log(self._unnormalized_prob(value, **kwargs))
+            if hasattr(self, "_log_prob"):
+                return self._log_prob(value, **kwargs)
+            if hasattr(self, "_prob"):
+                return tf.math.log(self._prob(value, **kwargs))
+            raise NotImplementedError(
+                "unnormalized_log_prob is not implemented: {}".format(
+                    type(self).__name__
+                )
+            )
+
     @abstractmethod
     def _event_shape(self) -> TTree:
         pass
@@ -87,19 +110,30 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
     def _event_shape_tensor(self) -> TTree:
         pass
 
-    def _topology_event_shape(self) -> TensorflowTreeTopology:
-        taxon_count = self.taxon_count
+    @staticmethod
+    def _static_topology_event_shape(taxon_count) -> TensorflowTreeTopology:
         return TensorflowTreeTopology(
             parent_indices=tf.TensorShape([2 * taxon_count - 2]),
             child_indices=tf.TensorShape([2 * taxon_count - 1, 2]),
             preorder_indices=tf.TensorShape([2 * taxon_count - 1]),
         )
 
-    def _topology_event_shape_tensor(self) -> TensorflowTreeTopology:
-        taxon_count_tensor = tf.reshape(tf.convert_to_tensor(self.taxon_count), [1])
+    def _topology_event_shape(self) -> TensorflowTreeTopology:
+        taxon_count = self.taxon_count
+        return type(self)._static_topology_event_shape(taxon_count)
+
+    @staticmethod
+    def _static_topology_event_shape_tensor(
+        taxon_count,
+    ) -> TensorflowTreeTopology:
+        taxon_count_tensor = tf.reshape(tf.convert_to_tensor(taxon_count), [1])
         node_count = 2 * taxon_count_tensor - 1
         return TensorflowTreeTopology(
             parent_indices=2 * taxon_count_tensor - 2,
             child_indices=tf.concat([node_count, [2]], axis=0),
             preorder_indices=node_count,
         )
+
+    def _topology_event_shape_tensor(self) -> TensorflowTreeTopology:
+        taxon_count = self.taxon_count
+        return type(self)._static_topology_event_shape_tensor(taxon_count)

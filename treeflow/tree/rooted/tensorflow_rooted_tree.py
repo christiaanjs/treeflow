@@ -22,12 +22,22 @@ class TensorflowRootedTreeAttrs(
     AbstractRootedTree[tf.Tensor, tf.Tensor, TensorflowUnrootedTree]
 ):
 
-    heights: tf.Tensor
+    node_heights: tf.Tensor
+    sampling_times: tf.Tensor
     topology: TensorflowTreeTopology
 
 
 class TensorflowRootedTree(TensorflowRootedTreeAttrs):
     UnrootedTreeType = TensorflowUnrootedTree
+
+    @property
+    def heights(self) -> tf.Tensor:
+        batch_shape = tf.shape(self.node_heights)[:-1]
+        sampling_time_shape = tf.concat(
+            [batch_shape, tf.shape(self.sampling_times)], axis=0
+        )
+        sampling_times = tf.broadcast_to(self.sampling_times, sampling_time_shape)
+        return tf.concat((sampling_times, self.node_heights), axis=-1)
 
     @property
     def branch_lengths(self) -> tf.Tensor:
@@ -47,28 +57,19 @@ class TensorflowRootedTree(TensorflowRootedTreeAttrs):
             tf.gather(heights_b, parent_indices_b, batch_dims=-1) - heights_b[..., :-1]
         )
 
-    @property
-    def sampling_times(self) -> tf.Tensor:
-        return self.heights[..., : self.taxon_count]
-
-    @property
-    def internal_node_heights(self) -> tf.Tensor:
-        return self.heights[..., self.taxon_count :]
-
     def numpy(self) -> NumpyRootedTree:
         return NumpyRootedTree(
-            heights=self.heights.numpy(),
+            node_heights=self.node_heights.numpy(),
+            sampling_times=self.sampling_times.numpy(),
             topology=self.topology.numpy(),
         )
 
-    def with_heights(self, heights: tf.Tensor) -> TensorflowRootedTree:
-        return TensorflowRootedTree(heights=heights, topology=self.topology)
-
-    def with_internal_node_heights(
-        self, node_heights: tf.Tensor
-    ) -> TensorflowRootedTree:
-        heights = tf.concat([self.sampling_times, node_heights], axis=-1)
-        return self.with_heights(heights)
+    def with_node_heights(self, node_heights: tf.Tensor) -> TensorflowRootedTree:
+        return TensorflowRootedTree(
+            node_heights=node_heights,
+            topology=self.topology,
+            sampling_times=self.sampling_times,
+        )
 
 
 def convert_tree_to_tensor(
@@ -76,19 +77,30 @@ def convert_tree_to_tensor(
 ) -> TensorflowRootedTree:
     topology = numpy_topology_to_tensor(numpy_tree.topology)
     return TensorflowRootedTree(
-        heights=tf.convert_to_tensor(numpy_tree.heights, dtype=height_dtype),
+        sampling_times=tf.convert_to_tensor(
+            numpy_tree.sampling_times, dtype=height_dtype
+        ),
+        node_heights=tf.convert_to_tensor(numpy_tree.node_heights, dtype=height_dtype),
         topology=topology,
     )
 
 
 def tree_from_arrays(
-    heights: tp.Union[np.ndarray, tf.Tensor],
+    node_heights: tp.Union[np.ndarray, tf.Tensor],
     parent_indices: tp.Union[np.ndarray, tf.Tensor],
+    sampling_times: tp.Optional[tp.Union[np.ndarray, tf.Tensor]],
     taxon_set: tp.Optional[TaxonSet] = None,
     height_dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF,
 ) -> TensorflowRootedTree:
 
-    heights_np = heights.numpy() if isinstance(heights, tf.Tensor) else heights
+    node_heights_np = (
+        node_heights.numpy() if isinstance(node_heights, tf.Tensor) else node_heights
+    )
+    sampling_times_np = (
+        sampling_times.numpy()
+        if isinstance(sampling_times, tf.Tensor)
+        else sampling_times
+    )
     parent_indices_np = (
         parent_indices.numpy()
         if isinstance(parent_indices, tf.Tensor)
@@ -96,7 +108,10 @@ def tree_from_arrays(
     )
 
     numpy_tree = NumpyRootedTree(
-        heights=heights_np, parent_indices=parent_indices_np, taxon_set=taxon_set
+        sampling_times=sampling_times_np,
+        node_heights=node_heights_np,
+        parent_indices=parent_indices_np,
+        taxon_set=taxon_set,
     )
     return convert_tree_to_tensor(numpy_tree, height_dtype=height_dtype)
 

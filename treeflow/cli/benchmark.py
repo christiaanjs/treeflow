@@ -73,7 +73,7 @@ def get_ratio_transform_computation(
 
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
     init_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
-    init_ratios = tf.constant(init_bijector.inverse(tree.internal_node_heights))
+    init_ratios = tf.constant(init_bijector.inverse(tree.node_heights))
 
     def ratio_transform_forward(ratios):
         bijector = NodeHeightRatioBijector(
@@ -94,7 +94,7 @@ def get_ratio_transform_jacobian_computation(
         bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
         return -bijector.inverse_log_det_jacobian(heights)
 
-    return log_det_jacobian, tf.constant(tree.internal_node_heights)
+    return log_det_jacobian, tf.constant(tree.node_heights)
 
 
 def get_constant_coalescent_computation(
@@ -109,10 +109,10 @@ def get_constant_coalescent_computation(
         dist = ConstantCoalescent(
             base_tree.taxon_count, pop_size, base_tree.sampling_times
         )
-        tree = base_tree.with_internal_node_heights(node_heights)
+        tree = base_tree.with_node_heights(node_heights)
         return dist.log_prob(tree)
 
-    return coalescent_log_prob, (pop_size, base_tree.internal_node_heights)
+    return coalescent_log_prob, (pop_size, base_tree.node_heights)
 
 
 def get_gradient_fn(

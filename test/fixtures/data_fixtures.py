@@ -3,15 +3,20 @@ from treeflow.tree.io import parse_newick
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 from treeflow.evolution.seqio import Alignment
 
+_HELLO_NEWICK = "hello.nwk"
+
 
 @pytest.fixture
 def hello_newick_file(test_data_dir):
-    return str(test_data_dir / "hello.nwk")
+    return str(test_data_dir / _HELLO_NEWICK)
+
+
+_HELLO_FASTA = "hello.fasta"
 
 
 @pytest.fixture
 def hello_fasta_file(test_data_dir):
-    return str(test_data_dir / "hello.fasta")
+    return str(test_data_dir / _HELLO_FASTA)
 
 
 @pytest.fixture
@@ -25,33 +30,39 @@ def hello_alignment(hello_fasta_file):
     return Alignment(hello_fasta_file)
 
 
+_WNV_NEWICK = "wnv.nwk"
+
+
 @pytest.fixture
 def wnv_newick_file(test_data_dir):
-    return str(test_data_dir / "wnv.nwk")
+    return str(test_data_dir / _WNV_NEWICK)
+
+
+_WNV_FASTA = "wnv.fasta"
 
 
 @pytest.fixture
 def wnv_fasta_file(test_data_dir):
-    return str(test_data_dir / "wnv.fasta")
+    return str(test_data_dir / _WNV_FASTA)
 
 
 @pytest.fixture(
     params=[
         (
-            hello_newick_file._pytestfixturefunction,
-            hello_fasta_file._pytestfixturefunction,
+            _HELLO_NEWICK,
+            _HELLO_FASTA,
             False,
         ),
         (
-            wnv_newick_file._pytestfixturefunction,
-            wnv_fasta_file._pytestfixturefunction,
+            _WNV_NEWICK,
+            _WNV_FASTA,
             True,
         ),
     ]
 )
 def newick_fasta_file_dated(test_data_dir, request):
-    newick_file_func, fasta_file_func, dated = request.param
-    return newick_file_func(test_data_dir), fasta_file_func(test_data_dir), dated
+    newick_file, fasta_file, dated = request.param
+    return str(test_data_dir / newick_file), str(test_data_dir / fasta_file), dated
 
 
 @pytest.fixture

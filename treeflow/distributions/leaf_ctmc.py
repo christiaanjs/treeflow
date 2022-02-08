@@ -1,5 +1,5 @@
 import typing as tp
-
+import warnings
 import tensorflow as tf
 from tensorflow_probability.python.internal import prefer_static as ps
 from tensorflow_probability.python.util import ParameterProperties
@@ -59,7 +59,9 @@ class LeafCTMC(Distribution):
         )
 
     def _sample_n(self, n, seed=None):
-        raise NotImplemented("Sequence simulation not yet implemented")
+        warnings.warn("Dummy sampling of alignment")
+        sample_shape = tf.concat([[n], self.event_shape_tensor()], axis=0)
+        return tf.zeros(sample_shape, dtype=tf.int32)
 
     def _broadcast_transition_probs(self, sample_and_batch_shape) -> tf.Tensor:
         transition_probs_shape = ps.shape(self.transition_probs_tree.branch_lengths)

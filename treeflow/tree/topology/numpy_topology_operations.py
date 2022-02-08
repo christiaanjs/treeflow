@@ -1,6 +1,4 @@
-from functools import wraps
 import numpy as np
-from numpy.typing import ArrayLike
 import typing as tp
 
 
@@ -31,7 +29,7 @@ def _get_child_indices_flat(parent_indices: np.ndarray) -> np.ndarray:
     return child_indices
 
 
-get_child_indices: tp.Callable[[ArrayLike], np.ndarray] = np.vectorize(
+get_child_indices: tp.Callable[[np.ndarray], np.ndarray] = np.vectorize(
     _get_child_indices_flat, otypes=[np.int32], signature="(m)->(n,2)"
 )
 
@@ -68,7 +66,7 @@ def _get_preorder_indices_flat(child_indices: np.ndarray):
     return visited
 
 
-get_preorder_indices: tp.Callable[[ArrayLike], np.ndarray] = np.vectorize(
+get_preorder_indices: tp.Callable[[np.ndarray], np.ndarray] = np.vectorize(
     _get_preorder_indices_flat, otypes=[np.int32], signature="(m,2)->(m)"
 )
 
