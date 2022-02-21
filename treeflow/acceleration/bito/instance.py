@@ -17,14 +17,16 @@ def get_instance(newick_file, dated=True, name="treeflow"):
 
 
 def get_tree_info(inst) -> tp.Tuple[NumpyRootedTree, np.ndarray]:
-    tree = inst.tree_collection.trees[0]
-    parent_indices = np.array(tree.parent_id_vector())
-    node_heights = np.array(tree.node_heights)
-    node_bounds = np.array(tree.node_bounds)
-    return (
-        NumpyRootedTree(
+    bito_tree = inst.tree_collection.trees[0]
+    parent_indices = np.array(bito_tree.parent_id_vector())
+    node_heights = np.array(bito_tree.node_heights)
+    tree = NumpyRootedTree(
             heights=node_heights,
             topology=NumpyTreeTopology(parent_indices=parent_indices),
-        ),
+        )
+    
+    node_bounds = np.array(bito_tree.node_bounds)[tree.taxon_count:]
+    return (
+        tree,
         node_bounds,
     )

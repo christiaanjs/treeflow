@@ -17,9 +17,9 @@ def get_bito_forward_func(newick_file, dated):
 
     inst = get_instance(newick_file, dated=dated)
     tree, anchor_heights = get_tree_info(inst)
-    return partial(
-        bito_ratios_to_node_heights, inst=inst, anchor_heights=anchor_heights
-    )
+    def forward_func(ratios):
+        return bito_ratios_to_node_heights(inst, anchor_heights, ratios)
+    return forward_func
 
 
 def get_treeflow_forward_func(numpy_tree, tensor_constant):
@@ -39,11 +39,10 @@ def get_test_values(forward_func, ratios):
         heights = forward_func(ratios)
         res = tf.reduce_sum(heights ** 2)
 
-    grad = tf.gradients(res, ratios)
+    grad = t.gradient(res, ratios)
     return heights, grad
 
 
-@pytest.mark.skip
 def test_bito_ratio_transform_forward(newick_file_dated, tensor_constant):
     newick_file, dated = newick_file_dated
     numpy_tree = parse_newick(newick_file)

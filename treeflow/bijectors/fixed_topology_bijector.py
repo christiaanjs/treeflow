@@ -2,7 +2,6 @@ import typing as tp
 from xml.dom import NOT_FOUND_ERR
 import tensorflow as tf
 from tensorflow_probability.python.bijectors.bijector import Bijector
-from torch import Tensor
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution

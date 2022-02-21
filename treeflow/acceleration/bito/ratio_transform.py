@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 import bito
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
-from functools import partial
 
 
 def ratios_to_node_heights_numpy(inst, x):
@@ -23,17 +22,21 @@ def ratio_gradient_numpy(inst, heights, dheights):
 
 
 def ratios_to_node_heights(inst, anchor_heights, ratios):
+    def numpy_func(ratios):
+        return ratios_to_node_heights_numpy(inst, ratios)
+    def numpy_grad_func(heights, dheights):
+        return ratio_gradient_numpy(inst, heights, dheights)
     @tf.custom_gradient
     def bito_tf_func(x):
         heights = tf.numpy_function(
-            partial(ratios_to_node_heights_numpy, inst=inst),
+            numpy_func,
             [x],
             DEFAULT_FLOAT_DTYPE_TF,
         )
 
         def grad(dheights):
             return tf.numpy_function(
-                partial(ratio_gradient_numpy, inst=inst),
+                numpy_grad_func,
                 [heights, dheights],
                 DEFAULT_FLOAT_DTYPE_TF,
             )

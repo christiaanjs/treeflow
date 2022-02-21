@@ -12,7 +12,6 @@ from tensorflow_probability.python.distributions import Sample
 from treeflow.distributions.leaf_ctmc import LeafCTMC
 
 
-@pytest.mark.skip
 def test_log_prob_conditioned_hky(hky_params, newick_fasta_file_dated):
     from treeflow.acceleration.bito.beagle import (
         phylogenetic_likelihood as beagle_likelihood,

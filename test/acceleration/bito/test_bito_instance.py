@@ -7,8 +7,6 @@ from numpy.testing import assert_allclose, assert_equal
 
 # TODO: Test taxon name order
 
-
-@pytest.mark.skip
 def test_get_tree_info(newick_file_dated):
     from treeflow.acceleration.bito.instance import get_instance, get_tree_info
 

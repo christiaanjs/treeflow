@@ -22,13 +22,10 @@ def phylogenetic_likelihood(
         subst_model_string = "JC69"
         param_updates = {}
     elif isinstance(subst_model, treeflow_subst.HKY):
-        subst_model_string = "GTR"
+        subst_model_string = "HKY"
         kappa = subst_model_params["kappa"]
-        rates = np.ones(6)
-        rates[1] = kappa
-        rates[4] = kappa
-        rates = rates / np.sum(rates)
-        param_updates = {"GTR rates": rates, "frequencies": np.array(frequencies)}
+        rates = np.array([kappa])
+        param_updates = {"substitution model rates": rates, "substitution model frequencies": np.array(frequencies)}
     else:
         raise ValueError("Unsupported substitution model")
 
