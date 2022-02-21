@@ -88,8 +88,10 @@ class Alignment:
         sequence_mapping: tp.Optional[SequenceMappingType] = None,
     ):
         if sequence_mapping is not None:
+            self.fasta_file = fasta_file
             self.sequence_mapping = sequence_mapping
         elif fasta_file is not None:
+            self.fasta_file = fasta_file
             self.sequence_mapping = parse_fasta(fasta_file)
         else:
             raise ValueError(

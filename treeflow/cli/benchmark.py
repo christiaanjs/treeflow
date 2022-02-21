@@ -3,6 +3,7 @@ from timeit import default_timer as timer
 import io
 import typing as tp
 import tensorflow as tf
+import numpy as np
 from treeflow.tree.io import parse_newick
 from treeflow.evolution.seqio import Alignment
 from treeflow.tree.rooted.tensorflow_rooted_tree import (
@@ -40,46 +41,60 @@ def time_fn(
 
 
 def get_tree_likelihood_computation(
-    tree: TensorflowRootedTree, input: Alignment, dtype: tf.DType
+    tree: TensorflowRootedTree, input: Alignment, dtype: tf.DType, bito_instance: tp.Optional[object] = None
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
-    compressed_alignment = input.get_compressed_alignment()
-    encoded_sequences = compressed_alignment.get_encoded_sequence_tensor(
-        tree.taxon_set, dtype=dtype
-    )
-    weights = compressed_alignment.get_weights_tensor(dtype=dtype)
-    site_count = compressed_alignment.site_count
-    subst_model = JC()
-    frequencies = subst_model.frequencies(dtype=dtype)
     base_unrooted_tree = tree.get_unrooted_tree()
+    subst_model = JC()
+    if bito_instance is not None:
+        from treeflow.acceleration.bito.beagle import (
+            phylogenetic_likelihood as beagle_likelihood,
+        )
+        log_prob, _ = beagle_likelihood(
+            input.fasta_file, subst_model, subst_model.frequencies(dtype=dtype), inst=bito_instance
+        )
+    else:
+        compressed_alignment = input.get_compressed_alignment()
+        encoded_sequences = compressed_alignment.get_encoded_sequence_tensor(
+            tree.taxon_set, dtype=dtype
+        )
+        weights = compressed_alignment.get_weights_tensor(dtype=dtype)
+        site_count = compressed_alignment.site_count
+        frequencies = subst_model.frequencies(dtype=dtype)
 
-    def log_prob(branch_lengths: tf.Tensor):
-        tree = base_unrooted_tree.with_branch_lengths(branch_lengths)
-        transition_probs_tree = get_transition_probabilities_tree(
-            tree, subst_model, dtype=dtype
-        )
-        dist = SampleWeighted(
-            LeafCTMC(transition_probs_tree, frequencies),
-            weights=weights,
-            sample_shape=(site_count,),
-        )
-        return dist.log_prob(encoded_sequences)
+        def log_prob(branch_lengths: tf.Tensor):
+            tree = base_unrooted_tree.with_branch_lengths(branch_lengths)
+            transition_probs_tree = get_transition_probabilities_tree(
+                tree, subst_model, dtype=dtype
+            )
+            dist = SampleWeighted(
+                LeafCTMC(transition_probs_tree, frequencies),
+                weights=weights,
+                sample_shape=(site_count,),
+            )
+            return dist.log_prob(encoded_sequences)
 
     return log_prob, base_unrooted_tree.branch_lengths
 
 
 def get_ratio_transform_computation(
-    tree: TensorflowRootedTree, dtype: tf.DType
+    tree: TensorflowRootedTree, dtype: tf.DType, bito_instance: tp.Optional[object] = None
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
 
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
     init_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
     init_ratios = tf.constant(init_bijector.inverse(tree.node_heights))
 
-    def ratio_transform_forward(ratios):
-        bijector = NodeHeightRatioBijector(
-            tree.topology, anchor_heights
-        )  # Avoid caching
-        return bijector.forward(ratios)
+    if bito_instance is not None:
+        from treeflow.acceleration.bito.ratio_transform import ratios_to_node_heights
+
+        def ratio_transform_forward(ratios):
+            return ratios_to_node_heights(bito_instance, anchor_heights, ratios)
+    else:
+        def ratio_transform_forward(ratios):
+            bijector = NodeHeightRatioBijector(
+                tree.topology, anchor_heights
+            )  # Avoid caching
+            return bijector.forward(ratios)
 
     return ratio_transform_forward, init_ratios
 
@@ -140,6 +155,7 @@ def benchmark(
     jit: bool,
     precompile: bool,
     replicates: int,
+    bito_instance: tp.Optional[object] = None
 ) -> tp.Tuple[float, tp.Optional[float]]:
 
     task_fn: tp.Callable[..., tf.Tensor]
@@ -149,10 +165,10 @@ def benchmark(
         (
             task_fn,
             branch_lengths,
-        ) = get_tree_likelihood_computation(tree, input, dtype)
+        ) = get_tree_likelihood_computation(tree, input, dtype, bito_instance=bito_instance)
         args = (branch_lengths * scaler,)
     elif computation == "ratio_transform":
-        task_fn, ratios = get_ratio_transform_computation(tree, dtype)
+        task_fn, ratios = get_ratio_transform_computation(tree, dtype, bito_instance=bito_instance)
         output_gradients = tf.ones_like(ratios)
         args = (ratios,)
     elif computation == "ratio_transform_jacobian":
@@ -246,6 +262,9 @@ DTYPE_MAPPING = dict(float32=tf.float32, float64=tf.float64)
     is_flag=True,
     help="Profile maximum memory usage in benchmark",
 )
+@click.option(
+    "--use-bito", is_flag=True
+)
 def treeflow_benchmark(
     input: str,
     tree: str,
@@ -256,8 +275,8 @@ def treeflow_benchmark(
     precompile: bool,
     eager: bool,
     memory: bool,
+    use_bito: bool
 ):
-    from memory_profiler import memory_usage
 
     print("Parsing input...")
     alignment = Alignment(input)
@@ -282,6 +301,12 @@ def treeflow_benchmark(
         output.write("\n")
 
     print("Starting benchmark...")
+    if use_bito:
+        from treeflow.acceleration.bito.instance import get_instance
+        dated = not np.allclose(numpy_tree.sampling_times, 0.0)
+        bito_instance = get_instance(tree, dated=dated)
+    else:
+        bito_instance = None
     for (computation, task, jit) in product(computations, tasks, jits):
         print(
             f"Benchmarking {computation} {task}{' in function mode' if jit else ''}..."
@@ -299,14 +324,15 @@ def treeflow_benchmark(
         )
         max_mem: tp.Optional[float]
         if memory:
+            from memory_profiler import memory_usage
             max_mem, (time, value) = memory_usage(
-                (benchmark, benchmark_args),
+                (benchmark, benchmark_args, dict(bito_instance=bito_instance)),
                 retval=True,
                 max_usage=True,
                 max_iterations=1,
             )
         else:
-            time, value = benchmark(*benchmark_args)
+            time, value = benchmark(*benchmark_args, bito_instance=bito_instance)
             max_mem = None
         if output:
             jit_str = "on" if jit else "off"

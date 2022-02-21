@@ -1,12 +1,11 @@
-from numpy.core.numeric import identity
-import tensorflow_probability as tfp
 from tensorflow_probability.python.math.minimize import (
     MinimizeTraceableQuantities,
     _trace_loss,
 )
-from tensorflow_probability.python.vi.optimization import _reparameterized_elbo
+from tensorflow_probability.python.vi import csiszar_divergence
 import numpy as np
 import tensorflow as tf
+import functools
 
 
 def minimize_eager(
@@ -107,11 +106,25 @@ def fit_surrogate_posterior(
     surrogate_posterior,
     optimizer,
     num_steps,
-    variational_loss_fn=_reparameterized_elbo,
+    variational_loss_fn=None,
+    discrepancy_fn=csiszar_divergence.kl_reverse,
     sample_size=1,
+    importance_sample_size=1,
     seed=None,
     **opt_kwargs
 ):
+    if variational_loss_fn is None:
+        variational_loss_fn = functools.partial(
+            csiszar_divergence.monte_carlo_variational_loss,
+            discrepancy_fn=discrepancy_fn,
+            importance_sample_size=importance_sample_size,
+            # Silent fallback to score-function gradients leads to
+            # difficult-to-debug failures, so force reparameterization gradients by
+            # default.
+            gradient_estimator=(
+                csiszar_divergence.GradientEstimators.REPARAMETERIZATION),
+            )
+
     def complete_variational_loss_fn():
         return variational_loss_fn(
             target_log_prob_fn, surrogate_posterior, sample_size=sample_size, seed=seed
