@@ -1,5 +1,4 @@
 import typing as tp
-from xml.dom import NOT_FOUND_ERR
 import tensorflow as tf
 from tensorflow_probability.python.bijectors.bijector import Bijector
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
