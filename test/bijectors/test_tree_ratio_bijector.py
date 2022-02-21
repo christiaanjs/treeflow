@@ -52,10 +52,26 @@ def ratio_tree_from_ratio_test_data(
 #     assert res.sampling_times == DEFAULT_FLOAT_DTYPE_TF
 
 
+def logit(x):
+    return -tf.math.log(1.0 / x - 1.0)
+
+
+def unconstrain_node_height_ratios(node_heights):
+    return tf.concat(
+        [
+            logit(node_heights[..., :-1]),
+            tf.math.log(node_heights[..., -1:]),
+        ],
+        -1,
+    )
+
+
 def test_TreeRatioBijector_forward(ratio_test_data: RatioTestData):
     bijector = bijector_from_ratio_test_data(ratio_test_data)
     ratio_tree = ratio_tree_from_ratio_test_data(ratio_test_data)
-    res = bijector.forward(ratio_tree)
+    unconstrained_node_heights = unconstrain_node_height_ratios(ratio_tree.node_heights)
+    unconstrained_tree = ratio_tree.with_node_heights(unconstrained_node_heights)
+    res = bijector.forward(unconstrained_tree)
     assert_allclose(res.node_heights, ratio_test_data.heights)
     assert_allclose(res.topology.parent_indices, ratio_test_data.parent_indices)
 
@@ -64,7 +80,8 @@ def test_TreeRatioBijector_inverse(ratio_test_data: RatioTestData):
     bijector = bijector_from_ratio_test_data(ratio_test_data)
     tree = tree_from_ratio_test_data(ratio_test_data)
     res = bijector.inverse(tree)
-    assert_allclose(res.node_heights, ratio_test_data.ratios)
+    unconstrained_node_heights = unconstrain_node_height_ratios(ratio_test_data.ratios)
+    assert_allclose(res.node_heights, unconstrained_node_heights, atol=1e-15)
     assert_allclose(res.topology.parent_indices, ratio_test_data.parent_indices)
 
 

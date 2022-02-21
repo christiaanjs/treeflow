@@ -3,7 +3,7 @@ import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from tensorflow_probability.python.bijectors.bijector import Bijector
 from tensorflow_probability.python.bijectors.identity import Identity, _NoOpCache
-from tensorflow_probability.python.bijectors import JointMap
+from tensorflow_probability.python.bijectors import JointMap, Chain
 from treeflow.tree.topology.tensorflow_tree_topology import (
     TensorflowTreeTopology,
 )
@@ -11,7 +11,7 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
     TensorflowRootedTree,
     TensorflowRootedTreeAttrs,
 )
-from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioBijector
+from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioChainBijector
 from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution
 from tensorflow_probability.python.bijectors import softplus as softplus_bijector
 
@@ -71,7 +71,7 @@ class TreeRatioBijector(RootedTreeBijector):
         name="TreeRatioBijector",
         validate_args=False,
     ):
-        height_bijector = NodeHeightRatioBijector(topology, anchor_heights)
+        height_bijector = NodeHeightRatioChainBijector(topology, anchor_heights)
         sampling_time_bijector = (
             Identity()
             if fixed_sampling_times
