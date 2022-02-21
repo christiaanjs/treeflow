@@ -1,7 +1,14 @@
 import typing as tp
+from numpy import block
 import tensorflow as tf
 from treeflow.traversal.ratio_transform import ratios_to_node_heights
-from tensorflow_probability.python.bijectors.bijector import Bijector
+from tensorflow_probability.python.bijectors import (
+    Bijector,
+    Chain,
+    Blockwise,
+    Sigmoid,
+    Exp,
+)
 from tensorflow_probability.python.internal import tensor_util
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
@@ -74,3 +81,26 @@ class NodeHeightRatioBijector(Bijector):
                 ),
                 axis=-1,
             )
+
+
+class NodeHeightRatioChainBijector(Chain):
+    def __init__(
+        self,
+        topology: TensorflowTreeTopology,
+        anchor_heights: tp.Optional[tf.Tensor] = None,
+        name="NodeHeightRatioChainBijector",
+        validate_args=False,
+    ):
+        parameters = locals()
+        height_bijector = NodeHeightRatioBijector(
+            topology, anchor_heights, name=name, validate_args=validate_args
+        )
+        blockwise_bijector = Blockwise(
+            [Sigmoid(), Exp()], block_sizes=[topology.taxon_count - 2, 1]
+        )
+        super().__init__(
+            [height_bijector, blockwise_bijector],
+            parameters=parameters,
+            name=name,
+            validate_args=validate_args,
+        )
