@@ -104,6 +104,14 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
             parent_indices=self.parent_indices, taxon_set=self.taxon_set
         )
 
+    # Methods to allow pickling
+    def __getstate__(self):
+        return super().__getstate__() + (self._taxon_set,)
+
+    def __setstate__(self, state):
+        super().__setstate__(state[:-1])
+        self._taxon_set = state[-1]
+
 
 def numpy_topology_to_tensor(
     topology: NumpyTreeTopology, dtype=tf.int32
