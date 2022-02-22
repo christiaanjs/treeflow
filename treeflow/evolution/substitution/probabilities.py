@@ -53,6 +53,20 @@ def get_batch_transition_probabilities_eigen(
     return get_transition_probabilities_eigen(eigen_with_batch, t)
 
 
+def get_transition_probabilities_tree_eigen(
+    tree: TensorflowUnrootedTree,
+    eigen: Eigendecomposition,
+    batch_rank: int = 0,
+):
+    return tree.with_branch_lengths(
+        get_batch_transition_probabilities_eigen(
+            eigen,
+            tree.branch_lengths,
+            batch_rank=batch_rank + 1,
+        )
+    )
+
+
 def get_transition_probabilities_tree(
     tree: TensorflowUnrootedTree,
     subst_model: SubstitutionModel,
@@ -60,12 +74,8 @@ def get_transition_probabilities_tree(
     **subst_params
 ) -> TensorflowUnrootedTree:
     if isinstance(subst_model, EigendecompositionSubstitutionModel):
-        return tree.with_branch_lengths(
-            get_batch_transition_probabilities_eigen(
-                subst_model.eigen(**subst_params),
-                tree.branch_lengths,
-                batch_rank=batch_rank + 1,
-            )
+        return get_transition_probabilities_tree_eigen(
+            tree, subst_model.eigen(**subst_params), batch_rank=batch_rank
         )
     else:
         raise ValueError("Only implemented for eigen substitution model")
