@@ -41,7 +41,10 @@ def time_fn(
 
 
 def get_tree_likelihood_computation(
-    tree: TensorflowRootedTree, input: Alignment, dtype: tf.DType, bito_instance: tp.Optional[object] = None
+    tree: TensorflowRootedTree,
+    input: Alignment,
+    dtype: tf.DType,
+    bito_instance: tp.Optional[object] = None,
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
     base_unrooted_tree = tree.get_unrooted_tree()
     subst_model = JC()
@@ -49,8 +52,12 @@ def get_tree_likelihood_computation(
         from treeflow.acceleration.bito.beagle import (
             phylogenetic_likelihood as beagle_likelihood,
         )
+
         log_prob, _ = beagle_likelihood(
-            input.fasta_file, subst_model, subst_model.frequencies(dtype=dtype), inst=bito_instance
+            input.fasta_file,
+            subst_model,
+            subst_model.frequencies(dtype=dtype),
+            inst=bito_instance,
         )
     else:
         compressed_alignment = input.get_compressed_alignment()
@@ -77,7 +84,9 @@ def get_tree_likelihood_computation(
 
 
 def get_ratio_transform_computation(
-    tree: TensorflowRootedTree, dtype: tf.DType, bito_instance: tp.Optional[object] = None
+    tree: TensorflowRootedTree,
+    dtype: tf.DType,
+    bito_instance: tp.Optional[object] = None,
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
 
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
@@ -89,7 +98,9 @@ def get_ratio_transform_computation(
 
         def ratio_transform_forward(ratios):
             return ratios_to_node_heights(bito_instance, anchor_heights, ratios)
+
     else:
+
         def ratio_transform_forward(ratios):
             bijector = NodeHeightRatioBijector(
                 tree.topology, anchor_heights
@@ -140,7 +151,7 @@ def get_gradient_fn(
                 t.watch(arg)
             res = task_fn(*args)
         gradient_res = t.gradient(res, args, output_gradients=output_gradients)
-        return res
+        return res, gradient_res
 
     return gradient
 
@@ -155,20 +166,21 @@ def benchmark(
     jit: bool,
     precompile: bool,
     replicates: int,
-    bito_instance: tp.Optional[object] = None
+    bito_instance: tp.Optional[object] = None,
 ) -> tp.Tuple[float, tp.Optional[float]]:
 
     task_fn: tp.Callable[..., tf.Tensor]
     args: tp.Iterable[tf.Tensor]
     output_gradients: tp.Optional[tf.Tensor] = None
     if computation == "treelikelihood":
-        (
-            task_fn,
-            branch_lengths,
-        ) = get_tree_likelihood_computation(tree, input, dtype, bito_instance=bito_instance)
+        (task_fn, branch_lengths,) = get_tree_likelihood_computation(
+            tree, input, dtype, bito_instance=bito_instance
+        )
         args = (branch_lengths * scaler,)
     elif computation == "ratio_transform":
-        task_fn, ratios = get_ratio_transform_computation(tree, dtype, bito_instance=bito_instance)
+        task_fn, ratios = get_ratio_transform_computation(
+            tree, dtype, bito_instance=bito_instance
+        )
         output_gradients = tf.ones_like(ratios)
         args = (ratios,)
     elif computation == "ratio_transform_jacobian":
@@ -195,7 +207,12 @@ def benchmark(
 
     print("Running benchmark...")
     timed_fn = time_fn(fn)
-    time, value = timed_fn(replicates, args)
+    time, raw_value = timed_fn(replicates, args)
+
+    if task == "gradient":
+        value, _ = raw_value
+    else:
+        value = raw_value
 
     squeezed = tf.squeeze(value)
     numpy_value = squeezed.numpy() if squeezed.shape.rank == 0 else None
@@ -262,9 +279,7 @@ DTYPE_MAPPING = dict(float32=tf.float32, float64=tf.float64)
     is_flag=True,
     help="Profile maximum memory usage in benchmark",
 )
-@click.option(
-    "--use-bito", is_flag=True
-)
+@click.option("--use-bito", is_flag=True)
 def treeflow_benchmark(
     input: str,
     tree: str,
@@ -275,7 +290,7 @@ def treeflow_benchmark(
     precompile: bool,
     eager: bool,
     memory: bool,
-    use_bito: bool
+    use_bito: bool,
 ):
 
     print("Parsing input...")
@@ -303,6 +318,7 @@ def treeflow_benchmark(
     print("Starting benchmark...")
     if use_bito:
         from treeflow.acceleration.bito.instance import get_instance
+
         dated = not np.allclose(numpy_tree.sampling_times, 0.0)
         bito_instance = get_instance(tree, dated=dated)
     else:
@@ -325,6 +341,7 @@ def treeflow_benchmark(
         max_mem: tp.Optional[float]
         if memory:
             from memory_profiler import memory_usage
+
             max_mem, (time, value) = memory_usage(
                 (benchmark, benchmark_args, dict(bito_instance=bito_instance)),
                 retval=True,
