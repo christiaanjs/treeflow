@@ -17,7 +17,7 @@ from treeflow.tree.taxon_set import TaxonSet
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 
 
-@attr.attrs(auto_attribs=True, slots=True)
+@attr.attrs(auto_attribs=True, slots=True, init=False)
 class TensorflowRootedTreeAttrs(
     AbstractRootedTree[tf.Tensor, tf.Tensor, TensorflowUnrootedTree]
 ):
@@ -34,7 +34,7 @@ class TensorflowRootedTree(TensorflowRootedTreeAttrs):
     def heights(self) -> tf.Tensor:
         batch_shape = tf.shape(self.node_heights)[:-1]
         sampling_time_shape = tf.concat(
-            [batch_shape, tf.shape(self.sampling_times)], axis=0
+            [batch_shape, tf.shape(self.sampling_times)[-1:]], axis=0
         )
         sampling_times = tf.broadcast_to(self.sampling_times, sampling_time_shape)
         return tf.concat((sampling_times, self.node_heights), axis=-1)

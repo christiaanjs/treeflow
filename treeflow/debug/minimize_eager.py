@@ -54,6 +54,8 @@ def minimize_eager(
             step=tf.convert_to_tensor(step),
             has_converged=has_converged,
             convergence_criterion_state=initial_convergence_criterion_state,
+            optimizer_state=None,  # TODO: Add these features
+            seed=None,
         )
     )
     trace_arrays = tf.nest.map_structure(
@@ -85,6 +87,8 @@ def minimize_eager(
                     step=tf.convert_to_tensor(step),
                     has_converged=has_converged,
                     convergence_criterion_state=convergence_criterion_state,
+                    optimizer_state=None,  # TODO: Add these features
+                    seed=None,
                 )
             )
             tf.nest.map_structure(
@@ -122,8 +126,9 @@ def fit_surrogate_posterior(
             # difficult-to-debug failures, so force reparameterization gradients by
             # default.
             gradient_estimator=(
-                csiszar_divergence.GradientEstimators.REPARAMETERIZATION),
-            )
+                csiszar_divergence.GradientEstimators.REPARAMETERIZATION
+            ),
+        )
 
     def complete_variational_loss_fn():
         return variational_loss_fn(

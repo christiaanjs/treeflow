@@ -44,27 +44,26 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
             parameters=parameters,
         )
 
-    def _call_sample_n(self, sample_shape, seed, name: str, **kwargs) -> TTree:
+    def _call_sample_n(self, sample_shape, seed, **kwargs) -> TTree:
         """Wrapper around _sample_n."""
-        with self._name_and_control_scope(name):
-            sample_shape = ps.convert_to_shape_tensor(
-                ps.cast(sample_shape, tf.int32), name="sample_shape"
-            )
-            sample_shape, n = self._expand_sample_shape_to_vector(
-                sample_shape, "sample_shape"
-            )
-            flat_samples = self._sample_n(
-                n, seed=seed() if callable(seed) else seed, **kwargs
-            )
+        sample_shape = ps.convert_to_shape_tensor(
+            ps.cast(sample_shape, tf.int32), name="sample_shape"
+        )
+        sample_shape, n = self._expand_sample_shape_to_vector(
+            sample_shape, "sample_shape"
+        )
+        flat_samples = self._sample_n(
+            n, seed=seed() if callable(seed) else seed, **kwargs
+        )
 
-            def reshape_samples(sample_element):
-                batch_event_shape = ps.shape(sample_element)[1:]
-                final_shape = ps.concat([sample_shape, batch_event_shape], 0)
-                return tf.reshape(sample_element, final_shape)
+        def reshape_samples(sample_element):
+            batch_event_shape = ps.shape(sample_element)[1:]
+            final_shape = ps.concat([sample_shape, batch_event_shape], 0)
+            return tf.reshape(sample_element, final_shape)
 
-            samples = tf.nest.map_structure(reshape_samples, flat_samples)
-            samples = self._set_sample_static_shape(samples, sample_shape)
-            return samples
+        samples = tf.nest.map_structure(reshape_samples, flat_samples)
+        samples = self._set_sample_static_shape(samples, sample_shape)
+        return samples
 
     def _call_log_prob(self, value, name, **kwargs):
         """Wrapper around _log_prob."""

@@ -21,7 +21,8 @@ from treeflow.evolution.substitution.probabilities import (
 def transition_prob_tree(flat_tree_test_data):
     tree = convert_tree_to_tensor(
         NumpyRootedTree(
-            heights=flat_tree_test_data.heights,
+            node_heights=flat_tree_test_data.node_heights,
+            sampling_times=flat_tree_test_data.sampling_times,
             parent_indices=flat_tree_test_data.parent_indices,
         )
     ).get_unrooted_tree()
