@@ -85,7 +85,7 @@ def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
 )
 @click.option(
     "--init-values",
-    required=True,
+    required=False,
     type=str,
 )
 @click.option("--approx-output", required=False, type=click.Path())
@@ -143,10 +143,13 @@ def treeflow_vi(
     pinned_model = model.experimental_pin(alignment=encoded_sequences)
     model_names = set(pinned_model._flat_resolve_names())
 
-    init_loc = {
-        key: value for key, value in init_values_dict.items() if key in model_names
-    }
-    init_loc["tree"] = tree
+    if init_values_dict is None:
+        init_loc = None
+    else:
+        init_loc = {
+            key: value for key, value in init_values_dict.items() if key in model_names
+        }
+        init_loc["tree"] = tree
 
     print(f"Running VI for {num_steps} iterations...")
     approx, trace = fit_fixed_topology_variational_approximation(
