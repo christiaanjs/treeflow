@@ -11,6 +11,7 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
     TensorflowRootedTree,
 )
 from treeflow.evolution.substitution.nucleotide.jc import JC
+from treeflow.evolution.substitution.nucleotide.gtr import GTR
 from treeflow.evolution.substitution.probabilities import (
     get_transition_probabilities_tree,
 )
@@ -83,6 +84,43 @@ def get_tree_likelihood_computation(
     return log_prob, base_unrooted_tree.branch_lengths
 
 
+def get_tree_likelihood_gtr_computation(
+    tree: TensorflowRootedTree,
+    input: Alignment,
+    dtype: tf.DType,
+    bito_instance: tp.Optional[object] = None,
+):
+    base_unrooted_tree = tree.get_unrooted_tree()
+    subst_model = GTR()
+    init_frequencies = tf.constant([0.21, 0.28, 0.27, 0.24], dtype=dtype)
+    init_rates = tf.constant([0.2, 0.12, 0.17, 0.09, 0.24, 0.18], dtype=dtype)
+    if bito_instance is not None:
+        raise NotImplemented("GTR gradients with bito not yet implemented")
+    else:
+        compressed_alignment = input.get_compressed_alignment()
+        encoded_sequences = compressed_alignment.get_encoded_sequence_tensor(
+            tree.taxon_set, dtype=dtype
+        )
+        weights = compressed_alignment.get_weights_tensor(dtype=dtype)
+        site_count = compressed_alignment.site_count
+
+        def log_prob(
+            branch_lengths: tf.Tensor, rates: tf.Tensor, frequencies: tf.Tensor
+        ):
+            tree = base_unrooted_tree.with_branch_lengths(branch_lengths)
+            transition_probs_tree = get_transition_probabilities_tree(
+                tree, subst_model, rates=rates, frequencies=frequencies
+            )
+            dist = SampleWeighted(
+                LeafCTMC(transition_probs_tree, frequencies),
+                weights=weights,
+                sample_shape=(site_count,),
+            )
+            return dist.log_prob(encoded_sequences)
+
+    return log_prob, base_unrooted_tree.branch_lengths, init_rates, init_frequencies
+
+
 def get_ratio_transform_computation(
     tree: TensorflowRootedTree,
     dtype: tf.DType,
@@ -111,16 +149,33 @@ def get_ratio_transform_computation(
 
 
 def get_ratio_transform_jacobian_computation(
-    tree: TensorflowRootedTree, dtype: tf.DType
+    tree: TensorflowRootedTree,
+    dtype: tf.DType,
+    bito_instance: tp.Optional[object] = None,
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
 
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
+    init_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
+    init_ratios = tf.constant(init_bijector.inverse(tree.node_heights))
 
-    def log_det_jacobian(heights):
-        bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
-        return -bijector.inverse_log_det_jacobian(heights)
+    if bito_instance is not None:
+        from treeflow.acceleration.bito.ratio_transform import ratios_to_node_heights
 
-    return log_det_jacobian, tf.constant(tree.node_heights)
+        def ratio_transform_jacobian(ratios):
+            node_heights = ratios_to_node_heights(bito_instance, anchor_heights, ratios)
+            bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
+            return -bijector.inverse_log_det_jacobian(node_heights)
+
+    else:
+
+        def ratio_transform_forward(ratios):
+            bijector = NodeHeightRatioBijector(
+                tree.topology, anchor_heights
+            )  # Avoid caching
+            node_heights = bijector.forward(ratios)
+            return -bijector.inverse_log_det_jacobian(node_heights)
+
+    return ratio_transform_forward, init_ratios
 
 
 def get_constant_coalescent_computation(
@@ -177,6 +232,16 @@ def benchmark(
             tree, input, dtype, bito_instance=bito_instance
         )
         args = (branch_lengths * scaler,)
+    elif computation == "treelikelihoodGTR":
+        (
+            task_fn,
+            branch_lengths,
+            rates,
+            frequencies,
+        ) = get_tree_likelihood_gtr_computation(
+            tree, input, dtype, bito_instance=bito_instance
+        )
+        args = (branch_lengths * scaler, rates, frequencies)
     elif computation == "ratio_transform":
         task_fn, ratios = get_ratio_transform_computation(
             tree, dtype, bito_instance=bito_instance
@@ -184,8 +249,8 @@ def benchmark(
         output_gradients = tf.ones_like(ratios)
         args = (ratios,)
     elif computation == "ratio_transform_jacobian":
-        task_fn, heights = get_ratio_transform_jacobian_computation(tree, dtype)
-        args = (heights,)
+        task_fn, ratios = get_ratio_transform_jacobian_computation(tree, dtype)
+        args = (ratios,)
     elif computation == "constant_coalescent":
         task_fn, args = get_constant_coalescent_computation(tree, dtype=dtype)
     else:
@@ -279,6 +344,14 @@ DTYPE_MAPPING = dict(float32=tf.float32, float64=tf.float64)
     is_flag=True,
     help="Profile maximum memory usage in benchmark",
 )
+@click.option(
+    "-g",
+    "--gtr",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Include GTR likelihood in benchmark",
+)
 @click.option("--use-bito", is_flag=True)
 def treeflow_benchmark(
     input: str,
@@ -291,6 +364,7 @@ def treeflow_benchmark(
     eager: bool,
     memory: bool,
     use_bito: bool,
+    gtr: bool,
 ):
 
     print("Parsing input...")
@@ -306,6 +380,8 @@ def treeflow_benchmark(
         "ratio_transform_jacobian",
         "constant_coalescent",
     ]
+    if gtr:
+        computations += ["treelikelihoodGTR"]
     tasks = ["gradient", "evaluation"]
     jits = [True, False] if eager else [True]
 
