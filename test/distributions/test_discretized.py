@@ -9,7 +9,7 @@ def test_discretized_log_prob():
     base_dist = Normal(2.0, 2.0)
     k = 5
     discretized = DiscretizedDistribution(k, base_dist)
-    quantiles = discretized.quantiles
+    quantiles = discretized.support
     other_length = 2
     first_others = quantiles[:other_length] - 1e-3
     last_others = quantiles[-other_length:] + 1e-3

@@ -7,6 +7,8 @@ from tensorflow_probability.python.distributions import (
 
 
 class DiscretizedDistribution(Distribution):
+    """A discrete distribution created by"""
+
     def __init__(
         self,
         category_count: tf.Tensor,
@@ -57,7 +59,11 @@ class DiscretizedDistribution(Distribution):
         return tf.gather(self._quantiles, indices, axis=-1)
 
     @property
-    def quantiles(self):
+    def support_size(self):
+        return self._category_count
+
+    @property
+    def support(self):
         return self._quantiles
 
     @property
