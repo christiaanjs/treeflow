@@ -6,6 +6,7 @@ from tensorflow_probability.python.distributions import (
     Categorical,
 )
 from treeflow.distributions.discrete import FiniteDiscreteDistribution
+from tensorflow_probability.python.internal import parameter_properties
 
 
 class DiscreteParameterMixture(MixtureSameFamily):
@@ -17,9 +18,7 @@ class DiscreteParameterMixture(MixtureSameFamily):
     def __init__(
         self,
         discrete_distribution: FiniteDiscreteDistribution,
-        dist_function: tp.Callable[
-            [object], Distribution
-        ],  # TODO: Allow kwargs in dist_function
+        components_distribution: Distribution,
         reparameterize=False,
         validate_args=False,
         name=None,
@@ -28,32 +27,39 @@ class DiscreteParameterMixture(MixtureSameFamily):
         Parameters
         ----------
         discrete_distribution
-        dist_function
-            Must vectorise over discrete parameter
+        components_distribution
+            Must have batch dim for discrete parameter
         reparameterize
             Whether to reparameterize samples of the distribution using implicit
             reparameterization gradients
         validate_args
         name
         """
-        params = locals()
-        concrete = dist_function(discrete_distribution.sample())
+        parameters = locals()
         if name is None:
-            name = "Marginalised" + concrete.name
+            name = "Marginalized" + components_distribution.name
         self._discrete_distribution = discrete_distribution
-        self._dist_function = dist_function
+        self._components_distribution = components_distribution
         mixture_distribution = Categorical(
             probs=self._discrete_distribution.probabilities
-        )
-        components_distribution = self._dist_function(
-            self._discrete_distribution.support
         )
         super().__init__(
             mixture_distribution=mixture_distribution,
             components_distribution=components_distribution,
+            reparameterize=reparameterize,
             validate_args=validate_args,
-            allow_nan_stats=concrete.allow_nan_stats,
+            allow_nan_stats=components_distribution.allow_nan_stats,
             name=name,
+        )
+        self._parameters = parameters
+
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        return dict(
+            discrete_distribution=(parameter_properties.BatchedComponentProperties()),
+            components_distribution=(
+                parameter_properties.BatchedComponentProperties(event_ndims=1)
+            ),
         )
 
     # def _sample_n(self, n, seed=None) -> tf.Tensor:

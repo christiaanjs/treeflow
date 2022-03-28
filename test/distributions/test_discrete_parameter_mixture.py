@@ -1,3 +1,5 @@
+import treeflow
+import tensorflow as tf
 import pytest
 import numpy as np
 from tensorflow_probability.python.distributions import (
@@ -26,21 +28,31 @@ def discrete_distribution(tensor_constant):
 
 
 @pytest.fixture
-def continuous_distribution_maker(tensor_constant):
+def components_distribution(tensor_constant, discrete_distribution):
     bandwidth = tensor_constant(1.0)
-    return lambda x: Uniform(low=x - bandwidth, high=x + bandwidth)
+    x = discrete_distribution.support
+    return Uniform(low=x - bandwidth, high=x + bandwidth)
 
 
-def test_marginalized_discrete_sample(
-    discrete_distribution, continuous_distribution_maker
-):
-    dist = DiscreteParameterMixture(
-        discrete_distribution, continuous_distribution_maker
-    )
+def test_marginalized_discrete_sample(discrete_distribution, components_distribution):
+    dist = DiscreteParameterMixture(discrete_distribution, components_distribution)
     sample_shape = (17, 4)
     samples = dist.sample(sample_shape, seed=1).numpy()
     assert samples.shape == sample_shape
     assert np.all((samples > 0.0) & (samples < 6.0))
+
+
+def test_discrete_parameter_mixture_batch_shape(discrete_distribution):
+    x = discrete_distribution.support
+    batch_size = 3
+    bandwidth = tf.expand_dims(
+        tf.range(1, 1 + batch_size, dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF), axis=-1
+    )
+    x = discrete_distribution.support
+    components_distribution = Uniform(low=x - bandwidth, high=x + bandwidth)
+    dist = DiscreteParameterMixture(discrete_distribution, components_distribution)
+    batch_shape_tensor = dist.batch_shape_tensor()
+    assert tuple(batch_shape_tensor.numpy()) == (batch_size,)
 
 
 def test_marginalized_discrete_prob(discrete_distribution: DiscretizedDistribution):
@@ -51,7 +63,8 @@ def test_marginalized_discrete_prob(discrete_distribution: DiscretizedDistributi
     standard_mixture_dist = Mixture(cat, components)
     sample_shape = (17, 4)
     samples = standard_mixture_dist.sample(sample_shape, seed=1).numpy()
-    dist = DiscreteParameterMixture(discrete_distribution, normal_distribution_maker)
+    components_distribution = normal_distribution_maker(discrete_distribution.support)
+    dist = DiscreteParameterMixture(discrete_distribution, components_distribution)
     assert_allclose(
         dist.log_prob(samples).numpy(), standard_mixture_dist.log_prob(samples).numpy()
     )

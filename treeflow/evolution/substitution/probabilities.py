@@ -1,3 +1,4 @@
+import typing as tp
 import tensorflow as tf
 from treeflow.evolution.substitution.eigendecomposition import Eigendecomposition
 from treeflow.evolution.substitution.base_substitution_model import (
@@ -70,9 +71,15 @@ def get_transition_probabilities_tree_eigen(
 def get_transition_probabilities_tree(
     tree: TensorflowUnrootedTree,
     subst_model: SubstitutionModel,
+    rate_categories: tp.Optional[tf.Tensor] = None,
     batch_rank: int = 0,
-    **subst_params
+    **subst_params,
 ) -> TensorflowUnrootedTree:
+    if rate_categories is not None:
+        tree = tree.with_branch_lengths(
+            tree.branch_lengths * tf.expand_dims(rate_categories, -1)
+        )
+        batch_rank += 1
     if isinstance(subst_model, EigendecompositionSubstitutionModel):
         return get_transition_probabilities_tree_eigen(
             tree, subst_model.eigen(**subst_params), batch_rank=batch_rank

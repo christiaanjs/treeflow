@@ -77,13 +77,23 @@ class LeafCTMC(Distribution):
 
     def _prob(self, x, seed=None):
         # TODO: Handle topology batch dims
-        sample_and_batch_shape = ps.shape(x)[:-2]
+        batch_shape = self.batch_shape_tensor()
+        batch_and_event_shape = tf.concat(
+            [batch_shape, self.event_shape_tensor()], axis=0
+        )
+        batch_and_event_rank = tf.shape(batch_and_event_shape)[0]
+        print(batch_and_event_rank)
+        sample_shape = tf.shape(x)[:-batch_and_event_rank]
+        sample_and_batch_shape = tf.concat([sample_shape, batch_shape], axis=0)
         transition_probs = self._broadcast_transition_probs(sample_and_batch_shape)
+        x_b = tf.broadcast_to(
+            x, tf.concat([sample_shape, batch_and_event_shape], axis=0)
+        )
         if self.transition_probs_tree.topology.has_batch_dimensions():
             raise NotImplementedError("Topology batching not yet supported")
         else:
             return phylogenetic_likelihood(
-                x,
+                x_b,
                 transition_probs,
                 self.frequencies,
                 self.transition_probs_tree.topology.postorder_node_indices,

@@ -4,6 +4,7 @@ from tensorflow_probability.python.distributions import (
     Categorical,
     NOT_REPARAMETERIZED,
 )
+from tensorflow_probability.python.internal import parameter_properties
 
 
 class DiscretizedDistribution(Distribution):
@@ -33,9 +34,34 @@ class DiscretizedDistribution(Distribution):
         self._probabilities = (2.0 * float_indices + 1.0) / (
             2.0 * self._category_count_float
         )
+        batch_shape = self._distribution.batch_shape_tensor()
+        self._probabilities_b = tf.reshape(
+            self._probabilities,
+            tf.concat(
+                [
+                    [category_count],
+                    tf.ones_like(batch_shape),
+                ],
+                axis=0,
+            ),
+        )
 
-        self._quantiles = self._distribution.quantile(self._probabilities)
+        batch_rank = tf.shape(batch_shape)[0]
+        self._quantiles = tf.transpose(
+            self._distribution.quantile(self._probabilities_b),
+            tf.concat([tf.range(1, batch_rank + 1), [0]], axis=0),
+        )
         self._mass = 1.0 / self._category_count_float
+        self._mass_b = tf.broadcast_to(
+            self._mass,
+            tf.concat(
+                [
+                    batch_shape,
+                    [category_count],
+                ],
+                axis=0,
+            ),
+        )  # Category on last axis
         self._index_dist = Categorical(probs=tf.fill(self._category_count, self._mass))
 
         super().__init__(
@@ -53,10 +79,13 @@ class DiscretizedDistribution(Distribution):
         return tf.where(supported, self._mass, 0.0)
 
     def _sample_n(self, n, seed=None):
-        indices = tf.random.uniform(
-            tf.expand_dims(n, 0), maxval=self._category_count, seed=seed, dtype=tf.int32
+        indices = Categorical(probs=self._mass_b).sample(n)
+        indices_b = tf.expand_dims(indices, -1)
+        quantiles_b = tf.broadcast_to(
+            self._quantiles,
+            tf.concat([tf.expand_dims(n, 0), tf.shape(self._quantiles)], axis=0),
         )
-        return tf.gather(self._quantiles, indices, axis=-1)
+        return tf.gather(quantiles_b, indices, axis=-1, batch_dims=-1)[..., 0]
 
     @property
     def support_size(self):
@@ -68,4 +97,10 @@ class DiscretizedDistribution(Distribution):
 
     @property
     def probabilities(self):
-        return tf.fill(self._category_count, self._mass)
+        return tf.fill(tf.expand_dims(self._category_count, 0), self._mass)
+
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        return dict(
+            distribution=(parameter_properties.BatchedComponentProperties()),
+        )
