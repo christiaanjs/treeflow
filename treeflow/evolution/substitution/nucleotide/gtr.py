@@ -54,3 +54,6 @@ class GTR(EigendecompositionSubstitutionModel):
                 ],
             ],
         )
+
+
+__all__ = ["GTR"]
