@@ -60,7 +60,9 @@ class LeafCTMC(Distribution):
 
     def _sample_n(self, n, seed=None):
         warnings.warn("Dummy sampling of alignment")
-        sample_shape = tf.concat([[n], self.event_shape_tensor()], axis=0)
+        sample_shape = tf.concat(
+            [[n], self.batch_shape_tensor(), self.event_shape_tensor()], axis=0
+        )
         return tf.zeros(sample_shape, dtype=tf.int32)
 
     def _broadcast_transition_probs(self, sample_and_batch_shape) -> tf.Tensor:

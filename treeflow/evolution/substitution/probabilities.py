@@ -77,7 +77,8 @@ def get_transition_probabilities_tree(
 ) -> TensorflowUnrootedTree:
     if rate_categories is not None:
         tree = tree.with_branch_lengths(
-            tree.branch_lengths * tf.expand_dims(rate_categories, -1)
+            tf.expand_dims(tree.branch_lengths, -2)
+            * tf.expand_dims(rate_categories, -1)
         )
         batch_rank += 1
     if isinstance(subst_model, EigendecompositionSubstitutionModel):

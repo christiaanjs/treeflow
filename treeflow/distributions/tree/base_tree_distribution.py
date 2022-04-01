@@ -1,9 +1,7 @@
 from abc import abstractmethod
 import typing as tp
 import tensorflow as tf
-from tensorflow.python.framework.ops import Tensor
 from tensorflow_probability.python.distributions import Distribution
-from tensorflow_probability.python.internal import prefer_static as ps
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.base_tree import AbstractTree
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
@@ -32,9 +30,11 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
         tree_name: tp.Optional[str] = None,
         name="TreeDistribution",
         parameters=None,
+        support_topology_batch_dims=False,
     ):
         self.taxon_count = taxon_count
         self.tree_name = tree_name
+        self.support_topology_batch_dims = support_topology_batch_dims
         super().__init__(
             dtype=dtype,
             reparameterization_type=reparameterization_type,
@@ -44,26 +44,10 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
             parameters=parameters,
         )
 
+    @abstractmethod
     def _call_sample_n(self, sample_shape, seed, **kwargs) -> TTree:
         """Wrapper around _sample_n."""
-        sample_shape = ps.convert_to_shape_tensor(
-            ps.cast(sample_shape, tf.int32), name="sample_shape"
-        )
-        sample_shape, n = self._expand_sample_shape_to_vector(
-            sample_shape, "sample_shape"
-        )
-        flat_samples = self._sample_n(
-            n, seed=seed() if callable(seed) else seed, **kwargs
-        )
-
-        def reshape_samples(sample_element):
-            batch_event_shape = ps.shape(sample_element)[1:]
-            final_shape = ps.concat([sample_shape, batch_event_shape], 0)
-            return tf.reshape(sample_element, final_shape)
-
-        samples = tf.nest.map_structure(reshape_samples, flat_samples)
-        samples = self._set_sample_static_shape(samples, sample_shape)
-        return samples
+        ...
 
     def _call_log_prob(self, value, name, **kwargs):
         """Wrapper around _log_prob."""

@@ -37,6 +37,42 @@ def transition_prob_tree(flat_tree_test_data):
     )
 
 
+@pytest.mark.parametrize("with_rate_categories", [True, False])
+def test_LeafCTMC_batch_shape(
+    tree_test_data, flat_tree_test_data, with_rate_categories
+):
+    tree = convert_tree_to_tensor(
+        NumpyRootedTree(
+            node_heights=tree_test_data.node_heights,
+            sampling_times=tree_test_data.sampling_times,
+            parent_indices=flat_tree_test_data.parent_indices,
+        )
+    ).get_unrooted_tree()
+    state_count = 5
+    rate_category_shape = (3,) if with_rate_categories else ()
+    transition_probs = tf.fill(
+        tree.branch_lengths.shape[:-1]
+        + rate_category_shape
+        + tree.branch_lengths.shape[-1:]
+        + (state_count, state_count),
+        1.0 / state_count,
+    )
+    transition_probs_tree = TensorflowUnrootedTree(
+        branch_lengths=transition_probs,
+        topology=numpy_topology_to_tensor(tree.topology),
+    )
+    batch_shape = tree_test_data.node_heights.shape[:-1]
+    frequencies = tf.fill(
+        batch_shape + (state_count,), tf.constant(0.25, dtype=transition_probs.dtype)
+    )
+    if rate_category_shape:
+        frequencies = tf.expand_dims(frequencies, -2)
+    dist = LeafCTMC(transition_probs_tree, frequencies)
+    res = dist.batch_shape
+    expected = batch_shape + rate_category_shape
+    assert res == expected
+
+
 @pytest.mark.parametrize("function_mode", [True, False])
 def test_LeafCTMC_event_shape(transition_prob_tree, hky_params, function_mode):
     state_count = transition_prob_tree.branch_lengths.numpy().shape[-1]

@@ -1,9 +1,14 @@
 import typing as tp
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
+from tensorflow_probability.python.distributions.distribution import (
+    _set_sample_static_shape_for_tensor,
+)
 from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 import tensorflow as tf
+from tensorflow_probability.python.internal import prefer_static as ps
 from tensorflow_probability.python.internal import reparameterization
+import functools
 
 
 class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
@@ -17,6 +22,7 @@ class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
         allow_nan_stats=True,
         tree_name: tp.Optional[str] = None,
         name="RootedTreeDistribution",
+        support_topology_batch_dims=False,
         parameters=None,
     ):
         super().__init__(
@@ -36,6 +42,7 @@ class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
             name=name,
             tree_name=tree_name,
             parameters=parameters,
+            support_topology_batch_dims=support_topology_batch_dims,
         )
 
     def _event_shape(self) -> TensorflowRootedTree:
@@ -53,6 +60,64 @@ class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
             sampling_times=taxon_count,
             topology=self._topology_event_shape_tensor(),
         )
+
+    def _process_sample_shape(self, sample_shape, name="sample_shape"):
+        sample_shape = ps.convert_to_shape_tensor(
+            ps.cast(sample_shape, tf.int32), name=name
+        )
+        sample_shape, n = self._expand_sample_shape_to_vector(sample_shape, name)
+        return sample_shape, n
+
+    def _call_sample_n(self, sample_shape, seed, **kwargs) -> TensorflowRootedTree:
+        """Wrapper around _sample_n."""
+        sample_shape, n = self._process_sample_shape(sample_shape)
+        flat_samples = self._sample_n(
+            n, seed=seed() if callable(seed) else seed, **kwargs
+        )
+        batch_shape = self.batch_shape
+        event_shape = self.event_shape
+
+        def reshape_samples(sample_element):
+            batch_event_shape = ps.shape(sample_element)[1:]
+            final_shape = ps.concat([sample_shape, batch_event_shape], 0)
+            return tf.reshape(sample_element, final_shape)
+
+        if self.support_topology_batch_dims:
+            topology_samples = tf.nest.map_structure(
+                reshape_samples, flat_samples.topology
+            )
+            topology_sample_shape = sample_shape
+            topology_batch_shape = batch_shape
+
+        else:
+            topology_samples = flat_samples.topology
+            topology_sample_shape = ()
+            topology_batch_shape = ()
+        topology_samples = tf.nest.map_structure(
+            functools.partial(
+                _set_sample_static_shape_for_tensor,
+                batch_shape=topology_batch_shape,
+                sample_shape=topology_sample_shape,
+            ),
+            topology_samples,
+            event_shape.topology,
+        )
+        samples = TensorflowRootedTree(
+            node_heights=_set_sample_static_shape_for_tensor(
+                reshape_samples(flat_samples.node_heights),
+                event_shape.node_heights,
+                batch_shape,
+                sample_shape,
+            ),
+            sampling_times=_set_sample_static_shape_for_tensor(
+                reshape_samples(flat_samples.sampling_times),
+                event_shape.sampling_times,
+                batch_shape,
+                sample_shape,
+            ),
+            topology=topology_samples,
+        )
+        return samples
 
 
 __all__ = [RootedTreeDistribution.__name__]

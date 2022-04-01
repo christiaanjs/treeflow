@@ -71,9 +71,10 @@ def test_coalescent_heterochronous(pop_size, expected):
 
 
 @pytest.mark.parametrize(
-    "pop_size", [2.0]
+    "pop_size", [2.0, [2.0, 3.0]]
 )  # TODO: Test and fix for vectorisation over pop size
-def test_coalescent_sample(pop_size):
+@pytest.mark.parametrize("function_mode", [True, False])
+def test_coalescent_sample(pop_size, function_mode):
     pop_size_tensor = tf.convert_to_tensor(pop_size, dtype=DEFAULT_FLOAT_DTYPE_TF)
     batch_shape = pop_size_tensor.shape
     sampling_times = tf.convert_to_tensor(
@@ -81,8 +82,14 @@ def test_coalescent_sample(pop_size):
     )
     taxon_count = sampling_times.shape[-1]
     coalescent = ConstantCoalescent(taxon_count, pop_size_tensor, sampling_times)
-    sample = coalescent.sample()
+    if function_mode:
+        sample_func = tf.function(coalescent.sample)
+    else:
+        sample_func = coalescent.sample
+    sample = sample_func()
     assert isinstance(sample, TensorflowRootedTree)
-    assert sample.heights.shape == (2 * taxon_count - 1,) + batch_shape
+    assert sample.heights.shape == batch_shape + (2 * taxon_count - 1,)
     assert isinstance(sample.topology, TensorflowTreeTopology)
-    assert sample.topology.parent_indices.shape == (2 * taxon_count - 2,) + batch_shape
+    assert sample.topology.parent_indices.shape == (
+        2 * taxon_count - 2,
+    )  # No topology batch dims

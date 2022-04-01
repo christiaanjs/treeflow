@@ -17,6 +17,7 @@ from tensorflow_probability.python.distributions import (
     Normal,
     Sample,
     Weibull,
+    Dirichlet,
 )
 from treeflow.evolution.substitution.base_substitution_model import (
     EigendecompositionSubstitutionModel,
@@ -41,7 +42,9 @@ def parse_model(
         return model, None
 
 
-prior_distribution_classes = dict(lognormal=LogNormal, gamma=Gamma, normal=Normal)
+prior_distribution_classes = dict(
+    lognormal=LogNormal, gamma=Gamma, normal=Normal, dirichlet=Dirichlet
+)
 
 RELAXED_CLOCK_MODELS = {"relaxed_lognormal"}
 
@@ -109,8 +112,24 @@ def get_prior(
 
 def get_params(
     params: tp.Optional[tp.Dict[str, tp.Union[object, tp.Dict[str, object]]]]
-) -> tp.Generator[Distribution, tf.Tensor, tp.Dict[str, tp.Union[tf.Tensor, object]]]:
+) -> tp.Generator[
+    JointDistributionCoroutine.Root,
+    tf.Tensor,
+    tp.Tuple[tp.Dict[str, tp.Union[tf.Tensor, object]], bool],
+]:
+    """
+    Get parameters for part of the model.
+    Builds prior distributions or converts literals to Tensor constants.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping parameter names to values
+    has_root
+        Whether one of the parameters is a root node
+    """
     out_params: tp.Dict[str, tp.Union[tf.Tensor, object]] = {}
+    has_root = False
     if params is not None:
         for name, value in params.items():
             if isinstance(value, dict):
@@ -119,36 +138,59 @@ def get_params(
                 prior_params = {
                     key: constant(value) for key, value in prior_params.items()
                 }
-                out_params[name] = yield get_prior(name, prior, prior_params)
+                out_params[name] = yield JointDistributionCoroutine.Root(
+                    get_prior(name, prior, prior_params)
+                )
+                has_root = True
             else:
                 out_params[name] = constant(value)
 
-    return out_params
+    return out_params, has_root
 
 
 DEFAULT_TREE_VAR_NAME = "tree"
 
 
+def wrap_in_root_if_needed(
+    dist: Distribution, has_root_param: bool
+) -> tp.Union[Distribution, JointDistributionCoroutine.Root]:
+    if has_root_param:
+        return dist
+    else:
+        return JointDistributionCoroutine.Root(dist)
+
+
 def get_tree_model(  # TODO: Support unrooted trees
     tree_model: str,
     tree_model_params: tp.Dict[str, object],
+    has_root_param: bool,
     initial_tree: TensorflowRootedTree,
     var_name: str = DEFAULT_TREE_VAR_NAME,
-) -> tp.Generator[Distribution, TensorflowRootedTree, TensorflowRootedTree]:
+) -> tp.Generator[
+    tp.Union[Distribution, JointDistributionCoroutine.Root],
+    TensorflowRootedTree,
+    TensorflowRootedTree,
+]:
     if tree_model == "fixed":
         tree = initial_tree
     elif tree_model == "coalescent":
-        tree = yield ConstantCoalescent(
-            initial_tree.taxon_count,
-            sampling_times=initial_tree.sampling_times,
-            **tree_model_params,
-            name=var_name,
+        tree = yield wrap_in_root_if_needed(
+            ConstantCoalescent(
+                initial_tree.taxon_count,
+                sampling_times=initial_tree.sampling_times,
+                **tree_model_params,
+                name=var_name,
+            ),
+            has_root_param,
         )
     elif tree_model == "birth_death":
-        tree = yield BirthDeathContemporarySampling(
-            initial_tree.taxon_count,
-            name=var_name,
-            **tree_model_params,
+        tree = yield wrap_in_root_if_needed(
+            BirthDeathContemporarySampling(
+                initial_tree.taxon_count,
+                name=var_name,
+                **tree_model_params,
+            ),
+            has_root_param,
         )
     else:
         raise ValueError(f"Unknown tree model for {var_name}: {tree_model}")
@@ -173,11 +215,13 @@ def get_subst_model_params(
     subst_model: str,
     params: tp.Optional[tp.Dict[str, tp.Union[object, tp.Dict[str, object]]]],
     float_dtype: tf.DType = treeflow.DEFAULT_FLOAT_DTYPE_TF,
-) -> tp.Generator[Distribution, tf.Tensor, tp.Dict[str, tp.Union[tf.Tensor, object]]]:
-    params = yield from get_params(params)
+) -> tp.Generator[
+    Distribution, tf.Tensor, tp.Tuple[tp.Dict[str, tp.Union[tf.Tensor, object]], bool]
+]:
+    processed_params, has_root = yield from get_params(params)
     if subst_model == JC_KEY:
-        params["frequencies"] = JC().frequencies(dtype=float_dtype)
-    return params
+        processed_params["frequencies"] = JC().frequencies(dtype=float_dtype)
+    return processed_params, has_root
 
 
 def get_strict_clock_rates(rate: tf.Tensor):
@@ -185,25 +229,34 @@ def get_strict_clock_rates(rate: tf.Tensor):
 
 
 def get_relaxed_lognormal_clock_rate_distribution(  # TODO: Think about rate parameterisation
-    rate_loc: tf.Tensor, rate_scale: tf.Tensor, initial_tree: TensorflowRootedTree
+    rate_loc: tf.Tensor,
+    rate_scale: tf.Tensor,
+    has_root_param: bool,
+    initial_tree: TensorflowRootedTree,
 ) -> Distribution:
-    return Sample(
-        LogNormal(loc=rate_loc, scale=rate_scale),
-        sample_shape=2 * initial_tree.taxon_count - 2,
-        name="rates",
+    return wrap_in_root_if_needed(
+        Sample(
+            LogNormal(loc=rate_loc, scale=rate_scale),
+            sample_shape=2 * initial_tree.taxon_count - 2,
+            name="rates",
+        ),
+        has_root_param,
     )
 
 
 def get_clock_model_rates(
     clock_model: str,
     clock_model_params: tp.Dict[str, object],
+    has_root_param: bool,
     initial_tree: TensorflowRootedTree,
 ) -> tp.Generator[Distribution, tf.Tensor, tf.Tensor]:
     if clock_model == "strict":
         return get_strict_clock_rates(**clock_model_params)
     elif clock_model == "relaxed_lognormal":
         rates = yield get_relaxed_lognormal_clock_rate_distribution(
-            initial_tree=initial_tree, **clock_model_params
+            initial_tree=initial_tree,
+            has_root_param=has_root_param,
+            **clock_model_params,
         )
         return rates
     else:
@@ -220,12 +273,11 @@ def get_discrete_gamma_site_rate_distribution(
 
 
 def get_discrete_weibull_site_rate_distribution(
-    category_count: tf.Tensor, weibull_shape: tf.Tensor
+    category_count: tf.Tensor, concentration: tf.Tensor, scale: tf.Tensor
 ) -> DiscretizedDistribution:
-    scale = tf.constant(1.0, dtype=weibull_shape.dtype)
     return DiscretizedDistribution(
         category_count=category_count,
-        distribution=Weibull(concentration=weibull_shape, scale=scale),
+        distribution=Weibull(concentration=concentration, scale=scale),
     )
 
 
@@ -240,7 +292,7 @@ def get_site_rate_distribution(
         raise ValueError(f"Unknown site model {site_model}")
 
 
-def get_sequence_distribution(
+def get_sequence_distribution(  # TODO: Consider case where sequence is root?
     alignment: Alignment,
     tree: TensorflowRootedTree,
     subst_model: EigendecompositionSubstitutionModel,
@@ -277,7 +329,7 @@ def get_sequence_distribution(
             site_rate_distribution,
             LeafCTMC(
                 transition_probs_tree,
-                subst_model_params["frequencies"],
+                tf.expand_dims(subst_model_params["frequencies"], -2),
                 name="alignment",
             ),
         )
@@ -290,24 +342,29 @@ def phylo_model_to_joint_distribution(
     model: PhyloModel, initial_tree: TensorflowRootedTree, initial_alignment: Alignment
 ) -> JointDistributionCoroutine:
     def model_fn() -> tp.Generator[Distribution, tf.Tensor, None]:
-        tree_model_params = yield from get_params(model.tree_params)
+        tree_model_params, tree_has_root_param = yield from get_params(
+            model.tree_params
+        )
         tree = yield from get_tree_model(
             model.tree_model,
             tree_model_params=tree_model_params,
+            has_root_param=tree_has_root_param,
             initial_tree=initial_tree,
         )
 
-        subst_model_params = yield from get_subst_model_params(
+        subst_model_params, _ = yield from get_subst_model_params(
             model.subst_model, model.subst_params
         )
         subst_model = get_subst_model(model.subst_model)
 
-        clock_model_params = yield from get_params(model.clock_params)
+        clock_model_params, clock_has_root_param = yield from get_params(
+            model.clock_params
+        )
         rates = yield from get_clock_model_rates(
-            model.clock_model, clock_model_params, initial_tree
+            model.clock_model, clock_model_params, clock_has_root_param, initial_tree
         )
 
-        site_model_params = yield from get_params(model.site_params)
+        site_model_params, _ = yield from get_params(model.site_params)
         alignment = yield get_sequence_distribution(
             initial_alignment,
             tree,

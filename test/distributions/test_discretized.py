@@ -1,3 +1,4 @@
+import pytest
 import tensorflow as tf
 from tensorflow_probability.python.distributions import Normal, Gamma
 from treeflow.distributions.discretized import DiscretizedDistribution
@@ -21,16 +22,25 @@ def test_discretized_log_prob():
     assert_allclose(res[other_length:-other_length], mass)
 
 
-def test_discretized_sample():
-    base_dist = Gamma(2.0, 2.0)
-    k = 6
-    discretized = DiscretizedDistribution(k, base_dist)
-    mass = 1.0 / k
+@pytest.mark.parametrize("function_mode", [True, False])
+def test_discretized_sample(function_mode):
     sample_shape = (3, 2)
-    sample = discretized.sample(sample_shape, seed=1)
-    prob = discretized.prob(sample).numpy()
-    assert prob.shape == sample_shape
-    assert_allclose(prob, mass)
+    k = 6
+    mass = 1.0 / k
+
+    def sample_and_prob_func(k):
+        base_dist = Gamma(2.0, 2.0)
+        discretized = DiscretizedDistribution(k, base_dist)
+        sample = discretized.sample(sample_shape, seed=1)
+        prob = discretized.prob(sample)
+        return prob
+
+    if function_mode:
+        sample_and_prob_func = tf.function(sample_and_prob_func)
+
+    res = sample_and_prob_func(k).numpy()
+    assert res.shape == sample_shape
+    assert_allclose(res, mass)
 
 
 def test_discretized_sample_and_log_prob_batch(tensor_constant):

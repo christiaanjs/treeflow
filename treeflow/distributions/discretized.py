@@ -62,7 +62,8 @@ class DiscretizedDistribution(Distribution):
                 axis=0,
             ),
         )  # Category on last axis
-        self._index_dist = Categorical(probs=tf.fill(self._category_count, self._mass))
+        probs_shape = tf.reshape(self._category_count, (1,))
+        self._index_dist = Categorical(probs=tf.fill(probs_shape, self._mass))
 
         super().__init__(
             dtype=self._distribution.dtype,

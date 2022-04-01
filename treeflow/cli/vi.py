@@ -6,8 +6,9 @@ import tensorflow.keras.optimizers as keras_optimizers
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 import treeflow.evolution.substitution as substitution
 from treeflow.model.phylo_model import (
-    get_example_phylo_model,
-    DEFAULT_TREE_NAME,
+    phylo_model_to_joint_distribution,
+    PhyloModel,
+    DEFAULT_TREE_VAR_NAME,
 )
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
@@ -149,12 +150,12 @@ def treeflow_vi(
         init_loc = {
             key: value for key, value in init_values_dict.items() if key in model_names
         }
-        init_loc["tree"] = tree
+        init_loc[DEFAULT_TREE_VAR_NAME] = tree
 
     print(f"Running VI for {num_steps} iterations...")
     approx, trace = fit_fixed_topology_variational_approximation(
         model=pinned_model,
-        topologies={DEFAULT_TREE_NAME: tree.topology},
+        topologies={DEFAULT_TREE_VAR_NAME: tree.topology},
         init_loc=init_loc,
         optimizer=optimizer,
         num_steps=num_steps,

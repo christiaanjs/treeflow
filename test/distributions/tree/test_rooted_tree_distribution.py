@@ -12,6 +12,7 @@ class DumbRootedTreeDistribution(RootedTreeDistribution):
             node_height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
             sampling_time_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
             name=name,
+            support_topology_batch_dims=True,
         )
 
     def _parameter_properties(self, num_classes=None):
