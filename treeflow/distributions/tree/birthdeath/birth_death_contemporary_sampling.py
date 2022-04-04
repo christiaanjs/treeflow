@@ -57,21 +57,15 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
             allow_nan_stats=allow_nan_stats,
             name=name,
             tree_name=tree_name,
+            support_topology_batch_dims=False,
         )
 
     def _sample_n(self, n, seed=None):
         import warnings
 
         warnings.warn("Dummy sampling")
-        dtype = self.dtype
-        event_shape = self.event_shape_tensor()
-
-        shape_func = lambda event_shape: tf.concat([[n], event_shape], axis=0)
-
-        return tf.nest.map_structure(
-            lambda event_shape, dtype: tf.zeros(shape_func(event_shape), dtype),
-            event_shape,
-            dtype,
+        return self._make_dummy_samples(
+            tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
         )
 
     def _log_prob(self, x: TensorflowRootedTree):

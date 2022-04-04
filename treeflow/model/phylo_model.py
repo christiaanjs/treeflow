@@ -18,6 +18,7 @@ from tensorflow_probability.python.distributions import (
     Sample,
     Weibull,
     Dirichlet,
+    Beta,
 )
 from treeflow.evolution.substitution.base_substitution_model import (
     EigendecompositionSubstitutionModel,
@@ -43,7 +44,7 @@ def parse_model(
 
 
 prior_distribution_classes = dict(
-    lognormal=LogNormal, gamma=Gamma, normal=Normal, dirichlet=Dirichlet
+    lognormal=LogNormal, gamma=Gamma, normal=Normal, dirichlet=Dirichlet, beta=Beta
 )
 
 RELAXED_CLOCK_MODELS = {"relaxed_lognormal"}
@@ -198,7 +199,8 @@ def get_tree_model(  # TODO: Support unrooted trees
 
 
 JC_KEY = "jc"
-subst_model_classes = {JC_KEY: JC, "hky": HKY, "gtr": GTR}
+GTR_KEY = "gtr"
+subst_model_classes = {JC_KEY: JC, "hky": HKY, GTR_KEY: GTR}
 
 
 def get_subst_model(
@@ -221,6 +223,9 @@ def get_subst_model_params(
     processed_params, has_root = yield from get_params(params)
     if subst_model == JC_KEY:
         processed_params["frequencies"] = JC().frequencies(dtype=float_dtype)
+    elif subst_model == GTR_KEY:
+        rates = processed_params.pop("gtr_rates")
+        processed_params["rates"] = rates
     return processed_params, has_root
 
 
@@ -229,16 +234,16 @@ def get_strict_clock_rates(rate: tf.Tensor):
 
 
 def get_relaxed_lognormal_clock_rate_distribution(  # TODO: Think about rate parameterisation
-    rate_loc: tf.Tensor,
-    rate_scale: tf.Tensor,
+    branch_rate_loc: tf.Tensor,
+    branch_rate_scale: tf.Tensor,
     has_root_param: bool,
     initial_tree: TensorflowRootedTree,
 ) -> Distribution:
     return wrap_in_root_if_needed(
         Sample(
-            LogNormal(loc=rate_loc, scale=rate_scale),
+            LogNormal(loc=branch_rate_loc, scale=branch_rate_scale),
             sample_shape=2 * initial_tree.taxon_count - 2,
-            name="rates",
+            name="branch_rates",
         ),
         has_root_param,
     )
@@ -264,20 +269,24 @@ def get_clock_model_rates(
 
 
 def get_discrete_gamma_site_rate_distribution(
-    category_count: tf.Tensor, gamma_shape: tf.Tensor
+    category_count: tf.Tensor, site_gamma_shape: tf.Tensor
 ) -> DiscretizedDistribution:
     return DiscretizedDistribution(
         category_count=category_count,
-        distribution=Gamma(concentration=gamma_shape, rate=gamma_shape),
+        distribution=Gamma(concentration=site_gamma_shape, rate=site_gamma_shape),
     )
 
 
 def get_discrete_weibull_site_rate_distribution(
-    category_count: tf.Tensor, concentration: tf.Tensor, scale: tf.Tensor
+    category_count: tf.Tensor,
+    site_weibull_concentration: tf.Tensor,
+    site_weibull_scale: tf.Tensor,
 ) -> DiscretizedDistribution:
     return DiscretizedDistribution(
         category_count=category_count,
-        distribution=Weibull(concentration=concentration, scale=scale),
+        distribution=Weibull(
+            concentration=site_weibull_concentration, scale=site_weibull_scale
+        ),
     )
 
 

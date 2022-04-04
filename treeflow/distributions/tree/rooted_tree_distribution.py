@@ -119,5 +119,37 @@ class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
         )
         return samples
 
+    def _make_dummy_samples(self, sampling_times, n):
+        dtype = self.dtype
+        event_shape = self.event_shape_tensor()
+        batch_shape = self.batch_shape_tensor()
+
+        shape_func = lambda event_shape, batch_shape: tf.concat(
+            [[n], batch_shape, event_shape], axis=0
+        )
+
+        sampling_times_b = tf.broadcast_to(
+            sampling_times, shape_func(event_shape.sampling_times, batch_shape)
+        )
+        node_heights = tf.zeros(
+            shape_func(event_shape.node_heights, batch_shape), sampling_times_b.dtype
+        )
+        if self.support_topology_batch_dims:
+            raise NotImplemented(
+                "Dummy topology sampling with batch dims not implemented"
+            )
+        else:
+            topology = tf.nest.map_structure(  # No topology batch dims
+                lambda event_shape, dtype: tf.zeros(event_shape, dtype),
+                event_shape.topology,
+                dtype.topology,
+            )
+
+        return TensorflowRootedTree(
+            sampling_times=sampling_times_b,
+            node_heights=node_heights,
+            topology=topology,
+        )
+
 
 __all__ = [RootedTreeDistribution.__name__]
