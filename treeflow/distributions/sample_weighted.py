@@ -1,8 +1,10 @@
 import tensorflow as tf
-from tensorflow_probability.python import distributions
 from tensorflow_probability.python.distributions.distribution import Distribution
 from tensorflow_probability.python.distributions.sample import Sample
 from tensorflow_probability.python.internal import prefer_static as ps
+from tensorflow_probability.python.internal.parameter_properties import (
+    ParameterProperties,
+)
 
 
 class SampleWeighted(Sample):
@@ -52,3 +54,10 @@ class SampleWeighted(Sample):
         # (2) Make the final reduction.
         axis = ps.range(sample_ndims, sample_ndims + extra_sample_ndims)
         return self._sum_fn()(lp * self.weights, axis=axis)
+
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        return dict(
+            Sample._parameter_properties(dtype, num_classes=num_classes),
+            weights=ParameterProperties(event_ndims=1),
+        )

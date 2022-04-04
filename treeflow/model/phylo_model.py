@@ -1,5 +1,5 @@
 import typing as tp
-from numpy import integer
+from numpy import integer, single
 import tensorflow as tf
 import treeflow
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
@@ -19,12 +19,13 @@ from tensorflow_probability.python.distributions import (
     Weibull,
     Dirichlet,
     Beta,
+    Exponential,
 )
 from treeflow.evolution.substitution.base_substitution_model import (
     EigendecompositionSubstitutionModel,
 )
 from treeflow.evolution.substitution.nucleotide import JC, HKY, GTR
-from treeflow.evolution.seqio import Alignment
+from treeflow.evolution.seqio import Alignment, WeightedAlignment
 from treeflow.distributions.discrete import FiniteDiscreteDistribution
 from treeflow.distributions.discretized import DiscretizedDistribution
 from treeflow.distributions.discrete_parameter_mixture import DiscreteParameterMixture
@@ -32,6 +33,7 @@ from treeflow.evolution.substitution.probabilities import (
     get_transition_probabilities_tree,
 )
 from treeflow.distributions.leaf_ctmc import LeafCTMC
+from treeflow.distributions.sample_weighted import SampleWeighted
 
 # TODO: Better type hints
 def parse_model(
@@ -44,7 +46,12 @@ def parse_model(
 
 
 prior_distribution_classes = dict(
-    lognormal=LogNormal, gamma=Gamma, normal=Normal, dirichlet=Dirichlet, beta=Beta
+    lognormal=LogNormal,
+    gamma=Gamma,
+    normal=Normal,
+    dirichlet=Dirichlet,
+    beta=Beta,
+    exponential=Exponential,
 )
 
 RELAXED_CLOCK_MODELS = {"relaxed_lognormal"}
@@ -57,7 +64,7 @@ class PhyloModel:
         self.tree_model, self.tree_params = parse_model(model_dict["tree"])
         self.clock_model, self.clock_params = parse_model(model_dict["clock"])
         self.subst_model, self.subst_params = parse_model(model_dict["substitution"])
-        self.site_model, self.site_params = parse_model(model_dict["site"])
+        self.site_model, self.site_params = parse_model(model_dict.get("site", "none"))
 
     def all_params(
         self,
@@ -301,6 +308,9 @@ def get_site_rate_distribution(
         raise ValueError(f"Unknown site model {site_model}")
 
 
+DEFAULT_ALIGNMENT_VAR_NAME = "alignment"
+
+
 def get_sequence_distribution(  # TODO: Consider case where sequence is root?
     alignment: Alignment,
     tree: TensorflowRootedTree,
@@ -309,6 +319,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
     site_model: str,
     site_model_params: tp.Dict[str, object],
     clock_model_rates: tf.Tensor,
+    pattern_counts: tp.Optional[tf.Tensor] = None,
 ) -> Distribution:
     unrooted_tree = tree.get_unrooted_tree()
     scaled_tree = unrooted_tree.with_branch_lengths(
@@ -339,16 +350,28 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
             LeafCTMC(
                 transition_probs_tree,
                 tf.expand_dims(subst_model_params["frequencies"], -2),
-                name="alignment",
             ),
         )
-    return Sample(
-        single_site_distribution, sample_shape=alignment.site_count, name="alignment"
-    )
+    if pattern_counts is None:
+        return Sample(
+            single_site_distribution,
+            sample_shape=alignment.site_count,
+            name=DEFAULT_ALIGNMENT_VAR_NAME,
+        )
+    else:
+        return SampleWeighted(
+            single_site_distribution,
+            sample_shape=alignment.site_count,
+            name=DEFAULT_ALIGNMENT_VAR_NAME,
+            weights=pattern_counts,
+        )
 
 
 def phylo_model_to_joint_distribution(
-    model: PhyloModel, initial_tree: TensorflowRootedTree, initial_alignment: Alignment
+    model: PhyloModel,
+    initial_tree: TensorflowRootedTree,
+    initial_alignment: Alignment,
+    pattern_counts: tp.Optional[tf.Tensor] = None,
 ) -> JointDistributionCoroutine:
     def model_fn() -> tp.Generator[Distribution, tf.Tensor, None]:
         tree_model_params, tree_has_root_param = yield from get_params(
@@ -382,6 +405,7 @@ def phylo_model_to_joint_distribution(
             model.site_model,
             site_model_params,
             rates,
+            pattern_counts=pattern_counts,
         )
 
     return JointDistributionCoroutine(model_fn)

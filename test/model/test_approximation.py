@@ -22,7 +22,7 @@ def test_get_mean_field_approximation():
     model = tfd.JointDistributionNamed(
         dict(
             a=tfd.Normal(_constant(0.0), _constant(1.0)),
-            b=lambda a: tfd.Sample(tfd.LogNormal(a, _constant(1.0)), sample_size),
+            b=lambda a: tfd.Dirichlet(tf.fill((sample_size,), _constant(2.0))),
             obs=lambda b: tfd.Independent(
                 tfd.Normal(b, _constant(1.0)), reinterpreted_batch_ndims=1
             ),

@@ -15,6 +15,7 @@ from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopolo
 from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
 from treeflow.bijectors.fixed_topology_bijector import FixedTopologyRootedTreeBijector
 from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribution
+import tensorflow.python.util.nest as tf_nest
 
 
 def get_base_distribution(flat_event_size, dtype=DEFAULT_FLOAT_DTYPE_TF):
@@ -85,9 +86,22 @@ def get_mean_field_approximation(
     ] = get_default_event_space_bijector,
     event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
 ) -> tfd.Distribution:
+    event_space_bijector = joint_bijector_func(model)
     event_shape = event_shape_fn(model)
-    flat_event_shape = tf.nest.flatten(event_shape)
-    flat_event_size = tf.nest.map_structure(tf.reduce_prod, flat_event_shape)
+    flat_event_shape = tf_nest.flatten(event_shape)
+    flat_model_event_shape = tf_nest.flatten_up_to(event_shape, model.event_shape)
+    # Some bijectors (e.g. SoftmaxCentered) change event shape, but we need to handle trees
+    unconstrained_event_shape = [
+        (
+            bijector.inverse_event_shape(shape)
+            if isinstance(model_shape, tf.TensorShape)
+            else shape
+        )
+        for bijector, shape, model_shape in zip(
+            event_space_bijector.bijectors, flat_event_shape, flat_model_event_shape
+        )
+    ]
+    flat_event_size = tf_nest.map_structure(tf.reduce_prod, unconstrained_event_shape)
     operator_classes = get_mean_field_operator_classes(flat_event_size)
     linear_operator_block = build_trainable_linear_operator_block(
         operator_classes, flat_event_size, dtype=dtype
@@ -95,16 +109,15 @@ def get_mean_field_approximation(
     scale_bijector = tfb.ScaleMatvecLinearOperatorBlock(linear_operator_block)
 
     if init_loc is None:
-        init_loc = tf.nest.map_structure(lambda _: None, flat_event_shape)
+        init_loc = tf_nest.map_structure(lambda _: None, unconstrained_event_shape)
     else:
         init_loc = defaultdict(lambda: None, init_loc)  # TODO: Handle nesting
 
-    event_space_bijector = joint_bijector_func(model)
     unflatten_bijector = tfb.Restructure(
-        tf.nest.pack_sequence_as(event_shape, range(len(flat_event_shape)))
+        tf_nest.pack_sequence_as(event_shape, range(len(unconstrained_event_shape)))
     )
     reshape_bijector = tfb.JointMap(
-        tf.nest.map_structure(tfb.Reshape, flat_event_shape)
+        tf_nest.map_structure(tfb.Reshape, unconstrained_event_shape)
     )
 
     init_loc_unconstrained = joint_inverse_with_nones(event_space_bijector, init_loc)

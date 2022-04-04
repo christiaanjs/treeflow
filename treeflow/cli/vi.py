@@ -14,15 +14,17 @@ from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_appro
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 from treeflow.tree.io import parse_newick
 from treeflow.evolution.seqio import Alignment
+import yaml
+
 
 _ADAM_KEY = "adam"
 optimizer_classes = {_ADAM_KEY: keras_optimizers.Adam}
 
-_JC_KEY = "jc"
-substitution_model_classes = {_JC_KEY: substitution.JC}
-
-_FIXED_STRICT = "fixed-strict"
-_CONSTANT_COALESCENT = "constant-coalescent"
+EXAMPLE_PHYLO_MODEL_DICT = dict(
+    tree=dict(coalescent=dict(pop_size=dict(exponential=dict(rate=0.1)))),
+    clock=dict(strict=dict(rate=1e-3)),
+    substitution="jc",
+)
 
 
 def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
@@ -46,6 +48,12 @@ def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
     help="Topology file",
 )
 @click.option(
+    "-m",
+    "--model-file",
+    type=click.Path(exists=True),
+    help="YAML model definition file",
+)
+@click.option(
     "-n", "--num-steps", required=True, type=int, help="Number of VI iterations"
 )
 @click.option(
@@ -56,33 +64,6 @@ def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
         list(optimizer_classes.keys()),
     ),
     default=_ADAM_KEY,
-)
-@click.option(
-    "-s",
-    "--substitution-model",
-    required=True,
-    type=click.Choice(
-        list(substitution_model_classes.keys()),
-    ),
-    default=_JC_KEY,
-)
-@click.option(
-    "-c",
-    "--clock-model",
-    required=True,
-    type=click.Choice(
-        [_FIXED_STRICT],
-    ),
-    default=_FIXED_STRICT,
-)
-@click.option(
-    "-p",
-    "--tree-prior",
-    required=True,
-    type=click.Choice(
-        [_CONSTANT_COALESCENT],
-    ),
-    default=_CONSTANT_COALESCENT,
 )
 @click.option(
     "--init-values",
@@ -97,9 +78,7 @@ def treeflow_vi(
     topology,
     num_steps,
     optimizer,
-    substitution_model,
-    clock_model,
-    tree_prior,
+    model_file,
     learning_rate,
     init_values,
     approx_output,
@@ -125,22 +104,15 @@ def treeflow_vi(
         }
     )
 
-    if (
-        clock_model == _FIXED_STRICT
-        and substitution_model == _JC_KEY
-        and tree_prior == _CONSTANT_COALESCENT
-    ):
-        model = get_example_phylo_model(
-            taxon_count=tree.taxon_count,
-            site_count=alignment.site_count,
-            sampling_times=tree.sampling_times,
-            pattern_counts=pattern_counts,
-            init_values=init_values_dict,
-        )
+    if model_file is None:
+        model_dict = EXAMPLE_PHYLO_MODEL_DICT
     else:
-        raise ValueError(
-            "Only example with JC, fixed-rate strict clock, constant coalescent supported for now"
-        )
+        with open(model_file) as f:
+            model_dict = yaml.safe_load(f)
+    phylo_model = model = PhyloModel(model_dict)
+    model = phylo_model_to_joint_distribution(
+        phylo_model, tree, alignment, pattern_counts=pattern_counts
+    )
     pinned_model = model.experimental_pin(alignment=encoded_sequences)
     model_names = set(pinned_model._flat_resolve_names())
 

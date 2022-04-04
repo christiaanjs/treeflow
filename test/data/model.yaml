@@ -1,0 +1,32 @@
+tree:
+  coalescent:
+    pop_size:
+      lognormal:
+        loc:  0.0
+        scale: 2.2
+clock:
+  relaxed_lognormal:
+    branch_rate_loc:
+      lognormal:
+        loc: -7.6
+        scale: 1.0
+    branch_rate_scale:
+      lognormal:
+        loc: -1.4
+        scale: 0.45
+substitution:
+  hky:
+    kappa:
+      gamma:
+        concentration: 2.0
+        rate: 1.0
+    frequencies:
+      dirichlet:
+        concentration: [4.0, 4.0, 4.0, 4.0]
+site:
+  discrete_gamma:
+    site_gamma_shape:
+      gamma:
+        concentration: 3.0
+        rate: 3.0
+    category_count: 4

@@ -33,6 +33,8 @@ class BaseTreeDistribution(Distribution, tp.Generic[TTree]):
         support_topology_batch_dims=False,
     ):
         self.taxon_count = taxon_count
+        if tree_name is None:
+            tree_name = name
         self.tree_name = tree_name
         self.support_topology_batch_dims = support_topology_batch_dims
         super().__init__(
