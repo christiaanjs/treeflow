@@ -4,8 +4,13 @@ from click.testing import CliRunner
 
 
 @pytest.fixture
-def approx_output_path(tmp_path):
-    return tmp_path / "approx-output.pickle"
+def samples_output_path(tmp_path):
+    return tmp_path / "approx-samples.csv"
+
+
+@pytest.fixture
+def tree_samples_output_path(tmp_path):
+    return tmp_path / "approx-tree-samples.nexus"
 
 
 @pytest.fixture(params=[None, "model.yaml"])
@@ -18,9 +23,19 @@ def model_file(request, test_data_dir):
 
 
 @pytest.mark.parametrize("include_init_values", [True, False])
-def test_vi(newick_fasta_file_dated, include_init_values, model_file):
+def test_vi(
+    newick_fasta_file_dated,
+    include_init_values,
+    model_file,
+    samples_output_path,
+    tree_samples_output_path,
+):
+    import pandas as pd
+    import dendropy
+
     newick_file, fasta_file, dated = newick_fasta_file_dated
     runner = CliRunner()
+    n_output_samples = 10
     args = [
         "-i",
         str(fasta_file),
@@ -28,6 +43,12 @@ def test_vi(newick_fasta_file_dated, include_init_values, model_file):
         str(newick_file),
         "-n",
         str(10),
+        "--samples-output",
+        str(samples_output_path),
+        "--tree-samples-output",
+        str(tree_samples_output_path),
+        "--n-output-samples",
+        str(n_output_samples),
     ]
     if model_file is None:
         init_values_string = "rate=0.01"
@@ -43,3 +64,8 @@ def test_vi(newick_fasta_file_dated, include_init_values, model_file):
         catch_exceptions=False,
     )
     print(res.stdout)
+    samples = pd.read_csv(samples_output_path)
+    assert samples.shape[0] == n_output_samples
+
+    trees = dendropy.TreeList.get(path=tree_samples_output_path, schema="nexus")
+    assert len(trees) == n_output_samples

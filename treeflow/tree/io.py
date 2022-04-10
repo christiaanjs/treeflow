@@ -1,5 +1,6 @@
 import ete3
 import numpy as np
+import dendropy
 from treeflow import DEFAULT_FLOAT_DTYPE_NP
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
 from treeflow.tree.taxon_set import DictTaxonSet
@@ -52,4 +53,108 @@ def parse_newick(
     return tree
 
 
-__all__ = [parse_newick.__name__, remove_zero_edges.__name__]
+def tensor_to_dendro(
+    topology, taxon_namespace, taxon_names, branch_lengths, branch_metadata={}
+):
+    taxon_count = len(taxon_names)
+    leaves = [
+        dendropy.Node(taxon=taxon_namespace.get_taxon(name)) for name in taxon_names
+    ]
+    nodes = leaves + [dendropy.Node() for _ in range(taxon_count - 1)]
+    for i, node in enumerate(nodes[:-1]):
+        node.edge_length = branch_lengths[i]
+        for key, value in branch_metadata.items():
+            node.annotations[key] = value[i]
+        parent = nodes[topology.parent_indices[i]]
+        parent.add_child(node)
+    return dendropy.Tree(
+        taxon_namespace=taxon_namespace, seed_node=nodes[-1], is_rooted=True
+    )
+
+
+from dendropy.dataio import nexusprocessing
+
+
+class CustomNewickWriter(dendropy.dataio.newickwriter.NewickWriter):
+    def _write_node_body(self, node, out):
+        out.write(self._render_node_tag(node))
+        if not self.suppress_annotations:
+            node_annotation_comments = (
+                nexusprocessing.format_item_annotations_as_comments(
+                    node,  # Place node annotations before colon
+                    nhx=self.annotations_as_nhx,
+                    real_value_format_specifier=self.real_value_format_specifier,
+                )
+            )
+            out.write(node_annotation_comments)
+        if node.edge and node.edge.length != None and not self.suppress_edge_lengths:
+            out.write(":{}".format(self.edge_label_compose_fn(node.edge)))
+        if not self.suppress_annotations:
+            edge_annotation_comments = (
+                nexusprocessing.format_item_annotations_as_comments(
+                    node.edge,
+                    nhx=self.annotations_as_nhx,
+                    real_value_format_specifier=self.real_value_format_specifier,
+                )
+            )
+            out.write(edge_annotation_comments)
+        out.write(self._compose_comment_string(node))
+        out.write(self._compose_comment_string(node.edge))
+
+
+class CustomNexusWriter(dendropy.dataio.nexuswriter.NexusWriter):
+    def __init__(self, **kwargs):
+        super(CustomNexusWriter, self).__init__(**kwargs)
+
+        kwargs_to_preserve = [
+            "unquoted_underscores",
+            "preserve_spaces",
+            "annotations_as_nhx",
+            "suppress_annotations",
+            "suppress_item_comments",
+        ]
+
+        newick_kwargs = dict(
+            unquoted_underscores=self.unquoted_underscores,
+            preserve_spaces=self.preserve_spaces,
+            annotations_as_nhx=self.annotations_as_nhx,
+            suppress_annotations=self.suppress_annotations,
+            suppress_item_comments=self.suppress_item_comments,
+        )
+        self._newick_writer = CustomNewickWriter(**newick_kwargs)
+
+
+def fit_successful(variational_fit):
+    return np.isfinite(variational_fit["loss"]).all()
+
+
+NUMERICAL_ISSUE_N = 2
+
+
+def write_tensor_trees(topology_file, branch_lengths, output_file, branch_metadata={}):
+    taxon_namespace = dendropy.Tree.get(
+        path=topology_file, schema="newick", preserve_underscores=True
+    ).taxon_namespace
+    tree = parse_newick(topology_file)
+    trees = dendropy.TreeList(
+        [
+            tensor_to_dendro(
+                tree.topology,
+                taxon_namespace,
+                tree.taxon_set,
+                branch_lengths[i],
+                branch_metadata={
+                    key: value[i] for key, value in branch_metadata.items()
+                },
+            )
+            for i in range(branch_lengths.shape[0])
+        ],
+        taxon_namespace=taxon_namespace,
+    )
+
+    writer = CustomNexusWriter(unquoted_underscores=True)
+    with open(output_file, "w") as f:
+        writer.write_tree_list(trees, f)
+
+
+__all__ = ["parse_newick", "remove_zero_edges", "write_tensor_trees"]

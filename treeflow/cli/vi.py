@@ -1,5 +1,6 @@
 import click
 import pickle
+import yaml
 import typing as tp
 import tensorflow as tf
 import tensorflow.keras.optimizers as keras_optimizers
@@ -12,9 +13,9 @@ from treeflow.model.phylo_model import (
 )
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
-from treeflow.tree.io import parse_newick
+from treeflow.tree.io import parse_newick, write_tensor_trees
 from treeflow.evolution.seqio import Alignment
-import yaml
+from treeflow.model.io import write_samples_to_file
 
 
 _ADAM_KEY = "adam"
@@ -30,6 +31,22 @@ EXAMPLE_PHYLO_MODEL_DICT = dict(
 def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
     str_dict = dict(item.split("=") for item in init_values_string.split(","))
     return {key: float(value) for key, value in str_dict.items()}
+
+
+def get_tree_vars(model: PhyloModel) -> set[str]:
+    tree_vars = {DEFAULT_TREE_VAR_NAME}
+    if model.relaxed_clock():
+        tree_vars.add("branch_rates")
+    return tree_vars
+
+
+def write_trees(
+    tree_var_samples: dict[str, tf.Tensor], topology_file, output_file
+) -> None:
+    branch_lengths = tree_var_samples.pop(DEFAULT_TREE_VAR_NAME).branch_lengths
+    write_tensor_trees(
+        topology_file, branch_lengths, output_file, branch_metadata=tree_var_samples
+    )
 
 
 @click.command()
@@ -70,8 +87,10 @@ def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
     required=False,
     type=str,
 )
-@click.option("--approx-output", required=False, type=click.Path())
 @click.option("--trace-output", required=False, type=click.Path())
+@click.option("--samples-output", required=False, type=click.Path())
+@click.option("--tree-samples-output", required=False, type=click.Path())
+@click.option("--n-output-samples", required=False, type=int, default=200)
 @click.option("-r", "--learning-rate", required=True, type=float, default=1e-3)
 def treeflow_vi(
     input,
@@ -81,8 +100,10 @@ def treeflow_vi(
     model_file,
     learning_rate,
     init_values,
-    approx_output,
     trace_output,
+    samples_output,
+    tree_samples_output,
+    n_output_samples,
 ):
     optimizer = optimizer_classes[optimizer](learning_rate=learning_rate)
 
@@ -133,17 +154,30 @@ def treeflow_vi(
         num_steps=num_steps,
     )
     print("Inference complete")
-    print("Approx sample:")
-    print(tf.nest.map_structure(lambda x: x.numpy(), approx.sample()))
-
-    if approx_output is not None:
-        print(f"Saving approximation to {approx_output}...")
-        with open(approx_output, "wb") as f:
-            pickle.dump(approx, f)  # TODO: Support saving approximation
 
     if trace_output is not None:
         print(f"Saving trace to {trace_output}...")
         with open(trace_output, "wb") as f:
             pickle.dump(trace, f)
+
+    if samples_output is not None or tree_samples_output is not None:
+        print("Sampling fitted approximation...")
+        samples = approx.sample(n_output_samples)
+        samples_dict = samples._asdict()
+        tree_vars = get_tree_vars(phylo_model)
+
+        tree_samples = dict()
+        for var in tree_vars:
+            tree_samples[var] = samples_dict.pop(var)
+
+        if samples_output is not None:
+            print(f"Saving samples to {samples_output}...")
+            write_samples_to_file(
+                samples, pinned_model, samples_output, vars=samples_dict.keys()
+            )
+
+        if tree_samples_output is not None:
+            print(f"Saving tree samples to {tree_samples_output}...")
+            write_trees(tree_samples, topology, tree_samples_output)
 
     print("Exiting...")

@@ -59,7 +59,7 @@ def test_samples_to_dict(joint_dist):
     sample_shape = (5,)
 
     samples = joint_dist.sample(sample_shape, seed=1)
-    res = flatten_samples_to_dict(samples, joint_dist)
+    res, _ = flatten_samples_to_dict(samples, joint_dist)
     keys = set(
         [
             f"x_{i}_{j}"
@@ -72,11 +72,12 @@ def test_samples_to_dict(joint_dist):
         assert res[key].numpy().shape == sample_shape
 
 
-def test_write_samples_to_file(joint_dist):
+@pytest.mark.parametrize("vars", [None, ["y"]])
+def test_write_samples_to_file(joint_dist, vars):
     sample_shape = (5,)
 
     samples = joint_dist.sample(sample_shape, seed=1)
     stringio = io.StringIO()
-    write_samples_to_file(samples, joint_dist, stringio)
+    write_samples_to_file(samples, joint_dist, stringio, vars=vars)
     res = stringio.getvalue()
     print(res)
