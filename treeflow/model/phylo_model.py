@@ -224,11 +224,12 @@ def get_subst_model_params(
     subst_model: str,
     params: tp.Optional[tp.Dict[str, tp.Union[object, tp.Dict[str, object]]]],
     float_dtype: tf.DType = treeflow.DEFAULT_FLOAT_DTYPE_TF,
+    include_jc_frequencies: bool = True,
 ) -> tp.Generator[
     Distribution, tf.Tensor, tp.Tuple[tp.Dict[str, tp.Union[tf.Tensor, object]], bool]
 ]:
     processed_params, has_root = yield from get_params(params)
-    if subst_model == JC_KEY:
+    if include_jc_frequencies and subst_model == JC_KEY:
         processed_params["frequencies"] = JC().frequencies(dtype=float_dtype)
     elif subst_model == GTR_KEY:
         rates = processed_params.pop("gtr_rates")
@@ -236,8 +237,8 @@ def get_subst_model_params(
     return processed_params, has_root
 
 
-def get_strict_clock_rates(rate: tf.Tensor):
-    return tf.expand_dims(rate, -1)
+def get_strict_clock_rates(clock_rate: tf.Tensor):
+    return tf.expand_dims(clock_rate, -1)
 
 
 def get_relaxed_lognormal_clock_rate_distribution(  # TODO: Think about rate parameterisation
@@ -320,11 +321,16 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
     site_model_params: tp.Dict[str, object],
     clock_model_rates: tf.Tensor,
     pattern_counts: tp.Optional[tf.Tensor] = None,
+    add_jc_frequencies: bool = False,
 ) -> Distribution:
     unrooted_tree = tree.get_unrooted_tree()
     scaled_tree = unrooted_tree.with_branch_lengths(
         unrooted_tree.branch_lengths * clock_model_rates
     )
+    if isinstance(subst_model, JC) and add_jc_frequencies:
+        subst_model_params["frequencies"] = subst_model.frequencies(
+            dtype=tree.heights.dtype
+        )
     if site_model == "none":
         assert len(site_model_params) == 0
         transition_probs_tree = get_transition_probabilities_tree(

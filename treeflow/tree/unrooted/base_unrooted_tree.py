@@ -1,3 +1,4 @@
+from __future__ import annotations
 import typing as tp
 from treeflow.tree.base_tree import AbstractTree
 from treeflow.tree.topology.base_tree_topology import (
@@ -27,6 +28,9 @@ class AbstractUnrootedTree(
     tp.Generic[TDataType, TShapeType],
 ):
     topology: AbstractTreeTopology[TDataType, TShapeType]
+
+    def get_unrooted_tree(self) -> AbstractUnrootedTree:
+        return self
 
 
 __all__ = [BaseUnrootedTree.__name__, AbstractUnrootedTree.__name__]

@@ -13,7 +13,7 @@ model_dicts_and_keys = [
                     ),
                 ),
             ),
-            clock=dict(strict=dict(rate=1e-3)),
+            clock=dict(strict=dict(clock_rate=1e-3)),
             substitution=dict(
                 gtr=dict(
                     frequencies=dict(

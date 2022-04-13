@@ -14,7 +14,7 @@ from treeflow.tf_util import AttrsLengthMixin
 
 TDataType = tp.TypeVar("TDataType")
 TShapeType = tp.TypeVar("TShapeType")
-TRootedTreeType = tp.TypeVar("TRootedTreeType")
+TUnrootedTreeType = tp.TypeVar("TUnrootedTreeType")
 
 
 @attr.s(auto_attribs=True, slots=True)
@@ -54,7 +54,7 @@ class AbstractRootedTreeAttrs(
 
 class AbstractRootedTree(
     AbstractRootedTreeAttrs[TDataType, TShapeType],
-    tp.Generic[TDataType, TShapeType, TRootedTreeType],
+    tp.Generic[TDataType, TShapeType, TUnrootedTreeType],
 ):
 
     UnrootedTreeType: tp.Type = BaseUnrootedTree  # TODO: Better type hint
@@ -63,7 +63,7 @@ class AbstractRootedTree(
     def heights(self) -> TDataType:
         pass
 
-    def get_unrooted_tree(self) -> TRootedTreeType:
+    def get_unrooted_tree(self) -> TUnrootedTreeType:
         return type(self).UnrootedTreeType(
             topology=self.topology, branch_lengths=self.branch_lengths
         )
