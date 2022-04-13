@@ -288,8 +288,10 @@ def get_discrete_gamma_site_rate_distribution(
 def get_discrete_weibull_site_rate_distribution(
     category_count: tf.Tensor,
     site_weibull_concentration: tf.Tensor,
-    site_weibull_scale: tf.Tensor,
+    site_weibull_scale: tp.Optional[tf.Tensor] = None,
 ) -> DiscretizedDistribution:
+    if site_weibull_scale is None:
+        site_weibull_scale = tf.constant(1.0, dtype=site_weibull_concentration.dtype)
     return DiscretizedDistribution(
         category_count=category_count,
         distribution=Weibull(
@@ -321,16 +323,11 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
     site_model_params: tp.Dict[str, object],
     clock_model_rates: tf.Tensor,
     pattern_counts: tp.Optional[tf.Tensor] = None,
-    add_jc_frequencies: bool = False,
 ) -> Distribution:
     unrooted_tree = tree.get_unrooted_tree()
     scaled_tree = unrooted_tree.with_branch_lengths(
         unrooted_tree.branch_lengths * clock_model_rates
     )
-    if isinstance(subst_model, JC) and add_jc_frequencies:
-        subst_model_params["frequencies"] = subst_model.frequencies(
-            dtype=tree.heights.dtype
-        )
     if site_model == "none":
         assert len(site_model_params) == 0
         transition_probs_tree = get_transition_probabilities_tree(

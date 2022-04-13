@@ -15,7 +15,10 @@ def phylogenetic_likelihood(
     inst=None,
     newick_file=None,
     dated=True,
-    **subst_model_params
+    clock_rate=1.0,
+    site_model="none",
+    site_model_params=None,
+    **subst_model_params,
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], object]:
 
     if isinstance(subst_model, treeflow_subst.JC):
@@ -25,9 +28,28 @@ def phylogenetic_likelihood(
         subst_model_string = "HKY"
         kappa = subst_model_params["kappa"]
         rates = np.array([kappa])
-        param_updates = {"substitution model rates": rates, "substitution model frequencies": np.array(frequencies)}
+        param_updates = {
+            "substitution model rates": rates,
+            "substitution model frequencies": np.array(frequencies),
+        }
+    elif isinstance(subst_model, treeflow_subst.GTR):
+        subst_model_string = "GTR"
+        rates = subst_model_params["rates"]
+        param_updates = {
+            "substitution model rates": rates,
+            "substitution model frequencies": np.array(frequencies),
+        }
     else:
-        raise ValueError("Unsupported substitution model")
+        raise ValueError(f"Unsupported substitution model: {subst_model}")
+
+    if site_model == "discrete_weibull":
+        param_updates["Weibull shape"] = site_model_params["site_weibull_concentration"]
+        category_count = site_model_params["category_count"]
+        site_model_string = f"weibull+{category_count}"
+    elif site_model == "none":
+        site_model_string = "constant"
+    else:
+        raise ValueError(f"Unsupported site model: {site_model}")
 
     if inst is None:
         if newick_file is None:
@@ -36,12 +58,12 @@ def phylogenetic_likelihood(
     inst.read_fasta_file(fasta_file)
     inst.set_rescaling(rescaling)
     model_specification = bito.PhyloModelSpecification(
-        subst_model_string, "constant", "strict"
+        subst_model_string, site_model_string, "strict"
     )
     inst.prepare_for_phylo_likelihood(model_specification, 1)
 
     phylo_model_param_block_map = inst.get_phylo_model_param_block_map()
-    phylo_model_param_block_map["clock rate"][:] = 1.0
+    phylo_model_param_block_map["clock rate"][:] = clock_rate
 
     for key, value in param_updates.items():
         phylo_model_param_block_map[key][:] = value
