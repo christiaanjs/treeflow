@@ -27,6 +27,10 @@ class NumpyTreeTopology(NumpyTreeTopologyAttrs):
         return (self.parent_indices.shape[-1] + 2) // 2
 
     @property
+    def node_count(self) -> int:
+        return 2 * self.taxon_count - 1
+
+    @property
     def postorder_node_indices(self) -> np.ndarray:
         return np.arange(self.taxon_count, 2 * self.taxon_count - 1)
 

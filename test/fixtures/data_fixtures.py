@@ -69,3 +69,8 @@ def newick_fasta_file_dated(test_data_dir, request):
 def newick_file_dated(newick_fasta_file_dated):
     newick_file, _, dated = newick_fasta_file_dated
     return newick_file, dated
+
+
+@pytest.fixture
+def tree_sim_newick_file(test_data_dir):
+    return str(test_data_dir / "tree-sim.newick")
