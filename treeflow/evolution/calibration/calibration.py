@@ -38,6 +38,9 @@ class MRCACalibration:
     def get_normal_mean(self):
         return (self.high + self.low) / 2.0
 
+    def __repr__(self):
+        return f"{type(self).__name__}(name={repr(self.name)}, range={(self.low, self.high)})"
+
 
 class MRCACalibrationSet:
     def __init__(self, calibration_dicts: tp.Iterable[CalibrationDictType]):
@@ -73,3 +76,7 @@ class MRCACalibrationSet:
 
     def get_normal_mean_tensor(self, dtype=DEFAULT_FLOAT_DTYPE_TF):
         return tf.constant(self.get_normal_mean_array(), dtype=dtype)
+
+    def __repr__(self):
+        elements_string = ", ".join([repr(x) for x in self.calibrations])
+        return f"{type(self).__name__}({elements_string})"
