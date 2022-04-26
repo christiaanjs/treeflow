@@ -116,3 +116,6 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
                 default_constraining_bijector_fn=lambda: SigmoidBijector(),
             ),
         )
+
+
+__all__ = ["BirthDeathContemporarySampling"]

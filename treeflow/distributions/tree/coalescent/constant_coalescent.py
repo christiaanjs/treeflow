@@ -141,3 +141,6 @@ class ConstantCoalescent(RootedTreeDistribution):
             anchor_heights=get_anchor_heights_tensor(topology, self.sampling_times),
             fixed_sampling_times=True,
         )
+
+
+__all__ = ["ConstantCoalescent"]
