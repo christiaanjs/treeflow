@@ -45,6 +45,12 @@ class DictTaxonSet(tp.Dict[str, None]):
         else:
             return True
 
+    def __repr__(self) -> str:
+        return repr(tuple(self.keys()))
+
+    def __str__(self) -> str:
+        return str(tuple(self.keys()))
+
 
 class TupleTaxonSet(tp.Tuple[str, ...]):
     """

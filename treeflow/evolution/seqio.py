@@ -113,6 +113,17 @@ class Alignment:
         compressed_sequence_mapping, counts = compress_sites(self.sequence_mapping)
         return WeightedAlignment(compressed_sequence_mapping, counts)
 
+    @property
+    def taxon_count(self):
+        return len(self.sequence_mapping)
+
+    @property
+    def pattern_count(self):
+        return len(next(iter(self.sequence_mapping.values())))
+
+    def __repr__(self):
+        return f"{type(self).__name__}(taxon_count={self.taxon_count}, pattern_count={self.pattern_count})"
+
 
 class WeightedAlignment(Alignment):
     def __init__(
@@ -126,3 +137,6 @@ class WeightedAlignment(Alignment):
 
     def get_weights_tensor(self, dtype=DEFAULT_FLOAT_DTYPE_TF) -> tf.Tensor:
         return tf.constant(self.get_weights_array(), dtype=dtype)
+
+
+__all__ = ["Alignment"]
