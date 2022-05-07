@@ -11,6 +11,9 @@ from tensorflow_probability.python.bijectors.softplus import (
 from tensorflow_probability.python.bijectors.sigmoid import Sigmoid as SigmoidBijector
 from tensorflow_probability.python.internal import dtype_util
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
+from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
+from treeflow.traversal.anchor_heights import get_anchor_heights_tensor
 
 
 class BirthDeathContemporarySampling(RootedTreeDistribution):
@@ -69,7 +72,7 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
         )
 
     def _log_prob(self, x: TensorflowRootedTree):
-        heights: tf.Tensor = x.heights[self.taxon_count :]
+        heights: tf.Tensor = x.node_heights
         dtype = heights.dtype
         taxon_count = tf.cast(self.taxon_count, dtype)
         r = self.birth_diff_rate
@@ -115,6 +118,18 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
                 event_ndims=0,
                 default_constraining_bijector_fn=lambda: SigmoidBijector(),
             ),
+        )
+
+    @property
+    def sampling_times(self):
+        return tf.zeros(self.taxon_count, dtype=self.dtype.node_heights)
+
+    def _default_event_space_bijector(self, topology: TensorflowTreeTopology):
+        anchor_heights = tf.zeros(self.taxon_count - 1, dtype=self.dtype.node_heights)
+        return TreeRatioBijector(
+            topology=topology,
+            anchor_heights=anchor_heights,
+            fixed_sampling_times=True,
         )
 
 

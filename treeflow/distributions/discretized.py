@@ -105,3 +105,6 @@ class DiscretizedDistribution(Distribution):
         return dict(
             distribution=(parameter_properties.BatchedComponentProperties()),
         )
+
+
+__all__ = ["DiscretizedDistribution"]

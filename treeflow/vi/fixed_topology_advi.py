@@ -34,3 +34,6 @@ def fit_fixed_topology_variational_approximation(
         **vi_kwargs,
     )
     return (approximation, opt_res)
+
+
+__all__ = ["fit_fixed_topology_variational_approximation"]

@@ -104,4 +104,4 @@ class LeafCTMC(Distribution):
             )
 
 
-__all__ = [LeafCTMC.__name__]
+__all__ = ["LeafCTMC"]

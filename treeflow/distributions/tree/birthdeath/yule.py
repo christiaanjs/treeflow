@@ -1,4 +1,5 @@
 import typing as tp
+import tensorflow as tf
 from treeflow.distributions.tree.birthdeath.birth_death_contemporary_sampling import (
     BirthDeathContemporarySampling,
 )
@@ -18,7 +19,7 @@ class Yule(BirthDeathContemporarySampling):
         super().__init__(
             taxon_count=taxon_count,
             birth_diff_rate=birth_rate,
-            relative_death_rate=0.0,
+            relative_death_rate=tf.zeros_like(birth_rate),
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=name,

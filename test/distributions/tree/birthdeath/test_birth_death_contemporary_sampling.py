@@ -21,3 +21,16 @@ def test_BirthDeathContemporarySampling_log_prob():
     res = dist.log_prob(tree)
 
     assert_allclose(res.numpy(), expected)
+
+
+def test_BirthDeathContemporarySampling_log_prob_vec(hello_newick_file):
+    tree = convert_tree_to_tensor(parse_newick(hello_newick_file))
+    tree_b = tree.with_node_heights(tf.expand_dims(tree.node_heights, 0))
+    birth_diff_rate = tf.constant([1.0, 1.2], dtype=DEFAULT_FLOAT_DTYPE_TF)
+    relative_death_rate = tf.constant([0.5, 0.3], dtype=DEFAULT_FLOAT_DTYPE_TF)
+
+    dist = BirthDeathContemporarySampling(
+        tree.taxon_count, birth_diff_rate, relative_death_rate
+    )
+    res = dist.log_prob(tree_b)
+    assert res.numpy().shape == birth_diff_rate.numpy().shape

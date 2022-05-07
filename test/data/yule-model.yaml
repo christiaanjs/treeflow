@@ -1,0 +1,21 @@
+tree:
+  yule:
+    birth_rate:
+      lognormal:
+        loc:  0.0
+        scale: 2.2
+clock:
+  strict:
+    clock_rate:
+      lognormal:
+        loc: -7.6
+        scale: 1.0
+substitution:
+  jc
+site:
+  discrete_weibull:
+    site_weibull_concentration:
+      gamma:
+        concentration: 3.0
+        rate: 3.0
+    category_count: 4

@@ -69,3 +69,30 @@ def test_vi(
 
     trees = dendropy.TreeList.get(path=tree_samples_output_path, schema="nexus")
     assert len(trees) == n_output_samples
+
+
+@pytest.mark.parametrize("include_init_values", [True, False])
+def test_vi_yule(
+    test_data_dir, hello_newick_file, hello_fasta_file, include_init_values
+):
+    model_file = str(test_data_dir / "yule-model.yaml")
+    init_values_string = "birth_rate=2"
+    runner = CliRunner()
+    args = [
+        "-i",
+        str(hello_fasta_file),
+        "-t",
+        str(hello_newick_file),
+        "-n",
+        str(10),
+        "-m",
+        model_file,
+    ]
+    if include_init_values:
+        args = args + ["--init-values", init_values_string]
+    res = runner.invoke(
+        treeflow_vi,
+        args,
+        catch_exceptions=False,
+    )
+    print(res.stdout)

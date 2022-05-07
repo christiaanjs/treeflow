@@ -9,6 +9,7 @@ from treeflow.distributions.tree.coalescent.constant_coalescent import (
 from treeflow.distributions.tree.birthdeath.birth_death_contemporary_sampling import (
     BirthDeathContemporarySampling,
 )
+from treeflow.distributions.tree.birthdeath.yule import Yule
 from tensorflow_probability.python.distributions import (
     JointDistributionCoroutine,
     Distribution,
@@ -198,6 +199,11 @@ def get_tree_model(  # TODO: Support unrooted trees
                 name=var_name,
                 **tree_model_params,
             ),
+            has_root_param,
+        )
+    elif tree_model == "yule":
+        tree = yield wrap_in_root_if_needed(
+            Yule(initial_tree.taxon_count, name=var_name, **tree_model_params),
             has_root_param,
         )
     else:

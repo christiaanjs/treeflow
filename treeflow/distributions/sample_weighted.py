@@ -61,3 +61,6 @@ class SampleWeighted(Sample):
             Sample._parameter_properties(dtype, num_classes=num_classes),
             weights=ParameterProperties(event_ndims=1),
         )
+
+
+__all__ = ["SampleWeighted"]
