@@ -24,7 +24,11 @@ class Eigendecomposition:
     inverse_eigenvectors: tf.Tensor
     eigenvalues: tf.Tensor
 
-    def add_inner_batch_dimensions(self, batch_dims: int = 1) -> Eigendecomposition:
+    def add_inner_batch_dimensions(
+        self,
+        batch_dims: int = 1,
+        inner_batch_rank: int = 0,
+    ) -> Eigendecomposition:
         """
         Add batch dimensions before the state dimensions
         """
@@ -33,9 +37,13 @@ class Eigendecomposition:
         if batch_dims > 0:
             return nest.map_structure(
                 lambda x, dim: tf.expand_dims(x, axis=dim),
-                self.add_inner_batch_dimensions(batch_dims - 1),
+                self.add_inner_batch_dimensions(
+                    batch_dims - 1, inner_batch_rank=inner_batch_rank
+                ),
                 Eigendecomposition(
-                    eigenvectors=-3, inverse_eigenvectors=-3, eigenvalues=-2
+                    eigenvectors=-3 - inner_batch_rank,
+                    inverse_eigenvectors=-3 - inner_batch_rank,
+                    eigenvalues=-2 - inner_batch_rank,
                 ),
             )
         else:

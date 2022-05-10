@@ -88,8 +88,8 @@ def get_mean_field_approximation(
 ) -> tfd.Distribution:
     event_space_bijector = joint_bijector_func(model)
     event_shape = event_shape_fn(model)
-    flat_event_shape = tf_nest.flatten(event_shape)
-    flat_model_event_shape = tf_nest.flatten_up_to(event_shape, model.event_shape)
+    flat_event_shape = model._model_flatten(event_shape)
+    flat_model_event_shape = model._model_flatten(model.event_shape)
     # Some bijectors (e.g. SoftmaxCentered) change event shape, but we need to handle trees
     unconstrained_event_shape = [
         (
@@ -109,12 +109,12 @@ def get_mean_field_approximation(
     scale_bijector = tfb.ScaleMatvecLinearOperatorBlock(linear_operator_block)
 
     if init_loc is None:
-        init_loc = tf_nest.map_structure(lambda _: None, unconstrained_event_shape)
+        init_loc = tf_nest.map_structure(lambda _: None, event_shape)
     else:
         init_loc = defaultdict(lambda: None, init_loc)  # TODO: Handle nesting
 
     unflatten_bijector = tfb.Restructure(
-        tf_nest.pack_sequence_as(event_shape, range(len(unconstrained_event_shape)))
+        model._model_unflatten(range(len(unconstrained_event_shape)))
     )
     reshape_bijector = tfb.JointMap(
         tf_nest.map_structure(tfb.Reshape, unconstrained_event_shape)

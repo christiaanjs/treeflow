@@ -84,7 +84,6 @@ class LeafCTMC(Distribution):
             [batch_shape, self.event_shape_tensor()], axis=0
         )
         batch_and_event_rank = tf.shape(batch_and_event_shape)[0]
-        print(batch_and_event_rank)
         sample_shape = tf.shape(x)[:-batch_and_event_rank]
         sample_and_batch_shape = tf.concat([sample_shape, batch_shape], axis=0)
         transition_probs = self._broadcast_transition_probs(sample_and_batch_shape)

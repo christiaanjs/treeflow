@@ -32,7 +32,10 @@ def get_transition_probabilities_eigen(
 
 
 def get_batch_transition_probabilities_eigen(
-    eigen: Eigendecomposition, t: tf.Tensor, batch_rank: int = 1
+    eigen: Eigendecomposition,
+    t: tf.Tensor,
+    batch_rank: int = 1,
+    inner_batch_rank: int = 0,
 ) -> tf.Tensor:
     """
     Get transition probabilities for an eigendecomposition of a rate matrix and
@@ -50,7 +53,9 @@ def get_batch_transition_probabilities_eigen(
     Tensor
         Transition probabilities with shape (..., branches)
     """
-    eigen_with_batch = eigen.add_inner_batch_dimensions(batch_rank)
+    eigen_with_batch = eigen.add_inner_batch_dimensions(
+        batch_rank, inner_batch_rank=inner_batch_rank
+    )
     return get_transition_probabilities_eigen(eigen_with_batch, t)
 
 
@@ -58,12 +63,14 @@ def get_transition_probabilities_tree_eigen(
     tree: TensorflowUnrootedTree,
     eigen: Eigendecomposition,
     batch_rank: int = 0,
+    inner_batch_rank: int = 0,
 ):
     return tree.with_branch_lengths(
         get_batch_transition_probabilities_eigen(
             eigen,
             tree.branch_lengths,
             batch_rank=batch_rank + 1,
+            inner_batch_rank=inner_batch_rank,
         )
     )
 
@@ -73,6 +80,7 @@ def get_transition_probabilities_tree(
     subst_model: SubstitutionModel,
     rate_categories: tp.Optional[tf.Tensor] = None,
     batch_rank: int = 0,
+    inner_batch_rank: int = 0,
     **subst_params,
 ) -> TensorflowUnrootedTree:
     if rate_categories is not None:
@@ -83,7 +91,10 @@ def get_transition_probabilities_tree(
         batch_rank += 1
     if isinstance(subst_model, EigendecompositionSubstitutionModel):
         return get_transition_probabilities_tree_eigen(
-            tree, subst_model.eigen(**subst_params), batch_rank=batch_rank
+            tree,
+            subst_model.eigen(**subst_params),
+            batch_rank=batch_rank,
+            inner_batch_rank=inner_batch_rank,
         )
     else:
         raise ValueError("Only implemented for eigen substitution model")

@@ -61,3 +61,17 @@ class TestHKY(EigenSubstitutionModelHelper):
     def test_eigendecomposition(self, hky_params):
         self._init(hky_params)
         super().test_eigendecomposition()
+
+
+def test_hky_q_norm_vec(hky_params_vec):
+    res = HKY().q_norm(**hky_params_vec)
+    assert tuple(res.shape) == tuple(hky_params_vec["kappa"].shape) + (4, 4)
+
+
+def test_hky_eigen_vec(hky_params_vec):
+    res = HKY().eigen(**hky_params_vec)
+
+    batch_shape = tuple(hky_params_vec["kappa"].shape)
+    assert tuple(res.eigenvectors.shape) == batch_shape + (4, 4)
+    assert tuple(res.inverse_eigenvectors.shape) == batch_shape + (4, 4)
+    assert tuple(res.eigenvalues.shape) == batch_shape + (4,)
