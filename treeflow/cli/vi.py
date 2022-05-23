@@ -25,7 +25,7 @@ optimizer_classes = {_ADAM_KEY: keras_optimizers.Adam}
 
 EXAMPLE_PHYLO_MODEL_DICT = dict(
     tree=dict(coalescent=dict(pop_size=dict(exponential=dict(rate=0.1)))),
-    clock=dict(strict=dict(rate=1e-3)),
+    clock=dict(strict=dict(clock_rate=dict(exponential=dict(rate=1000.0)))),
     substitution="jc",
 )
 
