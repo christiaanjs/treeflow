@@ -18,10 +18,14 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 from treeflow.tree.io import parse_newick, write_tensor_trees
 from treeflow.evolution.seqio import Alignment
 from treeflow.model.io import write_samples_to_file
+from treeflow.vi.convergence_criteria import NonfiniteConvergenceCriterion
+from treeflow.vi.util import VIResults
 
 
 _ADAM_KEY = "adam"
 optimizer_classes = {_ADAM_KEY: keras_optimizers.Adam}
+
+convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
 
 EXAMPLE_PHYLO_MODEL_DICT = dict(
     tree=dict(coalescent=dict(pop_size=dict(exponential=dict(rate=0.1)))),
@@ -94,6 +98,13 @@ def write_trees(
 @click.option("--tree-samples-output", required=False, type=click.Path())
 @click.option("--n-output-samples", required=False, type=int, default=200)
 @click.option("-r", "--learning-rate", required=True, type=float, default=1e-3)
+@click.option(
+    "-c",
+    "--convergence-criterion",
+    required=False,
+    type=click.Choice(list(convergence_criterion_classes.keys())),
+)
+@click.option("--elbo-samples", required=True, type=click.IntRange(min=1), default=100)
 def treeflow_vi(
     input,
     topology,
@@ -106,6 +117,8 @@ def treeflow_vi(
     samples_output,
     tree_samples_output,
     n_output_samples,
+    convergence_criterion,
+    elbo_samples,
 ):
     optimizer = optimizer_classes[optimizer](learning_rate=learning_rate)
 
@@ -147,15 +160,26 @@ def treeflow_vi(
         }
         init_loc[DEFAULT_TREE_VAR_NAME] = tree
 
+    if convergence_criterion is not None:
+        convergence_criterion_instance = convergence_criterion()
+    else:
+        convergence_criterion_instance = None
+
     print(f"Running VI for {num_steps} iterations...")
-    approx, trace = fit_fixed_topology_variational_approximation(
+    vi_res: tp.Tuple[object, VIResults] = fit_fixed_topology_variational_approximation(
         model=pinned_model,
         topologies={DEFAULT_TREE_VAR_NAME: tree.topology},
         init_loc=init_loc,
         optimizer=optimizer,
         num_steps=num_steps,
+        convergence_criterion=convergence_criterion_instance,
     )
+    approx, trace = vi_res
     print("Inference complete")
+
+    print(f"Ran inference for {num_steps} iterations")
+    elbo_estimate = -tf.reduce_sum(trace.loss[-elbo_samples:]).numpy()
+    print(f"ELBO estimate: {elbo_estimate}")
 
     if trace_output is not None:
         print(f"Saving trace to {trace_output}...")

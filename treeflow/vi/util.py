@@ -10,4 +10,4 @@ def default_vi_trace_fn(traceable_quantities: MinimizeTraceableQuantities) -> VI
     )
 
 
-__all__ = [VIResults.__name__, default_vi_trace_fn.__name__]
+__all__ = ["VIResults", "default_vi_trace_fn"]
