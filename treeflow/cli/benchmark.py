@@ -151,31 +151,18 @@ def get_ratio_transform_computation(
 def get_ratio_transform_jacobian_computation(
     tree: TensorflowRootedTree,
     dtype: tf.DType,
-    bito_instance: tp.Optional[object] = None,
 ) -> tp.Tuple[tp.Callable[[tf.Tensor], tf.Tensor], tf.Tensor]:
 
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
-    init_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
-    init_ratios = tf.constant(init_bijector.inverse(tree.node_heights))
+    init_node_heights = tree.node_heights
 
-    if bito_instance is not None:
-        from treeflow.acceleration.bito.ratio_transform import ratios_to_node_heights
+    def ratio_transform_forward(node_heights):
+        bijector = NodeHeightRatioBijector(
+            tree.topology, anchor_heights
+        )  # Avoid caching
+        return -bijector.inverse_log_det_jacobian(node_heights)
 
-        def ratio_transform_jacobian(ratios):
-            node_heights = ratios_to_node_heights(bito_instance, anchor_heights, ratios)
-            bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
-            return -bijector.inverse_log_det_jacobian(node_heights)
-
-    else:
-
-        def ratio_transform_forward(ratios):
-            bijector = NodeHeightRatioBijector(
-                tree.topology, anchor_heights
-            )  # Avoid caching
-            node_heights = bijector.forward(ratios)
-            return -bijector.inverse_log_det_jacobian(node_heights)
-
-    return ratio_transform_forward, init_ratios
+    return ratio_transform_forward, init_node_heights
 
 
 def get_constant_coalescent_computation(
@@ -249,8 +236,8 @@ def benchmark(
         output_gradients = tf.ones_like(ratios)
         args = (ratios,)
     elif computation == "ratio_transform_jacobian":
-        task_fn, ratios = get_ratio_transform_jacobian_computation(tree, dtype)
-        args = (ratios,)
+        task_fn, node_heights = get_ratio_transform_jacobian_computation(tree, dtype)
+        args = (node_heights,)
     elif computation == "constant_coalescent":
         task_fn, args = get_constant_coalescent_computation(tree, dtype=dtype)
     else:
