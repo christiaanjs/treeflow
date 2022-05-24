@@ -161,7 +161,9 @@ def treeflow_vi(
         init_loc[DEFAULT_TREE_VAR_NAME] = tree
 
     if convergence_criterion is not None:
-        convergence_criterion_instance = convergence_criterion()
+        convergence_criterion_instance = convergence_criterion_classes[
+            convergence_criterion
+        ]()
     else:
         convergence_criterion_instance = None
 
@@ -177,7 +179,8 @@ def treeflow_vi(
     approx, trace = vi_res
     print("Inference complete")
 
-    print(f"Ran inference for {num_steps} iterations")
+    inference_steps = trace.loss.shape[0]
+    print(f"Ran inference for {inference_steps} iterations")
     elbo_estimate = -tf.reduce_sum(trace.loss[-elbo_samples:]).numpy()
     print(f"ELBO estimate: {elbo_estimate}")
 

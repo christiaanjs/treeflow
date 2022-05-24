@@ -1,4 +1,6 @@
 import pytest
+from tensorflow.python.keras.optimizer_v2.adam import Adam
+import treeflow.cli.vi
 from treeflow.cli.vi import treeflow_vi
 from click.testing import CliRunner
 
@@ -90,6 +92,26 @@ def test_vi_yule(
     ]
     if include_init_values:
         args = args + ["--init-values", init_values_string]
+    res = runner.invoke(
+        treeflow_vi,
+        args,
+        catch_exceptions=False,
+    )
+    print(res.stdout)
+
+
+def test_vi_nonfinite_convergence(hello_newick_file, hello_fasta_file):
+    runner = CliRunner()
+    args = [
+        "-i",
+        str(hello_fasta_file),
+        "-t",
+        str(hello_newick_file),
+        "-n",
+        str(10),
+        "--convergence-criterion",
+        "nonfinite",
+    ]
     res = runner.invoke(
         treeflow_vi,
         args,

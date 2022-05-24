@@ -14,7 +14,7 @@ class NonfiniteConvergenceCriterion(ConvergenceCriterion):
         super().__init__(min_num_steps=0, name=name)
 
     def _bootstrap(self, loss, grads, parameters):
-        return None
+        return ()
 
     def _one_step(self, step, loss, grads, parameters, auxiliary_state):
         loss_nonfinite = _any_nonfinite(loss)
@@ -23,7 +23,7 @@ class NonfiniteConvergenceCriterion(ConvergenceCriterion):
         has_converged = tf.reduce_any(
             [loss_nonfinite] + grads_nonfinite + parameters_nonfinite
         )
-        return has_converged, None
+        return has_converged, auxiliary_state
 
 
 __all__ = ["NonfiniteConvergenceCriterion"]
