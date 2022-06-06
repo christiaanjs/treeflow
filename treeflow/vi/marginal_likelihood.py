@@ -1,3 +1,4 @@
+import typing as tp
 import tensorflow as tf
 import numpy as np
 from tensorflow_probability.python.distributions import Distribution
@@ -11,9 +12,9 @@ def estimate_log_ml_importance_sampling(
     n_samples=100,
     approx_samples=None,
     return_std=False,
-    vectorise_log_prob=True,
+    vectorize_log_prob=True,
     seed=None,
-) -> tf.Tensor:
+) -> tp.Union[tf.Tensor, tp.Tuple[tf.Tensor, tf.Tensor]]:
     """
     Estimate the log marginal likelihood using importance sampling
     This estimate can have high variance if the fit of the approximation
@@ -25,13 +26,15 @@ def estimate_log_ml_importance_sampling(
     approx
         A fitted variational approximation
     n_samples
-        The number of samples to use in the estimate
+        (Optional) The number of samples to use in the estimate (default 100)
+    return_std
+        (Optional) Whether to also return the estimated standard
     """
     assert not (
-        (not vectorise_log_prob) and (not approx_samples is None)
+        (not vectorize_log_prob) and (not approx_samples is None)
     ), "If samples are provided then vectorised log prob much be used"
 
-    if vectorise_log_prob:
+    if vectorize_log_prob:
         if approx_samples is None:
             approx_samples = approx.sample(n_samples, seed=seed)
         model_log_probs = model.unnormalized_log_prob(approx_samples)
