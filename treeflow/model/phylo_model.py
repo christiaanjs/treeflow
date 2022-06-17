@@ -351,7 +351,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
         transition_probs_tree = get_transition_probabilities_tree(
             scaled_tree,
             subst_model,
-            rate_categories=site_rate_distribution.support,
+            rate_categories=site_rate_distribution.normalised_support,
             **subst_model_params,
         )
         single_site_distribution = DiscreteParameterMixture(

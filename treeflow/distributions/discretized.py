@@ -97,6 +97,11 @@ class DiscretizedDistribution(Distribution):
         return self._quantiles
 
     @property
+    def normalised_support(self):
+        support = self.support
+        return support / tf.reduce_mean(support, axis=-1, keepdims=True)
+
+    @property
     def probabilities(self):
         return tf.fill(tf.expand_dims(self._category_count, 0), self._mass)
 

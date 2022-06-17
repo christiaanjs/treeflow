@@ -9,6 +9,11 @@ class FiniteDiscreteDistribution(Protocol):
         ...
 
     @property
+    def normalised_support(self) -> tf.Tensor:
+        """Support normalised to have a mean of 1 (weighted by probability mass)"""
+        ...
+
+    @property
     def probabilities(self):
         """Respective probability masses for support"""
         ...
