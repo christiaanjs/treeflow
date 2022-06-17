@@ -57,6 +57,10 @@ class TensorflowRootedTree(TensorflowRootedTreeAttrs):
             tf.gather(heights_b, parent_indices_b, batch_dims=-1) - heights_b[..., :-1]
         )
 
+    @property
+    def root_height(self) -> tf.Tensor:
+        return self.node_heights[..., -1]
+
     def numpy(self) -> NumpyRootedTree:
         return NumpyRootedTree(
             node_heights=self.node_heights.numpy(),

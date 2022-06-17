@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow_probability.python.distributions import JointDistribution
 from tensorflow_probability.python.internal import prefer_static as ps
+from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 
 
 def flatten_tensor_to_1d_slices(name: str, x: tf.Tensor) -> tp.Dict[str, tf.Tensor]:
@@ -54,17 +55,34 @@ def flatten_samples_to_dict(
     return flat_dict, key_mapping
 
 
+def calculate_tree_stats(
+    name: str, tree: TensorflowRootedTree
+) -> tp.Dict[str, tf.Tensor]:
+    return {f"{name}_height": tree.root_height}
+
+
 def write_samples_to_file(
     samples: object,
     distribution: JointDistribution,
     fname: str,
     sep=",",
     vars: tp.Optional[tp.Iterable[str]] = None,
+    tree_vars: tp.Optional[tp.Mapping[str, TensorflowRootedTree]] = None,
 ):
     samples_dict, key_mapping = flatten_samples_to_dict(samples, distribution)
     if vars is None:
         vars = list(key_mapping.keys())
     keys = [key for var in vars for key in key_mapping[var]]
+
+    if tree_vars is not None:
+        tree_stats = {
+            stat_name: stat
+            for tree_name, tree in tree_vars.items()
+            for stat_name, stat in calculate_tree_stats(tree_name, tree).items()
+        }
+        keys = keys + list(tree_stats.keys())
+        samples_dict = dict(samples_dict, **tree_stats)
+
     header = sep.join(keys)
     arr = np.stack([samples_dict[key].numpy() for key in keys], axis=-1)
-    np.savetxt(fname, arr, delimiter=sep, header=header)
+    np.savetxt(fname, arr, delimiter=sep, header=header, comments="")

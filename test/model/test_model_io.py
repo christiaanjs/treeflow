@@ -14,6 +14,7 @@ from tensorflow_probability.python.distributions import (
     Sample,
     Normal,
 )
+from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 
 
 def test_flatten_tensor_to_1d_slices():
@@ -79,5 +80,23 @@ def test_write_samples_to_file(joint_dist, vars):
     samples = joint_dist.sample(sample_shape, seed=1)
     stringio = io.StringIO()
     write_samples_to_file(samples, joint_dist, stringio, vars=vars)
+    res = stringio.getvalue()
+    print(res)
+
+
+def test_write_samples_to_file_with_tree(
+    joint_dist, hello_tensor_tree: TensorflowRootedTree
+):
+    sample_size = 3
+    sample_shape = (sample_size,)
+    tiled_tree = hello_tensor_tree.with_node_heights(
+        tf.stack([hello_tensor_tree.node_heights] * sample_size, axis=0)
+    )
+
+    samples = joint_dist.sample(sample_shape, seed=1)
+    stringio = io.StringIO()
+    write_samples_to_file(
+        samples, joint_dist, stringio, tree_vars=dict(hello_tree=tiled_tree)
+    )
     res = stringio.getvalue()
     print(res)
