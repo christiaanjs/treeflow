@@ -19,7 +19,7 @@ class FixedTopologyRootedTreeBijector(Bijector):
         self.height_bijector = height_bijector
         if sampling_times is None:
             self.sampling_times = tf.zeros(
-                self.topology.taxon_count, dtype=height_bijector.dtype
+                self.topology.taxon_count, dtype=height_bijector.forward_dtype()
             )
         else:
             self.sampling_times = sampling_times

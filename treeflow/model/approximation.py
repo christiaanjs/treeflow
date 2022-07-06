@@ -144,7 +144,7 @@ def get_mean_field_approximation(
 def get_fixed_topology_bijector(
     dist: tfd.Distribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
 ):
-    if isinstance(dist, BaseTreeDistribution) and dist.tree_name in topology_pins:
+    if hasattr(dist, "tree_name") and getattr(dist, "tree_name") in topology_pins:
         topology = topology_pins[dist.tree_name]
         tree_bijector: TreeRatioBijector = (
             dist.experimental_default_event_space_bijector(topology=topology)
@@ -174,8 +174,8 @@ def get_fixed_topology_event_shape(
     pinned_event_shape_tensors = [
         (
             event_shape_tensor.node_heights
-            if isinstance(dist, BaseTreeDistribution)
-            and dist.tree_name in pinned_topologies
+            if hasattr(dist, "tree_name")
+            and getattr(dist, "tree_name") in topology_pins
             else event_shape_tensor
         )
         for event_shape_tensor, dist in zip(
