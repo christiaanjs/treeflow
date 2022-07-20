@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import typing as tp
+from numpy import reshape
 import tensorflow as tf
 import tensorflow_probability.python.distributions as tfd
 import tensorflow_probability.python.bijectors as tfb
@@ -10,6 +11,8 @@ from tensorflow_probability.python.experimental.vi.util import (
 from tensorflow_probability.python.distributions.joint_distribution import (
     _DefaultJointBijector,
 )
+from tensorflow_probability.python.internal import tensorshape_util
+from tensorflow_probability.python.experimental.util import make_trainable
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
@@ -102,11 +105,11 @@ def get_mean_field_approximation(
         )
     ]
     flat_event_size = tf_nest.map_structure(tf.reduce_prod, unconstrained_event_shape)
-    operator_classes = get_mean_field_operator_classes(flat_event_size)
-    linear_operator_block = build_trainable_linear_operator_block(
-        operator_classes, flat_event_size, dtype=dtype
-    )
-    scale_bijector = tfb.ScaleMatvecLinearOperatorBlock(linear_operator_block)
+    # operator_classes = get_mean_field_operator_classes(flat_event_size)
+    # linear_operator_block = build_trainable_linear_operator_block(
+    #     operator_classes, flat_event_size, dtype=dtype
+    # )
+    # scale_bijector = tfb.ScaleMatvecLinearOperatorBlock(linear_operator_block)
 
     if init_loc is None:
         init_loc = tf_nest.map_structure(lambda _: None, event_shape)
@@ -117,24 +120,49 @@ def get_mean_field_approximation(
         model._model_unflatten(range(len(unconstrained_event_shape)))
     )
     reshape_bijector = tfb.JointMap(
-        tf_nest.map_structure(tfb.Reshape, unconstrained_event_shape)
+        tf_nest.map_structure(
+            lambda event_shape_element, event_size_element: tfb.Reshape(
+                event_shape_element, tf.expand_dims(event_size_element, 0)
+            )
+            if tensorshape_util.rank(event_shape_element) > 0
+            else tfb.Identity(),
+            unconstrained_event_shape,
+            flat_event_size,
+        )
     )
+    base_event_shape = reshape_bijector.inverse_event_shape(unconstrained_event_shape)
 
     init_loc_unconstrained = joint_inverse_with_nones(event_space_bijector, init_loc)
     init_loc_flat = unflatten_bijector.inverse(init_loc_unconstrained)
     init_loc_1d = joint_inverse_with_nones(reshape_bijector, init_loc_flat)
-    loc_bijector = get_trainable_shift_bijector(
-        flat_event_size, init_loc_1d, dtype=dtype
+    # loc_bijector = get_trainable_shift_bijector(
+    #     flat_event_size, init_loc_1d, dtype=dtype
+    # )
+
+    # base_standard_dist = get_base_distribution(flat_event_size, dtype=dtype)
+    base_standard_dist = tfd.JointDistributionSequential(
+        tf.nest.map_structure(
+            lambda s, init: tfd.Independent(
+                make_trainable(
+                    tfd.Normal,
+                    initial_parameters=(None if init is None else dict(loc=init)),
+                    batch_and_event_shape=s,
+                    parameter_dtype=dtype,
+                ),
+                reinterpreted_batch_ndims=tensorshape_util.rank(s),
+            ),
+            base_event_shape,
+            init_loc_1d,
+        )
     )
 
-    base_standard_dist = get_base_distribution(flat_event_size, dtype=dtype)
     chain_bijector = tfb.Chain(
         [
             event_space_bijector,
             unflatten_bijector,
             reshape_bijector,
-            loc_bijector,
-            scale_bijector,
+            # loc_bijector,
+            # scale_bijector,
         ]
     )
     distribution = tfd.TransformedDistribution(base_standard_dist, chain_bijector)
