@@ -93,6 +93,7 @@ def write_trees(
     required=False,
     type=str,
 )
+@click.option("-s", "--seed", required=False, type=int)
 @click.option("--trace-output", required=False, type=click.Path())
 @click.option("--samples-output", required=False, type=click.Path())
 @click.option("--tree-samples-output", required=False, type=click.Path())
@@ -113,6 +114,7 @@ def treeflow_vi(
     model_file,
     learning_rate,
     init_values,
+    seed,
     trace_output,
     samples_output,
     tree_samples_output,
@@ -175,6 +177,7 @@ def treeflow_vi(
         optimizer=optimizer,
         num_steps=num_steps,
         convergence_criterion=convergence_criterion_instance,
+        seed=seed,
     )
     approx, trace = vi_res
     print("Inference complete")
@@ -202,7 +205,11 @@ def treeflow_vi(
         if samples_output is not None:
             print(f"Saving samples to {samples_output}...")
             write_samples_to_file(
-                samples, pinned_model, samples_output, vars=samples_dict.keys()
+                samples,
+                pinned_model,
+                samples_output,
+                vars=samples_dict.keys(),
+                tree_vars=tree_samples,
             )
 
         if tree_samples_output is not None:

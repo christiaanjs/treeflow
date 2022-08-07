@@ -1,4 +1,5 @@
 import pytest
+from tensorflow_probability.python.distributions import Sample
 from treeflow.model.phylo_model import phylo_model_to_joint_distribution, PhyloModel
 
 model_dicts_and_keys = [
@@ -100,3 +101,29 @@ def test_phylo_model_to_joint_distribution_sample(
     dist = phylo_model_to_joint_distribution(model, hello_tensor_tree, hello_alignment)
     sample = dist.sample(sample_shape)
     assert set(sample._asdict().keys()) == expected_keys
+
+
+def test_get_site_rate_distribution_gamma_site_model_rates(
+    hello_tensor_tree, hello_alignment
+):
+    site_gamma_shape = 0.3
+    model_dict = dict(
+        tree=dict(
+            coalescent=1.0,
+        ),
+        clock=dict(strict=dict(clock_rate=1e-3)),
+        substitution="jc",
+        site=dict(
+            discrete_gamma=dict(
+                site_gamma_shape=site_gamma_shape,
+                category_count=4,
+            )
+        ),
+    )
+    model = PhyloModel(model_dict)
+    dist = phylo_model_to_joint_distribution(model, hello_tensor_tree, hello_alignment)
+    sequence_dist: Sample = list(dist._get_single_sample_distributions())[-1]
+    transition_probs_tree = (
+        sequence_dist.distribution._components_distribution.transition_probs_tree
+    )
+    assert False
