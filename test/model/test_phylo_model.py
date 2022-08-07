@@ -1,6 +1,16 @@
 import pytest
+from numpy.testing import assert_allclose
+import tensorflow as tf
 from tensorflow_probability.python.distributions import Sample
-from treeflow.model.phylo_model import phylo_model_to_joint_distribution, PhyloModel
+from treeflow import DEFAULT_FLOAT_DTYPE_TF
+from treeflow.distributions.discretized import DiscretizedDistribution
+from treeflow.evolution.seqio import Alignment
+from treeflow.model.phylo_model import (
+    phylo_model_to_joint_distribution,
+    PhyloModel,
+    get_site_rate_distribution,
+)
+from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 
 model_dicts_and_keys = [
     (
@@ -103,27 +113,55 @@ def test_phylo_model_to_joint_distribution_sample(
     assert set(sample._asdict().keys()) == expected_keys
 
 
-def test_get_site_rate_distribution_gamma_site_model_rates(
-    hello_tensor_tree, hello_alignment
+def test_get_site_rate_distribution():
+    dist: DiscretizedDistribution = get_site_rate_distribution(
+        "discrete_gamma",
+        dict(
+            site_gamma_shape=tf.constant(0.3, dtype=DEFAULT_FLOAT_DTYPE_TF),
+            category_count=4,
+        ),
+    )
+    category_rates_res = dist.normalised_support
+    category_weights_res = dist.probabilities
+    # Calculated using BEAST 2
+    expected_category_rates = [
+        0.002923662378691095,
+        0.11617341856940992,
+        0.7064988205902294,
+        3.1744040984616695,
+    ]
+    expected_category_weights = [0.25, 0.25, 0.25, 0.25]
+    assert_allclose(category_rates_res.numpy(), expected_category_rates)
+    assert_allclose(category_weights_res.numpy(), expected_category_weights)
+
+
+def test_phylo_model_to_joint_distribution_site_rate_variation(
+    hello_tensor_tree: TensorflowRootedTree, hello_alignment: Alignment
 ):
-    site_gamma_shape = 0.3
     model_dict = dict(
         tree=dict(
-            coalescent=1.0,
+            coalescent=dict(pop_size=1.0),
         ),
         clock=dict(strict=dict(clock_rate=1e-3)),
         substitution="jc",
         site=dict(
             discrete_gamma=dict(
-                site_gamma_shape=site_gamma_shape,
+                site_gamma_shape=0.3,
                 category_count=4,
             )
         ),
     )
     model = PhyloModel(model_dict)
     dist = phylo_model_to_joint_distribution(model, hello_tensor_tree, hello_alignment)
-    sequence_dist: Sample = list(dist._get_single_sample_distributions())[-1]
-    transition_probs_tree = (
-        sequence_dist.distribution._components_distribution.transition_probs_tree
+
+    # Calculated using BEAST 2
+    log_prior_expected = -0.5000000000000001
+    log_prob_expected = -132.56406079329054
+    log_prior_res, log_prob_res = dist.log_prob_parts(
+        [
+            hello_tensor_tree,
+            hello_alignment.get_encoded_sequence_tensor(hello_tensor_tree.taxon_set),
+        ]
     )
-    assert False
+    assert_allclose(log_prior_res.numpy(), log_prior_expected)
+    assert_allclose(log_prob_res.numpy(), log_prob_expected)

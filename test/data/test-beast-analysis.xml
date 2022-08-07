@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><beast beautitemplate='Standard' beautistatus='' namespace="beast.core:beast.evolution.alignment:beast.evolution.tree.coalescent:beast.core.util:beast.evolution.nuc:beast.evolution.operators:beast.evolution.sitemodel:beast.evolution.substitutionmodel:beast.evolution.likelihood:beast.evolution.branchratemodel" required="BEAST v2.5.2" version="2.5">
+
+    <data id="alignment" name="alignment">
+        <sequence id="Sequencemars" taxon="mars" totalcount="4" value="CCGAG-AGCAGCAATGGAT-GAGGCATGGCG"/>
+        <sequence id="Sequencesaturn" taxon="saturn" totalcount="4" value="GCGCGCAGCTGCTGTAGATGGAGGCATGACG"/>
+        <sequence id="Sequencejupiter" taxon="jupiter" totalcount="4" value="GCGCGCAGCAGCTGTGGATGGAAGGATGACG"/>
+        
+        <userDataType id="Nucleotide" spec="beast.evolution.datatype.Nucleotide"/>
+    </data>
+<map name="Exponential" >beast.math.distributions.Exponential</map>
+<map name="LogNormal" >beast.math.distributions.LogNormalDistributionModel</map>
+<map name="LogNormalWithPrecision" >beast.math.distributions.LogNormalWithPrecision</map>
+<map name="Normal" >beast.math.distributions.Normal</map>
+<map name="NormalGammaNormal" >beast.math.distributions.NormalGammaNormal</map>
+<map name="Beta" >beast.math.distributions.Beta</map>
+<map name="Gamma" >beast.math.distributions.Gamma</map>
+<map name="LaplaceDistribution" >beast.math.distributions.LaplaceDistribution</map>
+<map name="prior" >beast.math.distributions.Prior</map>
+<map name="InverseGamma" >beast.math.distributions.InverseGamma</map>
+<map name="OneOnX" >beast.math.distributions.OneOnX</map>
+
+
+<run id="mcmc" spec="MCMC" chainLength="1000">
+    <state id="state" storeEvery="5000">
+        <tree id="tree" name="stateNode">
+            <taxonset id="TaxonSet.Treeflow" spec="TaxonSet" alignment="@alignment"/>
+            
+        </tree>
+        
+        
+    </state>
+    <init spec="beast.util.TreeParser" initial="@tree" taxa="@alignment" IsLabelledNewick="true" newick="((mars:0.1,saturn:0.1):0.2,jupiter:0.3);
+"/>   
+
+    <distribution id="posterior" spec="util.CompoundDistribution">
+        <distribution id="prior" spec="util.CompoundDistribution">
+            
+            <distribution spec="Coalescent"><populationModel spec="ConstantPopulation" popSize="1.0" /><treeIntervals spec="TreeIntervals" tree="@tree" /></distribution>
+            
+        </distribution>
+        <distribution id="likelihood" spec="util.CompoundDistribution" useThreads="true">
+            <distribution id="tree_likelihood" spec="ThreadedTreeLikelihood" data="@alignment" tree="@tree">
+                <siteModel spec="SiteModel" mutationRate="1.0" shape="0.3" gammaCategoryCount="4" proportionInvariant="0.0"><substModel spec="JukesCantor" /></siteModel>
+                <branchRateModel id="branch_rate_model" clock.rate="0.001" spec="StrictClockModel" />
+            </distribution>
+        </distribution>
+    </distribution>
+
+    <operator id="CoalescentConstantTreeScaler.t:Treeflow" spec="ScaleOperator" scaleFactor="0.5" tree="@tree" weight="3.0"/>
+    <operator id="CoalescentConstantTreeRootScaler.t:Treeflow" spec="ScaleOperator" rootOnly="true" scaleFactor="0.5" tree="@tree" weight="3.0"/>
+    <operator id="CoalescentConstantUniformOperator.t:Treeflow" spec="Uniform" tree="@tree" weight="30.0"/>
+    
+    
+
+    
+
+    
+
+    <logger id="tracelog" fileName="test-beast-analysis.log" logEvery="1" model="@posterior" sanitiseHeaders="true" sort="smart">
+        <log idref="posterior"/>
+        <log idref="likelihood"/>
+        <log idref="prior"/>
+        <log idref="tree_likelihood"/>
+        <log spec="beast.evolution.tree.TreeStatLogger" tree="@tree" logHeight="true" logLength="true"/>
+        
+        
+    </logger>
+
+    <logger id="screenlog" logEvery="1">
+        <log idref="posterior"/>
+        <log idref="likelihood"/>
+        <log idref="prior"/>
+    </logger>
+
+    <logger id="treelog.t:Treeflow" fileName="test-beast-analysis.trees" logEvery="1" mode="tree">
+        <log id="TreeWithMetaDataLogger.t:Treeflow" spec="beast.evolution.tree.TreeWithMetaDataLogger" tree="@tree" />
+    </logger>
+
+</run>
+</beast>
