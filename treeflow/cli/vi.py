@@ -14,6 +14,7 @@ from treeflow.model.phylo_model import (
     DEFAULT_TREE_VAR_NAME,
 )
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
+from treeflow.vi.optimizers.robust_optimizer import RobustOptimizer
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 from treeflow.tree.io import parse_newick, write_tensor_trees
 from treeflow.evolution.seqio import Alignment
@@ -23,7 +24,13 @@ from treeflow.vi.util import VIResults
 
 
 _ADAM_KEY = "adam"
-optimizer_classes = {_ADAM_KEY: keras_optimizers.Adam}
+_ROBUST_ADAM_KEY = "robust_adam"
+optimizer_builders = {
+    _ADAM_KEY: keras_optimizers.Adam,
+    _ROBUST_ADAM_KEY: lambda *args, **kwargs: RobustOptimizer(
+        keras_optimizers.Adam(*args, **kwargs)
+    ),
+}
 
 convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
 
@@ -84,9 +91,9 @@ def write_trees(
     "--optimizer",
     required=True,
     type=click.Choice(
-        list(optimizer_classes.keys()),
+        list(optimizer_builders.keys()),
     ),
-    default=_ADAM_KEY,
+    default=_ROBUST_ADAM_KEY,
 )
 @click.option(
     "--init-values",
@@ -122,7 +129,7 @@ def treeflow_vi(
     convergence_criterion,
     elbo_samples,
 ):
-    optimizer = optimizer_classes[optimizer](learning_rate=learning_rate)
+    optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
     print(f"Parsing topology {topology}")
     tree = convert_tree_to_tensor(parse_newick(topology))
