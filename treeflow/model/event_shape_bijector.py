@@ -105,7 +105,7 @@ def get_fixed_topology_joint_bijector(
 
 
 def get_fixed_topology_event_shape(
-    model: tfd.JointDistribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
+    model: tfd.JointDistribution, topology_pins: tp.Dict[str, TensorflowTreeTopology]
 ):
     single_sample_distributions = model._get_single_sample_distributions()
     event_shape_tensors = model._model_flatten(model.event_shape_tensor())
