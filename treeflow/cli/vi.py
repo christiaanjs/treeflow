@@ -5,45 +5,27 @@ import pickle
 import yaml
 import typing as tp
 import tensorflow as tf
-import tensorflow.keras.optimizers as keras_optimizers
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
-import treeflow.evolution.substitution as substitution
 from treeflow.model.phylo_model import (
     phylo_model_to_joint_distribution,
     PhyloModel,
     DEFAULT_TREE_VAR_NAME,
 )
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
-from treeflow.vi.optimizers.robust_optimizer import RobustOptimizer
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 from treeflow.tree.io import parse_newick, write_tensor_trees
 from treeflow.evolution.seqio import Alignment
 from treeflow.model.io import write_samples_to_file
 from treeflow.vi.convergence_criteria import NonfiniteConvergenceCriterion
 from treeflow.vi.util import VIResults
-
-
-_ADAM_KEY = "adam"
-_ROBUST_ADAM_KEY = "robust_adam"
-optimizer_builders = {
-    _ADAM_KEY: keras_optimizers.Adam,
-    _ROBUST_ADAM_KEY: lambda *args, **kwargs: RobustOptimizer(
-        keras_optimizers.Adam(*args, **kwargs)
-    ),
-}
-
-convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
-
-EXAMPLE_PHYLO_MODEL_DICT = dict(
-    tree=dict(coalescent=dict(pop_size=dict(exponential=dict(rate=0.1)))),
-    clock=dict(strict=dict(clock_rate=dict(exponential=dict(rate=1000.0)))),
-    substitution="jc",
+from treeflow.cli.inference_common import (
+    optimizer_builders,
+    ROBUST_ADAM_KEY,
+    parse_init_values,
+    EXAMPLE_PHYLO_MODEL_DICT,
 )
 
-
-def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
-    str_dict = dict(item.split("=") for item in init_values_string.split(","))
-    return {key: float(value) for key, value in str_dict.items()}
+convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
 
 
 def get_tree_vars(model: PhyloModel) -> set[str]:
@@ -93,7 +75,7 @@ def write_trees(
     type=click.Choice(
         list(optimizer_builders.keys()),
     ),
-    default=_ROBUST_ADAM_KEY,
+    default=ROBUST_ADAM_KEY,
 )
 @click.option(
     "--init-values",
@@ -216,7 +198,7 @@ def treeflow_vi(
                 pinned_model,
                 samples_output,
                 vars=samples_dict.keys(),
-                tree_vars=tree_samples,
+                tree_vars={DEFAULT_TREE_VAR_NAME: tree_samples[DEFAULT_TREE_VAR_NAME]},
             )
 
         if tree_samples_output is not None:

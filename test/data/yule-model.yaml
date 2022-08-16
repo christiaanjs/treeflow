@@ -11,7 +11,14 @@ clock:
         loc: -7.6
         scale: 1.0
 substitution:
-  jc
+  hky:
+    kappa:
+      lognormal:
+        loc: 0.0
+        scale: 2.0
+    frequencies:
+      dirichlet:
+        concentration: [2.0, 2.0, 2.0, 2.0]
 site:
   discrete_weibull:
     site_weibull_concentration:

@@ -78,7 +78,7 @@ def test_vi_yule(
     test_data_dir, hello_newick_file, hello_fasta_file, include_init_values
 ):
     model_file = str(test_data_dir / "yule-model.yaml")
-    init_values_string = "birth_rate=2"
+    init_values_string = "birth_rate=2,frequencies=0.24|0.23|0.26|0.27"
     runner = CliRunner()
     args = [
         "-i",
