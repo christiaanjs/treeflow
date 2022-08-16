@@ -97,7 +97,10 @@ class ConstantCoalescent(RootedTreeDistribution):
         self.sampling_times = tensor_util.convert_nonref_to_tensor(sampling_times)
 
     def _log_prob(self, x: TensorflowRootedTree):
-        batch_shape = self.batch_shape_tensor()
+        event_ndims = self.event_shape.node_heights.rank
+        batch_shape = tf.broadcast_dynamic_shape(
+            self.batch_shape_tensor(), tf.shape(x.node_heights)[:-event_ndims]
+        )
         pop_size = tf.broadcast_to(self.pop_size, batch_shape)
         tree_shape = self.event_shape_tensor()
         tree = broadcast_structure(x, tree_shape, batch_shape)

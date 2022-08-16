@@ -1,4 +1,5 @@
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
+from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 import tensorflow as tf
 import numpy as np
@@ -9,6 +10,7 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.distributions.tree.coalescent.constant_coalescent import (
     ConstantCoalescent,
 )
+from treeflow.tree.topology.tensorflow_tree_topology import numpy_topology_to_tensor
 from treeflow.tree.rooted.tensorflow_rooted_tree import (
     TensorflowRootedTree,
     convert_tree_to_tensor,
@@ -93,3 +95,21 @@ def test_coalescent_sample(pop_size, function_mode):
     assert sample.topology.parent_indices.shape == (
         2 * taxon_count - 2,
     )  # No topology batch dims
+
+
+def test_constant_coalescent_broadcasting():
+    pop_size = tf.constant(123.0, dtype=DEFAULT_FLOAT_DTYPE_TF)
+    expected_ll = -14.446309163678226
+    sampling_times = tf.constant([0.0, 0.1, 0.4, 0.0], dtype=DEFAULT_FLOAT_DTYPE_TF)
+    node_heights = tf.expand_dims(
+        tf.constant([0.2, 0.5, 0.8], dtype=DEFAULT_FLOAT_DTYPE_TF), 0
+    )
+    parent_indices = np.array([4, 4, 5, 6, 5, 6])
+    dist = ConstantCoalescent(4, pop_size, sampling_times)
+    topology = numpy_topology_to_tensor(NumpyTreeTopology(parent_indices))
+    tree = TensorflowRootedTree(
+        node_heights=node_heights, sampling_times=sampling_times, topology=topology
+    )
+    ll_res = dist.log_prob(tree).numpy()
+    assert ll_res.shape == (1,)
+    assert_allclose(ll_res[0], expected_ll)
