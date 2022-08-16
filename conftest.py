@@ -22,6 +22,7 @@ pytest_plugins = [
     "data_fixtures",
     "ratio_fixtures",
     "substitution_fixtures",
+    "cli_fixtures",
 ]
 
 if os.getenv("_PYTEST_RAISE", "0") != "0":

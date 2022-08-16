@@ -1,27 +1,7 @@
 import pytest
 from tensorflow.python.keras.optimizer_v2.adam import Adam
-import treeflow.cli.vi
 from treeflow.cli.vi import treeflow_vi
 from click.testing import CliRunner
-
-
-@pytest.fixture
-def samples_output_path(tmp_path):
-    return tmp_path / "approx-samples.csv"
-
-
-@pytest.fixture
-def tree_samples_output_path(tmp_path):
-    return tmp_path / "approx-tree-samples.nexus"
-
-
-@pytest.fixture(params=[None, "model.yaml"])
-def model_file(request, test_data_dir):
-    filename = request.param
-    if filename is None:
-        return None
-    else:
-        return str(test_data_dir / filename)
 
 
 @pytest.mark.parametrize("include_init_values", [True, False])

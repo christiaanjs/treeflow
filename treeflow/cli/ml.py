@@ -1,23 +1,9 @@
-from __future__ import annotations
-
+from functools import partial
 import click
-import pickle
 import yaml
-import typing as tp
+import pickle
 import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
-from treeflow.model.phylo_model import (
-    phylo_model_to_joint_distribution,
-    PhyloModel,
-    DEFAULT_TREE_VAR_NAME,
-)
-from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
-from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
-from treeflow.tree.io import parse_newick
-from treeflow.evolution.seqio import Alignment
-from treeflow.model.io import write_samples_to_file
-from treeflow.vi.convergence_criteria import NonfiniteConvergenceCriterion
-from treeflow.vi.util import VIResults
 from treeflow.cli.inference_common import (
     optimizer_builders,
     ROBUST_ADAM_KEY,
@@ -26,8 +12,16 @@ from treeflow.cli.inference_common import (
     get_tree_vars,
     write_trees,
 )
-
-convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
+from treeflow.model.phylo_model import (
+    phylo_model_to_joint_distribution,
+    PhyloModel,
+    DEFAULT_TREE_VAR_NAME,
+)
+from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
+from treeflow.tree.io import parse_newick, write_tensor_trees
+from treeflow.evolution.seqio import Alignment
+from treeflow.model.io import write_samples_to_file
+from treeflow.model.ml import fit_fixed_topology_maximum_likelihood_sgd
 
 
 @click.command()
@@ -63,25 +57,16 @@ convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
     ),
     default=ROBUST_ADAM_KEY,
 )
+@click.option("-r", "--learning-rate", required=True, type=float, default=1e-3)
 @click.option(
     "--init-values",
     required=False,
     type=str,
 )
-@click.option("-s", "--seed", required=False, type=int)
 @click.option("--trace-output", required=False, type=click.Path())
-@click.option("--samples-output", required=False, type=click.Path())
-@click.option("--tree-samples-output", required=False, type=click.Path())
-@click.option("--n-output-samples", required=False, type=int, default=200)
-@click.option("-r", "--learning-rate", required=True, type=float, default=1e-3)
-@click.option(
-    "-c",
-    "--convergence-criterion",
-    required=False,
-    type=click.Choice(list(convergence_criterion_classes.keys())),
-)
-@click.option("--elbo-samples", required=True, type=click.IntRange(min=1), default=100)
-def treeflow_vi(
+@click.option("--variables-output", required=False, type=click.Path())
+@click.option("--tree-output", required=False, type=click.Path())
+def treeflow_ml(
     input,
     topology,
     num_steps,
@@ -89,13 +74,9 @@ def treeflow_vi(
     model_file,
     learning_rate,
     init_values,
-    seed,
     trace_output,
-    samples_output,
-    tree_samples_output,
-    n_output_samples,
-    convergence_criterion,
-    elbo_samples,
+    variables_output,
+    tree_output,
 ):
     optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
@@ -130,65 +111,45 @@ def treeflow_vi(
     model_names = set(pinned_model._flat_resolve_names())
 
     if init_values_dict is None:
-        init_loc = None
+        init = None
     else:
-        init_loc = {
+        init = {
             key: value for key, value in init_values_dict.items() if key in model_names
         }
-        init_loc[DEFAULT_TREE_VAR_NAME] = tree
+        init[DEFAULT_TREE_VAR_NAME] = tree
 
-    if convergence_criterion is not None:
-        convergence_criterion_instance = convergence_criterion_classes[
-            convergence_criterion
-        ]()
-    else:
-        convergence_criterion_instance = None
-
-    print(f"Running VI for {num_steps} iterations...")
-    vi_res: tp.Tuple[object, VIResults] = fit_fixed_topology_variational_approximation(
+    print(f"Running ML for up to {num_steps} iterations...")
+    variables, trace, bijector = fit_fixed_topology_maximum_likelihood_sgd(
         model=pinned_model,
         topologies={DEFAULT_TREE_VAR_NAME: tree.topology},
-        init_loc=init_loc,
-        optimizer=optimizer,
         num_steps=num_steps,
-        convergence_criterion=convergence_criterion_instance,
-        seed=seed,
+        init=init,
     )
-    approx, trace = vi_res
     print("Inference complete")
-
-    inference_steps = trace.loss.shape[0]
-    print(f"Ran inference for {inference_steps} iterations")
-    elbo_estimate = -tf.reduce_sum(trace.loss[-elbo_samples:]).numpy()
-    print(f"ELBO estimate: {elbo_estimate}")
 
     if trace_output is not None:
         print(f"Saving trace to {trace_output}...")
         with open(trace_output, "wb") as f:
             pickle.dump(trace, f)
 
-    if samples_output is not None or tree_samples_output is not None:
-        print("Sampling fitted approximation...")
-        samples = approx.sample(n_output_samples)
-        samples_dict = samples._asdict()
+    if variables_output is not None or tree_output is not None:
+        variables_b = tf.nest.map_structure(partial(tf.expand_dims, axis=0), variables)
+        variables_dict = variables_b._asdict()
         tree_vars = get_tree_vars(phylo_model)
 
         tree_samples = dict()
         for var in tree_vars:
-            tree_samples[var] = samples_dict.pop(var)
-
-        if samples_output is not None:
-            print(f"Saving samples to {samples_output}...")
+            tree_samples[var] = variables_dict.pop(var)
+        if variables_output is not None:
+            print(f"Saving variables to {variables_output}...")
             write_samples_to_file(
-                samples,
+                variables_b,
                 pinned_model,
-                samples_output,
-                vars=samples_dict.keys(),
+                variables_output,
+                vars=variables_dict.keys(),
                 tree_vars={DEFAULT_TREE_VAR_NAME: tree_samples[DEFAULT_TREE_VAR_NAME]},
             )
 
-        if tree_samples_output is not None:
-            print(f"Saving tree samples to {tree_samples_output}...")
-            write_trees(tree_samples, topology, tree_samples_output)
-
-    print("Exiting...")
+        if tree_output is not None:
+            print(f"Saving tree samples to {tree_output}...")
+            write_trees(tree_samples, topology, tree_output)
