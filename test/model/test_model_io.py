@@ -73,6 +73,15 @@ def test_samples_to_dict(joint_dist):
         assert res[key].numpy().shape == sample_shape
 
 
+def test_samples_to_dict_order():
+    event_size = 3
+    dist = JointDistributionNamed(dict(y=Sample(Normal(0.0, 1.0), event_size)))
+    samples = dist.sample(5, seed=1)
+    res, _ = flatten_samples_to_dict(samples, dist)
+    for i in range(event_size):
+        assert_allclose(res[f"y_{i}"].numpy(), samples["y"][:, i].numpy())
+
+
 @pytest.mark.parametrize("vars", [None, ["y"]])
 def test_write_samples_to_file(joint_dist, vars):
     sample_shape = (5,)
@@ -100,3 +109,20 @@ def test_write_samples_to_file_with_tree(
     )
     res = stringio.getvalue()
     print(res)
+
+
+def test_write_samples_to_file_order():
+    import pandas as pd
+
+    event_size = 3
+    dist = JointDistributionNamed(
+        dict(x=Normal(0.0, 1.0), y=Sample(Normal(0.0, 1.0), event_size))
+    )
+    samples = dist.sample(5, seed=1)
+    stringio = io.StringIO()
+    write_samples_to_file(samples, dist, stringio)
+    res = stringio.getvalue()
+    parsed = pd.read_csv(io.StringIO(res))
+    for i in range(event_size):
+        assert_allclose(parsed[f"y_{i}"], samples["y"][:, i].numpy())
+    assert_allclose(parsed["x"], samples["x"].numpy())
