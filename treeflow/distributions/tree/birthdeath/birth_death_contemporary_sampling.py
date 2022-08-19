@@ -71,6 +71,12 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
             tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
         )
 
+    def _log_coeff(self, dtype):
+        taxon_count = tf.cast(self.taxon_count, dtype)
+        return (taxon_count - 1) * tf.math.log(
+            tf.constant(2.0, dtype=dtype)
+        ) - tf.math.lgamma(taxon_count)
+
     def _log_prob(self, x: TensorflowRootedTree):
         heights: tf.Tensor = x.node_heights
         dtype = heights.dtype
@@ -79,9 +85,7 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
         a = self.relative_death_rate
         rho = self.sample_probability
 
-        log_coeff = (taxon_count - 1) * tf.math.log(
-            tf.constant(2.0, dtype=dtype)
-        ) - tf.math.lgamma(taxon_count)
+        log_coeff = self._log_coeff(dtype)
         tree_logp = (
             log_coeff
             + (taxon_count - 1) * tf.math.log(r * rho)

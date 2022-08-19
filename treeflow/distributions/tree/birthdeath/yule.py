@@ -27,6 +27,9 @@ class Yule(BirthDeathContemporarySampling):
         )
         self._parameters = params
 
+    def _log_coeff(self, dtype):
+        return tf.zeros((), dtype)
+
     @classmethod
     def _parameter_properties(cls, dtype, num_classes=None):
         super_pp = BirthDeathContemporarySampling._parameter_properties(

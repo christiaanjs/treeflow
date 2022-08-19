@@ -74,3 +74,19 @@ def newick_file_dated(newick_fasta_file_dated):
 @pytest.fixture
 def tree_sim_newick_file(test_data_dir):
     return str(test_data_dir / "tree-sim.newick")
+
+
+@pytest.fixture
+def beast_test_case_newick_file(test_data_dir):
+    return str(test_data_dir / "beast-test-case.nwk")
+
+
+@pytest.fixture
+def beast_test_case_tree(beast_test_case_newick_file):
+    numpy_tree = parse_newick(beast_test_case_newick_file)
+    return convert_tree_to_tensor(numpy_tree)
+
+
+@pytest.fixture
+def beast_test_case_fasta_file(test_data_dir):
+    return str(test_data_dir / "beast-test-case.fasta")

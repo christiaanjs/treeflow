@@ -126,6 +126,11 @@ def treeflow_ml(
         init=init,
     )
     print("Inference complete")
+    trace_length = trace.log_likelihood.shape[0]
+    if trace_length == num_steps:
+        print("Optimization didn't converge")
+    else:
+        print(f"Optimization converged after {trace_length} steps")
 
     if trace_output is not None:
         print(f"Saving trace to {trace_output}...")
