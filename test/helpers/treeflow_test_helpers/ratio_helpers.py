@@ -2,6 +2,10 @@ from collections import namedtuple
 import numpy as np
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
+from treeflow.tree.rooted.tensorflow_rooted_tree import (
+    convert_tree_to_tensor,
+    TensorflowRootedTree,
+)
 from treeflow.tree.topology.tensorflow_tree_topology import (
     TensorflowTreeTopology,
     numpy_topology_to_tensor,
@@ -40,6 +44,12 @@ def numpy_tree_from_ratio_test_data(ratio_test_data: RatioTestData) -> NumpyRoot
         sampling_times=ratio_test_data.sampling_times,
         node_heights=ratio_test_data.heights,
         topology=numpy_topology_from_ratio_test_data(ratio_test_data),
+    )
+
+
+def tree_from_ratio_test_data(ratio_test_data: RatioTestData) -> TensorflowRootedTree:
+    return convert_tree_to_tensor(
+        numpy_tree_from_ratio_test_data(ratio_test_data),
     )
 
 

@@ -40,10 +40,11 @@ def get_event_shape_and_space_bijector(
 ) -> tp.Tuple[tfb.Bijector, object]:
     event_space_bijector = joint_bijector_func(model)
     event_shape = event_shape_fn(model)
+    names = model._flat_resolve_names()
     flat_event_shape = model._model_flatten(event_shape)
     flat_model_event_shape = model._model_flatten(model.event_shape)
     # Some bijectors (e.g. SoftmaxCentered) change event shape, but we need to handle trees
-    unconstrained_event_shape = [
+    flat_unconstrained_event_shape = [
         (
             bijector.inverse_event_shape(shape)
             if isinstance(model_shape, tf.TensorShape)
@@ -53,11 +54,19 @@ def get_event_shape_and_space_bijector(
             event_space_bijector.bijectors, flat_event_shape, flat_model_event_shape
         )
     ]
+    unconstrained_event_shape = dict(zip(names, flat_unconstrained_event_shape))
     flat_event_size = tf_nest.map_structure(tf.reduce_prod, unconstrained_event_shape)
 
     unflatten_bijector = tfb.Restructure(
-        model._model_unflatten(range(len(unconstrained_event_shape)))
+        output_structure=model._model_unflatten(range(len(unconstrained_event_shape))),
+        input_structure=dict(
+            zip(
+                names,
+                range(len(names)),
+            )
+        ),
     )
+
     reshape_bijector = tfb.JointMap(
         tf_nest.map_structure(
             lambda event_shape_element, event_size_element: tfb.Reshape(

@@ -6,25 +6,18 @@ from numpy.linalg import det as np_det
 from numpy.testing import assert_allclose
 from treeflow.tree.rooted.tensorflow_rooted_tree import (
     TensorflowRootedTree,
-    convert_tree_to_tensor,
 )
 from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
 from treeflow_test_helpers.ratio_helpers import (
     topology_from_ratio_test_data,
-    numpy_tree_from_ratio_test_data,
     RatioTestData,
+    tree_from_ratio_test_data,
 )
 
 
 def bijector_from_ratio_test_data(ratio_test_data: RatioTestData) -> TreeRatioBijector:
     return TreeRatioBijector(
         topology_from_ratio_test_data(ratio_test_data), ratio_test_data.anchor_heights
-    )
-
-
-def tree_from_ratio_test_data(ratio_test_data: RatioTestData) -> TensorflowRootedTree:
-    return convert_tree_to_tensor(
-        numpy_tree_from_ratio_test_data(ratio_test_data),
     )
 
 
@@ -38,18 +31,6 @@ def ratio_tree_from_ratio_test_data(
         ),
         sampling_times=ratio_test_data.sampling_times,
     )
-
-
-# def test_TreeRatioBijector_inverse_dtype(flat_ratio_test_data: RatioTestData):
-#     bijector = bijector_from_ratio_test_data(flat_ratio_test_data)
-#     res = bijector.inverse_dtype()
-#     assert isinstance(res, TensorflowRootedTree)
-#     assert res.topology.parent_indices == tf.int32
-#     assert res.topology.child_indices == tf.int32
-#     assert res.topology.preorder_indices == tf.int32
-
-#     assert res.node_heights == DEFAULT_FLOAT_DTYPE_TF
-#     assert res.sampling_times == DEFAULT_FLOAT_DTYPE_TF
 
 
 def logit(x):
