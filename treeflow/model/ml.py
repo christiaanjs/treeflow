@@ -23,11 +23,14 @@ from treeflow.model.event_shape_bijector import (
     get_unconstrained_init_values,
 )
 
-MLResults = namedtuple("MLResults", ["log_likelihood", "flat_unconstrained_params"])
+MLResults = namedtuple("MLResults", ["log_likelihood", "unconstrained_params"])
 
 
-def default_ml_trace_fn(traceable_quantities: MinimizeTraceableQuantities):
-    return MLResults(-traceable_quantities.loss, traceable_quantities.parameters)
+def default_ml_trace_fn(
+    traceable_quantities: MinimizeTraceableQuantities,
+    variables_dict: tp.Dict[str, tf.Variable],
+):
+    return MLResults(-traceable_quantities.loss, variables_dict)
 
 
 def fit_fixed_topology_maximum_likelihood_sgd(
@@ -35,7 +38,7 @@ def fit_fixed_topology_maximum_likelihood_sgd(
     topologies: tp.Dict[str, TensorflowTreeTopology],
     num_steps: int = 10000,
     optimizer: Optimizer = None,
-    trace_fn: tp.Callable[[MinimizeTraceableQuantities], object] = default_ml_trace_fn,
+    trace_fn: tp.Optional[tp.Callable[[MinimizeTraceableQuantities], object]] = None,
     convergence_criterion: tp.Optional[ConvergenceCriterion] = None,
     init: tp.Optional[object] = None,
     return_full_length_trace: bool = False,
@@ -63,10 +66,15 @@ def fit_fixed_topology_maximum_likelihood_sgd(
         ),
         init=init,
     )
-    param_variables = [
-        tf.Variable(init if init is not None else tf.zeros(shape, dtype=dtype))
-        for (shape, init) in zip(base_event_shape, init_unconstrained)
-    ]
+    param_variables = {
+        name: tf.Variable(
+            init_unconstrained[name]
+            if init_unconstrained[name] is not None
+            else tf.zeros(shape, dtype=dtype),
+            name=name,
+        )
+        for name, shape in base_event_shape.items()
+    }
 
     def negative_log_likelihood():
         variables = bijector.forward(param_variables)
@@ -76,6 +84,9 @@ def fit_fixed_topology_maximum_likelihood_sgd(
         convergence_criterion = LossNotDecreasing(atol=1e-3)
     if optimizer is None:
         optimizer = tf.optimizers.Adam()
+
+    if trace_fn is None:
+        trace_fn = partial(default_ml_trace_fn, variables_dict=param_variables)
 
     trace = minimize(
         negative_log_likelihood,
