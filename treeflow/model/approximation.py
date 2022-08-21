@@ -1,5 +1,6 @@
 from functools import partial
 import typing as tp
+from pytest import param
 import tensorflow as tf
 import tensorflow_probability.python.distributions as tfd
 import tensorflow_probability.python.bijectors as tfb
@@ -7,8 +8,6 @@ from tensorflow_probability.python.experimental.vi.util import (
     build_trainable_linear_operator_block,
 )
 from tensorflow_probability.python.internal import tensorshape_util
-from tensorflow_probability.python.experimental.util import make_trainable
-import tensorflow.python.util.nest as tf_nest
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.model.event_shape_bijector import (
@@ -19,6 +18,14 @@ from treeflow.model.event_shape_bijector import (
     get_event_shape_and_space_bijector,
     get_fixed_topology_joint_bijector,
     get_fixed_topology_event_shape,
+)
+from tensorflow_probability.python.experimental.util import (
+    deferred_module,
+)
+from tensorflow_probability.python.experimental.util.trainable import _make_trainable
+from tensorflow_probability.python.internal.trainable_state_util import (
+    _initialize_parameters,
+    _apply_parameters,
 )
 
 
@@ -62,6 +69,48 @@ def get_trainable_shift_bijector(
     )
 
 
+def make_trainable(
+    dist_class: tp.Type[tfd.Distribution],
+    initial_parameters: tp.Optional[tp.Dict[str, object]] = None,
+    batch_and_event_shape: tf.Tensor = None,
+    parameter_dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF,
+    seed=None,
+    var_name_prefix="",
+    **init_kwargs,
+) -> tfd.Distribution:
+    g = partial(
+        _make_trainable,
+        cls=dist_class,
+        initial_parameters=initial_parameters,
+        batch_and_event_shape=batch_and_event_shape,
+        parameter_dtype=parameter_dtype,
+        **init_kwargs,
+    )
+    params = _initialize_parameters(g, seed=seed)
+    params_as_variables = []
+    for name, value in params._asdict().items():
+        # Params may themselves be structures, in which case there's no 1:1
+        # mapping between param names and variable names. Currently we just give
+        # the same name to all variables in a param structure and let TF sort
+        # things out.
+        params_as_variables.append(
+            tf.nest.map_structure(
+                lambda t, n=name: t
+                if t is None
+                else tf.Variable(t, name=var_name_prefix + n),
+                value,
+                expand_composites=True,
+            )
+        )
+    return deferred_module.DeferredModule(
+        partial(_apply_parameters, g),
+        *params_as_variables,
+        also_track=tf.nest.flatten(
+            (initial_parameters, init_kwargs)
+        ),  # TODO: Could other args be trainable variables?
+    )
+
+
 def get_mean_field_approximation(
     model: tfd.JointDistribution,
     init_loc=None,
@@ -70,6 +119,7 @@ def get_mean_field_approximation(
         [tfd.JointDistribution], tfb.Composition
     ] = get_default_event_space_bijector,
     event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
+    seed=None,
 ) -> tfd.Distribution:
     # operator_classes = get_mean_field_operator_classes(flat_event_size)
     # linear_operator_block = build_trainable_linear_operator_block(
@@ -94,20 +144,25 @@ def get_mean_field_approximation(
         event_shape_fn=event_shape_fn,
         init=init_loc,
     )
-    base_standard_dist = tfd.JointDistributionSequential(
-        tf.nest.map_structure(
-            lambda s, init: tfd.Independent(
+    base_standard_dist = tfd.JointDistributionNamed(
+        {
+            name: tfd.Independent(
                 make_trainable(
                     tfd.Normal,
-                    initial_parameters=(None if init is None else dict(loc=init)),
+                    initial_parameters=(
+                        None
+                        if init_loc_1d[name] is None
+                        else dict(loc=init_loc_1d[name])
+                    ),
                     batch_and_event_shape=s,
                     parameter_dtype=dtype,
+                    seed=seed,
+                    var_name_prefix=name + "_",
                 ),
                 reinterpreted_batch_ndims=tensorshape_util.rank(s),
-            ),
-            base_event_shape,
-            init_loc_1d,
-        )
+            )
+            for name, s in base_event_shape.items()
+        }
     )
 
     distribution = tfd.TransformedDistribution(

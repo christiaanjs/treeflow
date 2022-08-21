@@ -37,7 +37,7 @@ def get_event_shape_and_space_bijector(
         [tfd.JointDistribution], tfb.Composition
     ] = get_default_event_space_bijector,
     event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
-) -> tp.Tuple[tfb.Bijector, object]:
+) -> tp.Tuple[tfb.Bijector, tp.Dict[str, tf.Tensor]]:
     event_space_bijector = joint_bijector_func(model)
     event_shape = event_shape_fn(model)
     names = model._flat_resolve_names()
