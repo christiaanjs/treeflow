@@ -1,3 +1,4 @@
+from functools import partial
 import typing as tp
 import tensorflow as tf
 from tensorflow.keras.optimizers import Optimizer
@@ -21,15 +22,18 @@ def fit_fixed_topology_variational_approximation(
     topologies: tp.Dict[str, TensorflowTreeTopology],
     optimizer: Optimizer,
     num_steps: int,
-    trace_fn: tp.Callable[[MinimizeTraceableQuantities], object] = default_vi_trace_fn,
+    trace_fn: tp.Optional[tp.Callable[[MinimizeTraceableQuantities], object]] = None,
     convergence_criterion: tp.Optional[ConvergenceCriterion] = None,
     init_loc: tp.Optional[object] = None,
     return_full_length_trace: bool = True,
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
-    approximation = get_fixed_topology_mean_field_approximation(
+    approximation, variables_dict = get_fixed_topology_mean_field_approximation(
         model, init_loc=init_loc, topology_pins=topologies
     )
+
+    if trace_fn is None:
+        trace_fn = partial(default_vi_trace_fn, variables_dict=variables_dict)
 
     if return_full_length_trace:
         augmented_trace_fn = trace_fn

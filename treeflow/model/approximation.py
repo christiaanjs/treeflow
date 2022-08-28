@@ -120,7 +120,7 @@ def get_mean_field_approximation(
     ] = get_default_event_space_bijector,
     event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
     seed=None,
-) -> tfd.Distribution:
+) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Variable]]:
     # operator_classes = get_mean_field_operator_classes(flat_event_size)
     # linear_operator_block = build_trainable_linear_operator_block(
     #     operator_classes, flat_event_size, dtype=dtype
@@ -168,7 +168,10 @@ def get_mean_field_approximation(
     distribution = tfd.TransformedDistribution(
         base_standard_dist, event_shape_and_space_bijector
     )
-    return distribution
+    variables_dict = {
+        variable.name: variable for variable in distribution.trainable_variables
+    }
+    return distribution, variables_dict
 
 
 def get_fixed_topology_mean_field_approximation(
@@ -176,7 +179,7 @@ def get_fixed_topology_mean_field_approximation(
     topology_pins: tp.Dict[str, TensorflowTreeTopology],
     init_loc=None,
     dtype=DEFAULT_FLOAT_DTYPE_TF,
-) -> tfd.Distribution:
+) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Tensor]]:
     bijector_func = partial(
         get_fixed_topology_joint_bijector, topology_pins=topology_pins
     )

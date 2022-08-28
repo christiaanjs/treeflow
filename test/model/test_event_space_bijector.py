@@ -7,6 +7,7 @@ from tensorflow_probability.python.distributions import (
     JointDistributionSequential,
     LogNormal,
     Normal,
+    Dirichlet,
     Sample,
 )
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
@@ -31,7 +32,11 @@ def test_get_fixed_topology_event_shape_and_space_bijector(
     taxon_count = sampling_times.shape[-1]
     dist = JointDistributionSequential(
         [
-            LogNormal(tf.constant(0.0), tf.constant(1.0), name="pop_size"),
+            LogNormal(
+                tf.constant(0.0, DEFAULT_FLOAT_DTYPE_TF),
+                tf.constant(1.0, DEFAULT_FLOAT_DTYPE_TF),
+                name="pop_size",
+            ),
             lambda pop_size: ConstantCoalescent(
                 taxon_count,
                 pop_size,
@@ -40,9 +45,16 @@ def test_get_fixed_topology_event_shape_and_space_bijector(
                 tree_name="test_tree",
             ),
             Sample(
-                Normal(tf.constant(2.0), tf.constant(1.0)),
+                Normal(
+                    tf.constant(2.0, DEFAULT_FLOAT_DTYPE_TF),
+                    tf.constant(1.0, DEFAULT_FLOAT_DTYPE_TF),
+                ),
                 (3, 2),
                 name="other_variable",
+            ),
+            Dirichlet(
+                tf.constant([2.0, 2.0, 2.0, 2.0], DEFAULT_FLOAT_DTYPE_TF),
+                name="frequencies",
             ),
         ]
     )
@@ -55,6 +67,13 @@ def test_get_fixed_topology_event_shape_and_space_bijector(
         np.concatenate([logit(ratios[..., :-1]), np.log(ratios[..., -1:])], axis=-1),
         dtype=DEFAULT_FLOAT_DTYPE_TF,
     )
+    unconstrained_frequencies = tf.constant([1.0, -1.0, 0.5], DEFAULT_FLOAT_DTYPE_TF)
+    frequencies = tf.math.softmax(
+        tf.concat(
+            [unconstrained_frequencies, tf.zeros((1,), dtype=DEFAULT_FLOAT_DTYPE_TF)],
+            axis=0,
+        )
+    )
     log_pop_size = tf.constant(-0.5, DEFAULT_FLOAT_DTYPE_TF)
     other_variable = tf.random.normal((3, 2), seed=1)
     other_variable_flat = tf.reshape(other_variable, (6,))
@@ -62,9 +81,10 @@ def test_get_fixed_topology_event_shape_and_space_bijector(
         test_tree=unconstrained_ratios_tensor,
         other_variable=other_variable_flat,
         pop_size=log_pop_size,
+        frequencies=unconstrained_frequencies,
     )
     res = bijector.forward(unconstrained)
-    expected = [tf.exp(log_pop_size), tree, other_variable]
+    expected = [tf.exp(log_pop_size), tree, other_variable, frequencies]
     tf_nest.map_structure(
         lambda res, expected: assert_allclose(res.numpy(), expected.numpy()),
         res,
