@@ -35,13 +35,19 @@ def flatten_tensor_to_1d_slices(name: str, x: tf.Tensor) -> tp.Dict[str, tf.Tens
 
 
 def flatten_samples_to_dict(
-    samples: object, distribution: JointDistribution
+    samples: object, distribution: tp.Optional[JointDistribution] = None
 ) -> tp.Tuple[tp.Dict[str, tf.Tensor], tp.Dict[str, tp.List[str]]]:
-    flat_tensors = distribution._model_flatten(samples)
-    flat_names = distribution._flat_resolve_names()
+    if distribution is not None:
+        flat_tensors = distribution._model_flatten(samples)
+        flat_names = distribution._flat_resolve_names()
+        samples_dict = dict(zip(flat_names, flat_tensors))
+    elif isinstance(samples, dict):
+        samples_dict = samples
+    else:
+        raise ValueError("Samples must be dict or JointDistribution must be supplied")
     vars_to_flat_dicts = {
         var_name: flatten_tensor_to_1d_slices(var_name, tensor)
-        for var_name, tensor in zip(flat_names, flat_tensors)
+        for var_name, tensor in samples_dict.items()
     }
     flat_dict = {
         name: flat_tensor

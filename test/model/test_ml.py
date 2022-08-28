@@ -43,4 +43,6 @@ def test_ml_tree_yule(tensor_constant, hello_newick_file, with_init):
         pinned, topologies={tree_name: tree.topology}, num_steps=30, init=init
     )
     assert all(np.isfinite(trace.log_likelihood.numpy()))
-    tf.nest.assert_same_structure(res, pinned.sample_unpinned())
+    variable_sample = pinned.sample_unpinned()
+    tf.nest.assert_same_structure(res, variable_sample)
+    tf.nest.assert_same_structure(trace.parameters, variable_sample)

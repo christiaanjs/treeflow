@@ -23,14 +23,17 @@ from treeflow.model.event_shape_bijector import (
     get_unconstrained_init_values,
 )
 
-MLResults = namedtuple("MLResults", ["log_likelihood", "unconstrained_params"])
+MLUnconstrainedResults = namedtuple(
+    "MLResults", ["log_likelihood", "unconstrained_params"]
+)
+MLResults = namedtuple("MLResults", ["log_likelihood", "parameters"])
 
 
 def default_ml_trace_fn(
     traceable_quantities: MinimizeTraceableQuantities,
     variables_dict: tp.Dict[str, tf.Variable],
 ):
-    return MLResults(-traceable_quantities.loss, variables_dict)
+    return MLUnconstrainedResults(-traceable_quantities.loss, variables_dict)
 
 
 def fit_fixed_topology_maximum_likelihood_sgd(
@@ -43,6 +46,7 @@ def fit_fixed_topology_maximum_likelihood_sgd(
     init: tp.Optional[object] = None,
     return_full_length_trace: bool = False,
     dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF,
+    transform_traced_params: bool = True,
     **opt_kwargs,
 ):
     """
@@ -98,6 +102,12 @@ def fit_fixed_topology_maximum_likelihood_sgd(
         **opt_kwargs,
     )
     final_variables = bijector.forward(param_variables)
+
+    if transform_traced_params:
+        if hasattr(trace, "unconstrained_params"):
+            trace_params = bijector.forward(trace.unconstrained_params)
+            trace = MLResults(trace.log_likelihood, trace_params)
+
     return final_variables, trace, bijector
 
 
