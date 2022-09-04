@@ -21,7 +21,7 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 from treeflow.tree.io import parse_newick, write_tensor_trees
 from treeflow.evolution.seqio import Alignment
 from treeflow.model.io import write_samples_to_file
-from treeflow.model.ml import fit_fixed_topology_maximum_likelihood_sgd
+from treeflow.model.ml import MLResults, fit_fixed_topology_maximum_likelihood_sgd
 
 
 @click.command()
@@ -133,6 +133,12 @@ def treeflow_ml(
         print(f"Optimization converged after {trace_length} steps")
 
     if trace_output is not None:
+        if isinstance(trace, MLResults):
+            if type(trace.parameters).__name__ == "StructTuple":
+                trace = MLResults(
+                    log_likelihood=trace.log_likelihood,
+                    parameters=trace.parameters._asdict(),
+                )
         print(f"Saving trace to {trace_output}...")
         with open(trace_output, "wb") as f:
             pickle.dump(trace, f)

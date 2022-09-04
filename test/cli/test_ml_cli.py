@@ -10,6 +10,7 @@ def test_ml_cli(
     model_file,
     samples_output_path,
     tree_samples_output_path,
+    trace_output_path,
 ):
     import pandas as pd
     import dendropy
@@ -27,6 +28,8 @@ def test_ml_cli(
         str(samples_output_path),
         "--tree-output",
         str(tree_samples_output_path),
+        "--trace-output",
+        str(trace_output_path),
     ]
     if model_file is None:
         init_values_string = "rate=0.01"

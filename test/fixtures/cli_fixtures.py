@@ -2,6 +2,11 @@ import pytest
 
 
 @pytest.fixture
+def trace_output_path(tmp_path):
+    return tmp_path / "trace.pickle"
+
+
+@pytest.fixture
 def samples_output_path(tmp_path):
     return tmp_path / "approx-samples.csv"
 
