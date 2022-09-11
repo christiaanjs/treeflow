@@ -15,6 +15,7 @@ from tensorflow_probability.python.math.minimize import (
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.model.approximation import get_fixed_topology_mean_field_approximation
 from treeflow.vi.util import default_vi_trace_fn, VIResults
+from tensorflow_probability.python.math.minimize import minimize
 
 
 def fit_fixed_topology_variational_approximation(
@@ -40,15 +41,29 @@ def fit_fixed_topology_variational_approximation(
     else:
         augmented_trace_fn = _trace_has_converged(trace_fn, tf.reduce_all)
 
-    trace = fit_surrogate_posterior(
-        model.unnormalized_log_prob,
-        approximation,
-        optimizer,
+    def loss():
+        approx_sample = approximation.sample()
+        return approximation.log_prob(approx_sample) - model.unnormalized_log_prob(
+            approx_sample
+        )
+
+    trace = minimize(
+        loss,
         num_steps,
+        optimizer,
         convergence_criterion=convergence_criterion,
         trace_fn=augmented_trace_fn,
         **vi_kwargs,
     )
+    # fit_surrogate_posterior(
+    #     model.unnormalized_log_prob,
+    #     approximation,
+    #     optimizer,
+    #     num_steps,
+    #     convergence_criterion=convergence_criterion,
+    #     trace_fn=augmented_trace_fn,
+    #     **vi_kwargs,
+    # )
 
     if return_full_length_trace:
         opt_res = trace

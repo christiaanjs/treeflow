@@ -141,7 +141,7 @@ def test_leaf_ctmc_discrete_mixture(
     )
     from tensorflow_probability.python.distributions import Gamma
 
-    rate_category_count = 4
+    rate_category_count = 5
     rate_distribution = DiscretizedDistribution(
         rate_category_count, Gamma(tensor_constant(2.0), tensor_constant(2.0))
     )

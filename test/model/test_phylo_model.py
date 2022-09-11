@@ -1,7 +1,6 @@
 import pytest
 from numpy.testing import assert_allclose
 import tensorflow as tf
-from tensorflow_probability.python.distributions import Sample
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.distributions.discretized import DiscretizedDistribution
 from treeflow.evolution.seqio import Alignment
