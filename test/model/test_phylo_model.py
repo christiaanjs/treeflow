@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from numpy.testing import assert_allclose
 import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
@@ -8,8 +9,10 @@ from treeflow.model.phylo_model import (
     phylo_model_to_joint_distribution,
     PhyloModel,
     get_site_rate_distribution,
+    get_sequence_distribution,
 )
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
+from treeflow.evolution.substitution.nucleotide.hky import HKY
 
 model_dicts_and_keys = [
     (
@@ -164,3 +167,86 @@ def test_phylo_model_to_joint_distribution_site_rate_variation(
     )
     assert_allclose(log_prior_res.numpy(), log_prior_expected)
     assert_allclose(log_prob_res.numpy(), log_prob_expected)
+
+
+def test_phylo_model_get_sequence_distribution_vec(
+    hello_alignment: Alignment, hello_tensor_tree: TensorflowRootedTree
+):
+    subst_model = HKY()
+    encoded_sequences = hello_alignment.get_encoded_sequence_tensor(
+        hello_tensor_tree.taxon_set
+    )
+    kappa = tf.constant([1.8, 2.3], dtype=DEFAULT_FLOAT_DTYPE_TF)
+    frequencies = tf.constant(
+        [[0.26, 0.22, 0.27, 0.25], [0.23, 0.25, 0.28, 0.24]],
+        dtype=DEFAULT_FLOAT_DTYPE_TF,
+    )
+    node_heights = tf.stack(
+        [hello_tensor_tree.node_heights, hello_tensor_tree.node_heights + 0.02]
+    )
+    site_gamma_shape = tf.constant([1.1, 1.3], dtype=DEFAULT_FLOAT_DTYPE_TF)
+    clock_rate = tf.constant(1.0, dtype=DEFAULT_FLOAT_DTYPE_TF)
+    batch_dist = get_sequence_distribution(
+        hello_alignment,
+        hello_tensor_tree.with_node_heights(node_heights),
+        subst_model,
+        dict(kappa=kappa, frequencies=frequencies),
+        "discrete_gamma",
+        dict(site_gamma_shape=site_gamma_shape, category_count=4),
+        clock_rate,
+    )
+    batch_log_probs = batch_dist.log_prob(encoded_sequences).numpy()
+
+    batch_size = kappa.shape[0]
+    log_probs = np.zeros(batch_size)
+    for i in range(batch_size):
+        dist = get_sequence_distribution(
+            hello_alignment,
+            hello_tensor_tree.with_node_heights(node_heights[i]),
+            subst_model,
+            dict(kappa=kappa[i], frequencies=frequencies[i]),
+            "discrete_gamma",
+            dict(site_gamma_shape=site_gamma_shape[i], category_count=4),
+            clock_rate,
+        )
+        log_probs[i] = dist.log_prob(encoded_sequences).numpy()
+    assert_allclose(batch_log_probs, log_probs)
+
+
+def test_phylo_model_get_sequence_distribution_vec_singleton(
+    hello_alignment: Alignment, hello_tensor_tree: TensorflowRootedTree
+):
+    subst_model = HKY()
+    encoded_sequences = hello_alignment.get_encoded_sequence_tensor(
+        hello_tensor_tree.taxon_set
+    )
+    kappa = tf.constant([1.8], dtype=DEFAULT_FLOAT_DTYPE_TF)
+    frequencies = tf.constant(
+        [[0.26, 0.22, 0.27, 0.25]],
+        dtype=DEFAULT_FLOAT_DTYPE_TF,
+    )
+    node_heights = tf.expand_dims(hello_tensor_tree.node_heights, axis=0)
+    site_gamma_shape = tf.constant([1.3], dtype=DEFAULT_FLOAT_DTYPE_TF)
+    clock_rate = tf.constant(1.0, dtype=DEFAULT_FLOAT_DTYPE_TF)
+    batch_dist = get_sequence_distribution(
+        hello_alignment,
+        hello_tensor_tree.with_node_heights(node_heights),
+        subst_model,
+        dict(kappa=kappa, frequencies=frequencies),
+        "discrete_gamma",
+        dict(site_gamma_shape=site_gamma_shape, category_count=4),
+        clock_rate,
+    )
+    batch_log_probs = batch_dist.log_prob(encoded_sequences).numpy()
+    assert tuple(batch_log_probs.shape) == (1,)
+    dist = get_sequence_distribution(
+        hello_alignment,
+        hello_tensor_tree.with_node_heights(node_heights[0]),
+        subst_model,
+        dict(kappa=kappa[0], frequencies=frequencies[0]),
+        "discrete_gamma",
+        dict(site_gamma_shape=site_gamma_shape[0], category_count=4),
+        clock_rate,
+    )
+    log_prob = dist.log_prob(encoded_sequences).numpy()
+    assert_allclose(batch_log_probs[0], log_prob)
