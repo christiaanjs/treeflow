@@ -38,7 +38,7 @@ def test_get_mean_field_approximation():
     )
     obs = _constant([-1.1, 2.1, 0.1])
     pinned = model.experimental_pin(obs=obs)
-    approximation = get_mean_field_approximation(
+    approximation, variable_dict = get_mean_field_approximation(
         pinned, init_loc=dict(a=_constant(0.1)), dtype=DEFAULT_FLOAT_DTYPE_TF
     )
     sample = approximation.sample()
@@ -75,7 +75,7 @@ def test_get_mean_field_approximation_tree(
     )
     obs = _constant([10.0])
     pinned = model.experimental_pin(obs=obs)
-    approximation = get_fixed_topology_mean_field_approximation(
+    approximation, variable_dict = get_fixed_topology_mean_field_approximation(
         pinned,
         dtype=DEFAULT_FLOAT_DTYPE_TF,
         topology_pins={tree_name: test_tree.topology},
@@ -126,7 +126,7 @@ def test_get_mean_field_approximation_tree_yule(
     else:
         init_loc = None
 
-    approximation = get_fixed_topology_mean_field_approximation(
+    approximation, variable_dict = get_fixed_topology_mean_field_approximation(
         model,
         dtype=DEFAULT_FLOAT_DTYPE_TF,
         topology_pins={tree_name: tree.topology},
@@ -137,39 +137,3 @@ def test_get_mean_field_approximation_tree_yule(
     approx_log_prob = approximation.log_prob(sample)
     assert np.isfinite(model_log_prob.numpy())
     assert np.isfinite(approx_log_prob.numpy())
-
-
-def test_mean_field_approximation_batch_log_prob(hello_tensor_tree, hello_alignment):
-    model_dict = dict(
-        tree=dict(
-            coalescent=dict(pop_size=dict(lognormal=dict(loc=0.05, scale=0.1))),
-        ),
-        clock=dict(
-            relaxed_lognormal=dict(
-                branch_rate_loc=dict(lognormal=dict(loc=0.1, scale=0.5)),
-                branch_rate_scale=dict(gamma=dict(concentration=2.0, rate=1.5)),
-            )
-        ),
-        substitution=dict(
-            hky=dict(
-                frequencies=dict(
-                    dirichlet=dict(
-                        concentration=[4.0, 4.0, 4.0, 4.0],
-                    ),
-                ),
-                kappa=dict(lognormal=dict(loc=1, scale=0.8)),
-            )
-        ),
-        site=dict(
-            discrete_weibull=dict(
-                site_weibull_concentration=dict(
-                    gamma=dict(concentration=2.0, rate=3.0)
-                ),
-                site_weibull_scale=1.0,
-                category_count=4,
-            )
-        ),
-    )
-    model = phylo_model_to_joint_distribution(
-        PhyloModel(model_dict), hello_tensor_tree, hello_alignment
-    )

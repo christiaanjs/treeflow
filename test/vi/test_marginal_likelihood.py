@@ -49,7 +49,7 @@ def test_marginal_likelihood(
             hello_tensor_tree.taxon_set
         )
     )
-    approx = get_fixed_topology_mean_field_approximation(
+    approx, variable_dict = get_fixed_topology_mean_field_approximation(
         model_pinned, dict(tree=hello_tensor_tree.topology)
     )
     res = estimate_log_ml_importance_sampling(
