@@ -1,3 +1,4 @@
+import tensorflow as tf
 from tensorflow_probability.python.distributions.sample import Sample
 from treeflow.distributions.sample_weighted import SampleWeighted
 from treeflow.distributions.leaf_ctmc import LeafCTMC
@@ -62,3 +63,19 @@ def test_sample_weighted(wnv_newick_file, wnv_fasta_file, hky_params):
         alignment, transition_prob_tree, hky_params["frequencies"]
     )
     assert_allclose(log_prob_uncompressed.numpy(), log_prob_compressed.numpy())
+
+
+def test_sample_weighted_vec(wnv_newick_file, wnv_fasta_file, hky_params):
+    alignment = Alignment(wnv_fasta_file)
+    numpy_tree = parse_newick(wnv_newick_file)
+    tensor_tree = convert_tree_to_tensor(numpy_tree)
+    hky_params_b = tf.nest.map_structure(
+        lambda x: tf.expand_dims(x, axis=0), hky_params
+    )
+    transition_prob_tree = get_transition_probabilities_tree(
+        tensor_tree.get_unrooted_tree(), HKY(), **hky_params_b
+    )
+    log_prob_compressed = compute_log_prob_compressed(
+        alignment, transition_prob_tree, hky_params["frequencies"]
+    )
+    assert tuple(log_prob_compressed.shape) == (1,)

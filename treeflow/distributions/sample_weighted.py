@@ -50,10 +50,16 @@ class SampleWeighted(Sample):
                 axis=0,
             ),
         )
-        lp = tf.broadcast_to(lp, bcast_lp_shape)
+        lp_b = tf.broadcast_to(lp, bcast_lp_shape)
         # (2) Make the final reduction.
         axis = ps.range(sample_ndims, sample_ndims + extra_sample_ndims)
-        return self._sum_fn()(lp * self.weights, axis=axis)
+        weights_b = tf.reshape(
+            self.weights,
+            tf.concat(
+                [tf.shape(self.weights), tf.ones(batch_ndims, dtype=tf.int32)], axis=0
+            ),
+        )
+        return self._sum_fn()(lp_b * weights_b, axis=axis)
 
     @classmethod
     def _parameter_properties(cls, dtype, num_classes=None):

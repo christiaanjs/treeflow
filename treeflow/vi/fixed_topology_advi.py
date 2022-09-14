@@ -41,29 +41,15 @@ def fit_fixed_topology_variational_approximation(
     else:
         augmented_trace_fn = _trace_has_converged(trace_fn, tf.reduce_all)
 
-    def loss():
-        approx_sample = approximation.sample()
-        return approximation.log_prob(approx_sample) - model.unnormalized_log_prob(
-            approx_sample
-        )
-
-    trace = minimize(
-        loss,
-        num_steps,
+    trace = fit_surrogate_posterior(
+        model.unnormalized_log_prob,
+        approximation,
         optimizer,
+        num_steps,
         convergence_criterion=convergence_criterion,
         trace_fn=augmented_trace_fn,
         **vi_kwargs,
     )
-    # fit_surrogate_posterior(
-    #     model.unnormalized_log_prob,
-    #     approximation,
-    #     optimizer,
-    #     num_steps,
-    #     convergence_criterion=convergence_criterion,
-    #     trace_fn=augmented_trace_fn,
-    #     **vi_kwargs,
-    # )
 
     if return_full_length_trace:
         opt_res = trace

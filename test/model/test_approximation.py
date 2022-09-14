@@ -16,6 +16,11 @@ from treeflow.distributions.tree.coalescent.constant_coalescent import (
 )
 from treeflow.distributions.tree.birthdeath.yule import Yule
 from treeflow_test_helpers.tree_helpers import TreeTestData, data_to_tensor_tree
+from treeflow.model.phylo_model import (
+    PhyloModel,
+    get_sequence_distribution,
+    phylo_model_to_joint_distribution,
+)
 
 _constant = lambda x: tf.constant(x, dtype=DEFAULT_FLOAT_DTYPE_TF)
 
@@ -132,3 +137,39 @@ def test_get_mean_field_approximation_tree_yule(
     approx_log_prob = approximation.log_prob(sample)
     assert np.isfinite(model_log_prob.numpy())
     assert np.isfinite(approx_log_prob.numpy())
+
+
+def test_mean_field_approximation_batch_log_prob(hello_tensor_tree, hello_alignment):
+    model_dict = dict(
+        tree=dict(
+            coalescent=dict(pop_size=dict(lognormal=dict(loc=0.05, scale=0.1))),
+        ),
+        clock=dict(
+            relaxed_lognormal=dict(
+                branch_rate_loc=dict(lognormal=dict(loc=0.1, scale=0.5)),
+                branch_rate_scale=dict(gamma=dict(concentration=2.0, rate=1.5)),
+            )
+        ),
+        substitution=dict(
+            hky=dict(
+                frequencies=dict(
+                    dirichlet=dict(
+                        concentration=[4.0, 4.0, 4.0, 4.0],
+                    ),
+                ),
+                kappa=dict(lognormal=dict(loc=1, scale=0.8)),
+            )
+        ),
+        site=dict(
+            discrete_weibull=dict(
+                site_weibull_concentration=dict(
+                    gamma=dict(concentration=2.0, rate=3.0)
+                ),
+                site_weibull_scale=1.0,
+                category_count=4,
+            )
+        ),
+    )
+    model = phylo_model_to_joint_distribution(
+        PhyloModel(model_dict), hello_tensor_tree, hello_alignment
+    )
