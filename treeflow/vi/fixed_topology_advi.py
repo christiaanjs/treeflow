@@ -14,8 +14,7 @@ from tensorflow_probability.python.math.minimize import (
 )
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.model.approximation import get_fixed_topology_mean_field_approximation
-from treeflow.vi.util import default_vi_trace_fn, VIResults
-from tensorflow_probability.python.math.minimize import minimize
+from treeflow.vi.util import default_vi_trace_fn
 
 
 def fit_fixed_topology_variational_approximation(

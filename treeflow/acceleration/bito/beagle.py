@@ -29,15 +29,15 @@ def phylogenetic_likelihood(
         kappa = subst_model_params["kappa"]
         rates = np.array([kappa])
         param_updates = {
-            "substitution model rates": rates,
-            "substitution model frequencies": np.array(frequencies),
+            "substitution_model_rates": rates,
+            "substitution_model_frequencies": np.array(frequencies),
         }
     elif isinstance(subst_model, treeflow_subst.GTR):
         subst_model_string = "GTR"
         rates = subst_model_params["rates"]
         param_updates = {
-            "substitution model rates": rates,
-            "substitution model frequencies": np.array(frequencies),
+            "substitution_model_rates": rates,
+            "substitution_model_frequencies": np.array(frequencies),
         }
     else:
         raise ValueError(f"Unsupported substitution model: {subst_model}")
@@ -63,7 +63,7 @@ def phylogenetic_likelihood(
     inst.prepare_for_phylo_likelihood(model_specification, 1)
 
     phylo_model_param_block_map = inst.get_phylo_model_param_block_map()
-    phylo_model_param_block_map["clock rate"][:] = clock_rate
+    phylo_model_param_block_map["clock_rate"][:] = clock_rate
 
     for key, value in param_updates.items():
         phylo_model_param_block_map[key][:] = value

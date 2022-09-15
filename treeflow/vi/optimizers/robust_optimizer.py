@@ -20,12 +20,6 @@ class RobustOptimizer:  # Pseudo-optimizer
         """
         grads_and_vars = list(grads_and_vars)
         grads = [grad for grad, var in grads_and_vars]
-        # all_finite = tf.reduce_all([tf.reduce_all(tf.math.is_finite(x)) for x in grads])
-        # return tf.cond(
-        #     all_finite,
-        #     lambda: self.inner.apply_gradients(grads_and_vars, name=name, **kwargs),
-        #     lambda: tf.constant(True, name=name),
-        # )
         any_nan = tf.reduce_any([tf.reduce_any(tf.math.is_nan(x)) for x in grads])
 
         def nan_handler():
