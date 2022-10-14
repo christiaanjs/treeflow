@@ -81,6 +81,7 @@ convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
     type=click.Choice(list(convergence_criterion_classes.keys())),
 )
 @click.option("--elbo-samples", required=True, type=click.IntRange(min=1), default=100)
+@click.option("--progress-bar/--no-progress-bar", default=True)
 def treeflow_vi(
     input,
     topology,
@@ -96,6 +97,7 @@ def treeflow_vi(
     n_output_samples,
     convergence_criterion,
     elbo_samples,
+    progress_bar,
 ):
     optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
@@ -153,6 +155,7 @@ def treeflow_vi(
         num_steps=num_steps,
         convergence_criterion=convergence_criterion_instance,
         seed=seed,
+        progress_bar=progress_bar,
     )
     approx, trace = vi_res
     print("Inference complete")

@@ -5,12 +5,14 @@ from click.testing import CliRunner
 
 
 @pytest.mark.parametrize("include_init_values", [True, False])
+@pytest.mark.parametrize("progress_bar", [True, False])
 def test_vi(
     newick_fasta_file_dated,
     include_init_values,
     model_file,
     samples_output_path,
     tree_samples_output_path,
+    progress_bar,
 ):
     import pandas as pd
     import dendropy
@@ -31,6 +33,7 @@ def test_vi(
         str(tree_samples_output_path),
         "--n-output-samples",
         str(n_output_samples),
+        "--progress-bar" if progress_bar else "--no-progress-bar",
     ]
     if model_file is None:
         init_values_string = "rate=0.01"

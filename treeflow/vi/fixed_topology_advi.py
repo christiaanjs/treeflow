@@ -15,6 +15,7 @@ from tensorflow_probability.python.math.minimize import (
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.model.approximation import get_fixed_topology_mean_field_approximation
 from treeflow.vi.util import default_vi_trace_fn
+from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
 
 def fit_fixed_topology_variational_approximation(
@@ -26,6 +27,8 @@ def fit_fixed_topology_variational_approximation(
     convergence_criterion: tp.Optional[ConvergenceCriterion] = None,
     init_loc: tp.Optional[object] = None,
     return_full_length_trace: bool = True,
+    progress_bar: tp.Union[bool, ProgressBarFunc] = False,
+    progress_bar_step: int = 10,
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
     approximation, variables_dict = get_fixed_topology_mean_field_approximation(
@@ -40,15 +43,18 @@ def fit_fixed_topology_variational_approximation(
     else:
         augmented_trace_fn = _trace_has_converged(trace_fn, tf.reduce_all)
 
-    trace = fit_surrogate_posterior(
-        model.unnormalized_log_prob,
-        approximation,
-        optimizer,
-        num_steps,
-        convergence_criterion=convergence_criterion,
-        trace_fn=augmented_trace_fn,
-        **vi_kwargs,
-    )
+    with make_progress_bar_trace_fn(
+        augmented_trace_fn, num_steps, progress_bar, update_step=progress_bar_step
+    ) as progress_trace_fn:
+        trace = fit_surrogate_posterior(
+            model.unnormalized_log_prob,
+            approximation,
+            optimizer,
+            num_steps,
+            convergence_criterion=convergence_criterion,
+            trace_fn=progress_trace_fn,
+            **vi_kwargs,
+        )
 
     if return_full_length_trace:
         opt_res = trace
