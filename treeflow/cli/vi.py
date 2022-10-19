@@ -82,6 +82,13 @@ convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
 )
 @click.option("--elbo-samples", required=True, type=click.IntRange(min=1), default=100)
 @click.option("--progress-bar/--no-progress-bar", default=True)
+@click.option(
+    "--subnewick-format",
+    type=int,
+    required=True,
+    default=0,
+    help="Subnewick format (see `ete3.Tree`)",
+)
 def treeflow_vi(
     input,
     topology,
@@ -98,11 +105,14 @@ def treeflow_vi(
     convergence_criterion,
     elbo_samples,
     progress_bar,
+    subnewick_format,
 ):
     optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
     print(f"Parsing topology {topology}")
-    tree = convert_tree_to_tensor(parse_newick(topology))
+    tree = convert_tree_to_tensor(
+        parse_newick(topology, subnewick_format=subnewick_format)
+    )
 
     print(f"Parsing alignment {input}")
     alignment = Alignment(input).get_compressed_alignment()

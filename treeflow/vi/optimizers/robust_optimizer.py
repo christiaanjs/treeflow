@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 class RobustOptimizer:  # Pseudo-optimizer
-    def __init__(self, inner, max_retries=10):  # TODO: Count number of failed steps
+    def __init__(self, inner, max_retries=100):  # TODO: Count number of failed steps
         self.inner = inner
         self.max_retries = max_retries
         self.retries = tf.Variable(0)
