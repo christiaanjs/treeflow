@@ -26,6 +26,7 @@ from treeflow.evolution.substitution.base_substitution_model import (
     EigendecompositionSubstitutionModel,
 )
 from treeflow.evolution.substitution.nucleotide import JC, HKY, GTR
+from treeflow.evolution.substitution.nucleotide.gtr import GTR_RATE_ORDER
 from treeflow.evolution.seqio import Alignment, WeightedAlignment
 from treeflow.distributions.discrete import FiniteDiscreteDistribution
 from treeflow.distributions.discretized import DiscretizedDistribution
@@ -213,7 +214,8 @@ def get_tree_model(  # TODO: Support unrooted trees
 
 JC_KEY = "jc"
 GTR_KEY = "gtr"
-subst_model_classes = {JC_KEY: JC, "hky": HKY, GTR_KEY: GTR}
+GTR_REL_KEY = "gtr_rel"
+subst_model_classes = {JC_KEY: JC, "hky": HKY, GTR_KEY: GTR, GTR_REL_KEY: GTR}
 
 
 def get_subst_model(
@@ -240,6 +242,15 @@ def get_subst_model_params(
     elif subst_model == GTR_KEY:
         rates = processed_params.pop("gtr_rates")
         processed_params["rates"] = rates
+    elif subst_model == GTR_REL_KEY:
+        rate_ct = tf.ones_like(processed_params["rate_ac"])
+        processed_params["rates"] = tf.stack(
+            [
+                (rate_ct if pair == "ct" else processed_params.pop(f"rate_{pair}"))
+                for pair in GTR_RATE_ORDER
+            ],
+            axis=-1,
+        )
     return processed_params, has_root
 
 

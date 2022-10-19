@@ -61,6 +61,39 @@ model_dicts_and_keys = [
     (
         dict(
             tree=dict(
+                yule=dict(birth_rate=1.2),
+            ),
+            clock=dict(strict=dict(clock_rate=1e-3)),
+            substitution=dict(
+                gtr_rel=dict(
+                    frequencies=dict(
+                        dirichlet=dict(
+                            concentration=[4.0, 4.0, 4.0, 4.0],
+                        ),
+                    ),
+                    rate_ac=dict(gamma=dict(concentration=0.05, rate=0.1)),
+                    rate_ag=dict(gamma=dict(concentration=0.05, rate=0.1)),
+                    rate_at=dict(gamma=dict(concentration=0.05, rate=0.1)),
+                    rate_cg=dict(gamma=dict(concentration=0.05, rate=0.1)),
+                    rate_gt=dict(gamma=dict(concentration=0.05, rate=0.1)),
+                )
+            ),
+            site="none",
+        ),
+        {
+            "tree",
+            "frequencies",
+            "rate_ac",
+            "rate_ag",
+            "rate_at",
+            "rate_cg",
+            "rate_gt",
+            "alignment",
+        },
+    ),
+    (
+        dict(
+            tree=dict(
                 coalescent=dict(pop_size=dict(lognormal=dict(loc=0.05, scale=0.1))),
             ),
             clock=dict(

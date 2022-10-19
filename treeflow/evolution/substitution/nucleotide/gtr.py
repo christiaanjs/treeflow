@@ -6,6 +6,8 @@ from treeflow.evolution.substitution.base_substitution_model import (
 )
 from treeflow.evolution.substitution.util import pack_matrix
 
+GTR_RATE_ORDER = ("ac", "ag", "at", "cg", "ct", "gt")
+
 
 class GTR(EigendecompositionSubstitutionModel):
     def q(self, frequencies: tf.Tensor, rates: tf.Tensor) -> tf.Tensor:
