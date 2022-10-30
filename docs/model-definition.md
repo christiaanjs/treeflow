@@ -1,5 +1,7 @@
 # TreeFlow model definition YAML format
 
+For an example model definition file, see [`examples/h3n2-model.yaml`](../examples/h3n2-model.yaml).
+
 TreeFlow's command line interfaces use a YAML model definition format. Each model definition file has four sections:
 
 ```yaml
