@@ -1,0 +1,48 @@
+clock:
+  strict:
+    clock_rate:
+      lognormal:
+        loc: -2.0
+        scale: 2.0
+site:
+  discrete_gamma:
+    category_count: 4
+    site_gamma_shape:
+      lognormal:
+        loc: 0.0
+        scale: 1.0
+substitution:
+  gtr_rel:
+    frequencies:
+      dirichlet:
+        concentration:
+        - 2.0
+        - 2.0
+        - 2.0
+        - 2.0
+    rate_ac:
+      gamma:
+        concentration: 0.05
+        rate: 0.05
+    rate_ag:
+      gamma:
+        concentration: 0.05
+        rate: 0.05
+    rate_at:
+      gamma:
+        concentration: 0.05
+        rate: 0.05
+    rate_cg:
+      gamma:
+        concentration: 0.05
+        rate: 0.05
+    rate_gt:
+      gamma:
+        concentration: 0.05
+        rate: 0.05
+tree:
+  coalescent:
+    pop_size:
+      lognormal:
+        loc: 1.0
+        scale: 1.5
