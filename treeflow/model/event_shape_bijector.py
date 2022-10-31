@@ -71,9 +71,9 @@ def get_event_shape_and_space_bijector(
         tf_nest.map_structure(
             lambda event_shape_element, event_size_element: tfb.Reshape(
                 event_shape_element, tf.expand_dims(event_size_element, 0)
-            )
-            if tensorshape_util.rank(event_shape_element) > 0
-            else tfb.Identity(),
+            ),
+            # if tensorshape_util.rank(event_shape_element) > 0
+            # else tfb.Identity(),
             unconstrained_event_shape,
             flat_event_size,
         )

@@ -66,6 +66,7 @@ from treeflow.model.ml import MLResults, fit_fixed_topology_maximum_likelihood_s
 @click.option("--trace-output", required=False, type=click.Path())
 @click.option("--variables-output", required=False, type=click.Path())
 @click.option("--tree-output", required=False, type=click.Path())
+@click.option("--progress-bar/--no-progress-bar", default=True)
 def treeflow_ml(
     input,
     topology,
@@ -77,6 +78,7 @@ def treeflow_ml(
     trace_output,
     variables_output,
     tree_output,
+    progress_bar,
 ):
     optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
@@ -124,6 +126,7 @@ def treeflow_ml(
         topologies={DEFAULT_TREE_VAR_NAME: tree.topology},
         num_steps=num_steps,
         init=init,
+        progress_bar=progress_bar,
     )
     print("Inference complete")
     trace_length = trace.log_likelihood.shape[0]

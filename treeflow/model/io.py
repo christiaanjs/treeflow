@@ -64,7 +64,10 @@ def flatten_samples_to_dict(
 def calculate_tree_stats(
     name: str, tree: TensorflowRootedTree
 ) -> tp.Dict[str, tf.Tensor]:
-    return {f"{name}_height": tree.root_height}
+    return {
+        f"{name}_height": tree.root_height,
+        f"{name}_length": tf.reduce_sum(tree.branch_lengths, -1),
+    }
 
 
 def write_samples_to_file(

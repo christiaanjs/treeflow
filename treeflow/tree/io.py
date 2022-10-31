@@ -25,10 +25,13 @@ _remove_zero_edges_func = remove_zero_edges
 
 
 def parse_newick(
-    newick_file: str, remove_zero_edges: bool = True, epsilon: float = _EPSILON
+    newick_file: str,
+    remove_zero_edges: bool = True,
+    epsilon: float = _EPSILON,
+    subnewick_format=0,
 ) -> NumpyRootedTree:
     """Return leaves followed by nodes (postorder)"""
-    t = ete3.Tree(newick_file)
+    t = ete3.Tree(newick_file, format=subnewick_format)
     ordered_nodes = sorted(t.traverse("postorder"), key=lambda n: not n.is_leaf())
 
     indices = {n: i for i, n in enumerate(ordered_nodes)}

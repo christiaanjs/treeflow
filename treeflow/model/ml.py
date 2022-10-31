@@ -22,6 +22,7 @@ from treeflow.model.event_shape_bijector import (
     get_fixed_topology_event_shape,
     get_unconstrained_init_values,
 )
+from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
 MLUnconstrainedResults = namedtuple(
     "MLResults", ["log_likelihood", "unconstrained_params"]
@@ -47,6 +48,8 @@ def fit_fixed_topology_maximum_likelihood_sgd(
     return_full_length_trace: bool = False,
     dtype=treeflow.DEFAULT_FLOAT_DTYPE_TF,
     transform_traced_params: bool = True,
+    progress_bar: tp.Union[bool, ProgressBarFunc] = False,
+    progress_bar_step: int = 10,
     **opt_kwargs,
 ):
     """
@@ -92,15 +95,18 @@ def fit_fixed_topology_maximum_likelihood_sgd(
     if trace_fn is None:
         trace_fn = partial(default_ml_trace_fn, variables_dict=param_variables)
 
-    trace = minimize(
-        negative_log_likelihood,
-        num_steps,
-        optimizer,
-        convergence_criterion=convergence_criterion,
-        trace_fn=trace_fn,
-        return_full_length_trace=return_full_length_trace,
-        **opt_kwargs,
-    )
+    with make_progress_bar_trace_fn(
+        trace_fn, num_steps, progress_bar, progress_bar_step
+    ) as progress_trace_fn:
+        trace = minimize(
+            negative_log_likelihood,
+            num_steps,
+            optimizer,
+            convergence_criterion=convergence_criterion,
+            trace_fn=progress_trace_fn,
+            return_full_length_trace=return_full_length_trace,
+            **opt_kwargs,
+        )
     final_variables = bijector.forward(param_variables)
 
     if transform_traced_params:

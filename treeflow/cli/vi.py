@@ -52,7 +52,13 @@ convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
     help="YAML model definition file",
 )
 @click.option(
-    "-n", "--num-steps", required=True, type=int, help="Number of VI iterations"
+    "-n",
+    "--num-steps",
+    required=True,
+    type=int,
+    help="Number of VI iterations",
+    default=40000,
+    show_default=True,
 )
 @click.option(
     "-o",
@@ -67,20 +73,47 @@ convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
     "--init-values",
     required=False,
     type=str,
+    help="Initial values in the format 'scalar_parameter=value1,vector_parameter=value2a|value2b'",
 )
 @click.option("-s", "--seed", required=False, type=int)
-@click.option("--trace-output", required=False, type=click.Path())
-@click.option("--samples-output", required=False, type=click.Path())
+@click.option(
+    "--trace-output",
+    required=False,
+    type=click.Path(),
+    help="Path to save pickled optimization trace",
+)
+@click.option(
+    "--samples-output",
+    required=False,
+    type=click.Path(),
+    help="Path to save parameter samples in CSV format",
+)
 @click.option("--tree-samples-output", required=False, type=click.Path())
-@click.option("--n-output-samples", required=False, type=int, default=200)
-@click.option("-r", "--learning-rate", required=True, type=float, default=1e-3)
+@click.option(
+    "--n-output-samples",
+    required=True,
+    type=int,
+    default=200,
+    help="Number of samples to use for outputs",
+    show_default=True,
+)
+@click.option(
+    "-r", "--learning-rate", required=True, type=float, default=1e-3, show_default=True
+)
 @click.option(
     "-c",
     "--convergence-criterion",
     required=False,
     type=click.Choice(list(convergence_criterion_classes.keys())),
 )
-@click.option("--elbo-samples", required=True, type=click.IntRange(min=1), default=100)
+@click.option(
+    "--elbo-samples",
+    required=True,
+    type=click.IntRange(min=1),
+    default=100,
+    show_default=True,
+    help="Number of samples to use in displayed estimate of evidence lower bound",
+)
 @click.option("--progress-bar/--no-progress-bar", default=True)
 @click.option(
     "--subnewick-format",
@@ -88,6 +121,7 @@ convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
     required=True,
     default=0,
     help="Subnewick format (see `ete3.Tree`)",
+    show_default=True,
 )
 def treeflow_vi(
     input,

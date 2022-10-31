@@ -10,6 +10,7 @@ from treeflow.tree.io import parse_newick
 from treeflow.model.approximation import (
     get_mean_field_approximation,
     get_fixed_topology_mean_field_approximation,
+    get_fixed_topology_inverse_autoregressive_flow_approximation,
 )
 from treeflow.distributions.tree.coalescent.constant_coalescent import (
     ConstantCoalescent,
@@ -134,6 +135,53 @@ def test_get_mean_field_approximation_tree_yule(
     )
     sample = approximation.sample()
     model_log_prob = model.log_prob(sample)
+    approx_log_prob = approximation.log_prob(sample)
+    assert np.isfinite(model_log_prob.numpy())
+    assert np.isfinite(approx_log_prob.numpy())
+
+
+def test_get_iaf_approximation_tree(flat_tree_test_data: TreeTestData):
+    test_tree = data_to_tensor_tree(flat_tree_test_data)
+    taxon_count = test_tree.taxon_count.item()
+    tree_name = "tree_dist_name"
+
+    model = tfd.JointDistributionNamed(
+        dict(
+            pop_size=tfd.LogNormal(_constant(0.0), _constant(1.0)),
+            tree=lambda pop_size: ConstantCoalescent(
+                taxon_count, pop_size, test_tree.sampling_times, tree_name=tree_name
+            ),
+            obs=lambda tree: tfd.Normal(
+                _constant(0.0), tf.reduce_sum(tree.branch_lengths)
+            ),
+        )
+    )
+    obs = _constant([10.0])
+    n_hidden_layers = 2
+    n_iaf_bijectors = 2
+    pinned = model.experimental_pin(obs=obs)
+    (
+        approximation,
+        variable_dict,
+    ) = get_fixed_topology_inverse_autoregressive_flow_approximation(
+        pinned,
+        taxon_count,
+        dtype=DEFAULT_FLOAT_DTYPE_TF,
+        topology_pins={tree_name: test_tree.topology},
+    )
+    assert len(variable_dict) == n_hidden_layers * n_iaf_bijectors * 3
+    sample = approximation.sample()
+    assert (
+        tf.reduce_all(
+            sample["tree"].topology.parent_indices == test_tree.topology.parent_indices
+        )
+        .numpy()
+        .item()
+    )
+    assert_allclose(
+        sample["tree"].sampling_times.numpy(), test_tree.sampling_times.numpy()
+    )
+    model_log_prob = pinned.unnormalized_log_prob(sample)
     approx_log_prob = approximation.log_prob(sample)
     assert np.isfinite(model_log_prob.numpy())
     assert np.isfinite(approx_log_prob.numpy())
