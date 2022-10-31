@@ -11,6 +11,11 @@ from treeflow.model.phylo_model import (
     PhyloModel,
     DEFAULT_TREE_VAR_NAME,
 )
+from treeflow.model.approximation import (
+    get_fixed_topology_mean_field_approximation,
+    get_fixed_topology_inverse_autoregressive_flow_approximation,
+    get_inverse_autoregressive_flow_approximation,
+)
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 from treeflow.tree.io import parse_newick
@@ -28,6 +33,10 @@ from treeflow.cli.inference_common import (
 )
 
 convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
+approximation_builders = dict(
+    mean_field=get_fixed_topology_mean_field_approximation,
+    iaf=get_fixed_topology_inverse_autoregressive_flow_approximation,
+)
 
 
 @click.command()
@@ -50,6 +59,15 @@ convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
     "--model-file",
     type=click.Path(exists=True),
     help="YAML model definition file",
+)
+@click.option(
+    "--variational-approximation",
+    "-va",
+    type=click.Choice(list(approximation_builders.keys())),
+    required=True,
+    default="mean_field",
+    help="Variational approximation type",
+    show_default=True,
 )
 @click.option(
     "-n",
@@ -129,6 +147,7 @@ def treeflow_vi(
     num_steps,
     optimizer,
     model_file,
+    variational_approximation,
     learning_rate,
     init_values,
     seed,
@@ -190,6 +209,11 @@ def treeflow_vi(
     else:
         convergence_criterion_instance = None
 
+    if variational_approximation == "iaf":
+        approx_kwargs = dict(hidden_units_per_layer=tree.taxon_count)
+    else:
+        approx_kwargs = dict()
+
     print(f"Running VI for {num_steps} iterations...")
     vi_res: tp.Tuple[object, VIResults] = fit_fixed_topology_variational_approximation(
         model=pinned_model,
@@ -200,6 +224,8 @@ def treeflow_vi(
         convergence_criterion=convergence_criterion_instance,
         seed=seed,
         progress_bar=progress_bar,
+        approx_fn=approximation_builders[variational_approximation],
+        approx_kwargs=approx_kwargs,
     )
     approx, trace = vi_res
     print("Inference complete")

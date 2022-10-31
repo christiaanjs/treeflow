@@ -18,6 +18,17 @@ from treeflow.vi.util import default_vi_trace_fn
 from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
 
+class ApproximationBuilder(tp.Protocol):
+    def __call__(
+        self,
+        model: Distribution,
+        topology_pins: tp.Dict[str, TensorflowTreeTopology],
+        init_loc: tp.Optional[object] = None,
+        **kwargs,
+    ) -> tp.Tuple[Distribution, tp.Dict[str, tf.Variable]]:
+        ...
+
+
 def fit_fixed_topology_variational_approximation(
     model: Distribution,
     topologies: tp.Dict[str, TensorflowTreeTopology],
@@ -29,10 +40,15 @@ def fit_fixed_topology_variational_approximation(
     return_full_length_trace: bool = True,
     progress_bar: tp.Union[bool, ProgressBarFunc] = False,
     progress_bar_step: int = 10,
+    approx_fn: ApproximationBuilder = get_fixed_topology_mean_field_approximation,
+    approx_kwargs: tp.Optional[tp.Dict[str, object]] = None,
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
-    approximation, variables_dict = get_fixed_topology_mean_field_approximation(
-        model, init_loc=init_loc, topology_pins=topologies
+    if approx_kwargs is None:
+        approx_kwargs = {}
+
+    approximation, variables_dict = approx_fn(
+        model, init_loc=init_loc, topology_pins=topologies, **approx_kwargs
     )
 
     if trace_fn is None:

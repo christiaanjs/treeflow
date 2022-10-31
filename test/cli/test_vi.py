@@ -1,11 +1,14 @@
 import pytest
 from tensorflow.python.keras.optimizer_v2.adam import Adam
-from treeflow.cli.vi import treeflow_vi
+from treeflow.cli.vi import treeflow_vi, approximation_builders
 from click.testing import CliRunner
 
 
 @pytest.mark.parametrize("include_init_values", [True, False])
 @pytest.mark.parametrize("progress_bar", [True, False])
+@pytest.mark.parametrize(
+    "variational_approximation", list(approximation_builders.keys())
+)
 def test_vi(
     newick_fasta_file_dated,
     include_init_values,
@@ -13,6 +16,7 @@ def test_vi(
     samples_output_path,
     tree_samples_output_path,
     progress_bar,
+    variational_approximation,
 ):
     import pandas as pd
     import dendropy
@@ -27,6 +31,8 @@ def test_vi(
         str(newick_file),
         "-n",
         str(10),
+        "-va",
+        variational_approximation,
         "--samples-output",
         str(samples_output_path),
         "--tree-samples-output",
