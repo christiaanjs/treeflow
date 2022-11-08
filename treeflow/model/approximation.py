@@ -287,3 +287,35 @@ def get_fixed_topology_inverse_autoregressive_flow_approximation(
         n_hidden_layers=n_hidden_layers,
         n_iaf_bijectors=n_iaf_bijectors,
     )
+
+
+def get_normal_conjugate_posterior_params(
+    prior_loc, prior_scale, observed_mean, n, sampling_scale
+):
+    prior_variance = tf.square(prior_scale)
+    sampling_variance = tf.square(sampling_scale)
+    posterior_variance = 1.0 / (1.0 / prior_variance + n / sampling_variance)
+    posterior_loc = posterior_variance * (
+        prior_loc / prior_variance + n * observed_mean / sampling_variance
+    )
+    return posterior_loc, tf.sqrt(posterior_variance)
+
+
+def get_lognormal_structured_rate_approximation(
+    log_distance_loc,
+    time,
+    rate_scale,
+    prior_loc,
+    prior_scale,
+    observation_weight,
+    batch_rank=0,
+):  # How can we do this with non-lognormal distributions?
+    rate_obs = log_distance_loc - tf.math.log(time)
+    posterior_loc, posterior_scale = get_normal_conjugate_posterior_params(
+        prior_loc, prior_scale, rate_obs, observation_weight, rate_scale
+    )
+    base_dist = tfd.LogNormal(posterior_loc, posterior_scale)
+    if batch_rank == 0:
+        return base_dist
+    else:
+        return tfd.Independent(base_dist, reinterpreted_batch_ndims=batch_rank)
