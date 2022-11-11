@@ -9,6 +9,12 @@ TreeFlow is a library for phylogenetic modelling and inference based on [TensorF
 3. `pip install -r requirements.txt`
 4. `pip install -e .`
 
+## Citation
+
+If you want to cite or read about TreeFlow, please see the paper: 
+
+Christiaan Swanepoel, Mathieu Fourment, Xiang Ji, Hassan Nasif, Marc A Suchard, Frederick A Matsen IV, Alexei Drummond. ["TreeFlow: probabilistic programming and automatic differentiation for phylogenetics"](https://arxiv.org/abs/2211.05220). arXiv preprint arXiv:2211.05220 (2022).
+
 ## Usage
 
 ### Python API
