@@ -1,10 +1,11 @@
 import typing as tp
+from typing_extensions import Protocol
 from functools import partial
 import tqdm
 from tensorflow_probability.python.math.minimize import MinimizeTraceableQuantities
 
 
-class ProgressBarFunc(tp.Protocol):
+class ProgressBarFunc(Protocol):
     def __call__(self, total: int, *args, **kwds) -> tqdm.tqdm:
         ...
 
