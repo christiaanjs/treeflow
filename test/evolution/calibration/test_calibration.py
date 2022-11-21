@@ -1,5 +1,5 @@
 from treeflow.evolution.calibration.calibration import MRCACalibration
-import scipy.stats
+from tensorflow_probability.python.distributions import Normal
 from numpy.testing import assert_allclose
 
 
@@ -11,5 +11,5 @@ def test_MRCACalibration_get_normal_sample_sd():
     alpha = (1 - prob) / 2.0
     sd = calibration.get_normal_sd(prob)
     loc = calibration.get_normal_mean()
-    res = scipy.stats.norm.cdf([low, high], loc=loc, scale=sd)
-    assert_allclose(res, [alpha, 1 - alpha])
+    res = Normal(loc, sd).cdf([low, high]).numpy()
+    assert_allclose(res, [alpha, 1 - alpha], atol=1e-9)
