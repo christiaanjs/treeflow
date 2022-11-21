@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.special import logit
 from numpy.testing import assert_allclose
 import tensorflow as tf
 import tensorflow.python.util.nest as tf_nest
@@ -10,6 +9,7 @@ from tensorflow_probability.python.distributions import (
     Dirichlet,
     Sample,
 )
+from tensorflow_probability.python.bijectors import Sigmoid
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.distributions.tree.coalescent.constant_coalescent import (
     ConstantCoalescent,
@@ -64,7 +64,10 @@ def test_get_fixed_topology_event_shape_and_space_bijector(
     )
     ratios = ratio_test_data.ratios
     unconstrained_ratios_tensor = tf.constant(
-        np.concatenate([logit(ratios[..., :-1]), np.log(ratios[..., -1:])], axis=-1),
+        np.concatenate(
+            [Sigmoid().inverse(ratios[..., :-1]).numpy(), np.log(ratios[..., -1:])],
+            axis=-1,
+        ),
         dtype=DEFAULT_FLOAT_DTYPE_TF,
     )
     unconstrained_frequencies = tf.constant([1.0, -1.0, 0.5], DEFAULT_FLOAT_DTYPE_TF)
@@ -80,7 +83,7 @@ def test_get_fixed_topology_event_shape_and_space_bijector(
     unconstrained = dict(
         test_tree=unconstrained_ratios_tensor,
         other_variable=other_variable_flat,
-        pop_size=log_pop_size,
+        pop_size=tf.expand_dims(log_pop_size, 0),
         frequencies=unconstrained_frequencies,
     )
     res = bijector.forward(unconstrained)
