@@ -4,7 +4,6 @@ from tensorflow_probability.python.internal import prefer_static as ps
 
 def move_outside_axis_to_inside(x):
     rank = tf.rank(x)
-    axes = tf.range(rank)
     perm = tf.concat([tf.range(1, rank), [0]], axis=0)
     return tf.transpose(x, perm)
 
