@@ -1,4 +1,5 @@
 import typing as tp
+import attr
 import tensorflow as tf
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 
@@ -7,9 +8,16 @@ TInputStructure = tp.TypeVar("TInputStructure")
 TOutputStructure = tp.TypeVar("TOutputStructure")
 
 
+@attr.attrs(auto_attribs=True)
+class PostorderTopologyData:
+    child_indices: tf.Tensor
+
+
 def postorder_node_traversal(
     topology: TensorflowTreeTopology,
-    mapping: tp.Callable[[TOutputStructure, TInputStructure], TOutputStructure],
+    mapping: tp.Callable[
+        [TOutputStructure, TInputStructure, PostorderTopologyData], TOutputStructure
+    ],
     input: TInputStructure,
     leaf_init: TOutputStructure,
 ) -> TOutputStructure:
@@ -37,7 +45,8 @@ def postorder_node_traversal(
             lambda ta: ta.gather(node_child_indices), tensorarrays
         )
         node_input = tf.nest.map_structure(lambda x: x[node_index - taxon_count], input)
-        output = mapping(child_output, node_input)
+        topology_data = PostorderTopologyData(child_indices=node_child_indices)
+        output = mapping(child_output, node_input, topology_data)
         tensorarrays = tf.nest.map_structure(
             lambda x, ta: ta.write(node_index, x), output, tensorarrays
         )

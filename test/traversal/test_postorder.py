@@ -29,7 +29,7 @@ def traversal_likelihood(
     )
     leaf_init = move_indices_to_outside(encoded_sequences, batch_rank, 1)
 
-    def mapping(child_partials, node_child_transition_probs):
+    def mapping(child_partials, node_child_transition_probs, topology_info):
         parent_child_probs = node_child_transition_probs * tf.expand_dims(
             child_partials, -2
         )
