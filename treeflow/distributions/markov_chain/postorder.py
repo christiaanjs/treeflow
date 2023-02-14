@@ -14,11 +14,13 @@ class PostorderNodeMarkovChain(Distribution):
         topology: TensorflowTreeTopology,
         transition_fn: tp.Callable[[object, object], Distribution],
         dist_input: object,
+        childless_init: tp.Optional[object] = None,
     ):
         """
         Parameters
         ----------
         topology
+
         transition_fn
             Callable with arguments (input, child values)
         """
@@ -28,13 +30,15 @@ class PostorderNodeMarkovChain(Distribution):
         self._dist_input = dist_input
 
         concrete_dist = self._transition_fn(
-            tf.nest.map_structure(lambda x: tf.gather(x, 0), self._dist_input), []
+            tf.nest.map_structure(lambda x: tf.gather(x, 0), self._dist_input),
+            [] if childless_init is None else childless_init,
         )
         self._dist_event_shape = concrete_dist.event_shape
         self._dist_event_rank = tf.nest.map_structure(
             lambda event_shape: ps.rank_from_shape(event_shape),
             self._dist_event_shape,
         )
+        self._dist_dtype = concrete_dist.dtype
 
     def _sample_n(self, n, seed=None):
         # track seed
@@ -51,13 +55,21 @@ class PostorderNodeMarkovChain(Distribution):
             node_dist = self._transition_fn(node_child_samples, dist_input)
             return node_dist.sample(n, seed=node_seed)
 
+        dummy_leaf_init = tf.nest.map_structure(
+            lambda shape, dtype: tf.zeros(tf.concat([[taxon_count], shape], 0), dtype),
+            self._dist_event_shape,
+            self._dist_dtype,
+        )
+
         traversal_result = postorder_node_traversal(
-            self._topology, sample_mapping, (traversal_seeds, self._dist_input), None
+            self._topology,
+            sample_mapping,
+            (traversal_seeds, self._dist_input),
+            dummy_leaf_init,
         )
         node_only_result = tf.nest.map_structure(
-            lambda x: x[taxon_count:], node_only_result
-        )  # How to figure out where to move node dimension (at beginning) - transition_fn event shape
-        # distribution_util.move_dimension, xs, source, dest)
+            lambda x: x[taxon_count:], traversal_result
+        )
         transposed = tf.nest.map_structure(
             lambda x, event_rank: distribution_util.move_dimension(
                 x, 0, ps.rank(x) - event_rank
