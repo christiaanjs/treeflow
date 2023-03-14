@@ -32,6 +32,10 @@ class PostorderNodeMarkovChain(Distribution):
         dist_input
             Structure of Tensors that are parameters of `transition_fn`.
             Nodes must be on the first axis.
+
+        childless_init
+            Structure of Tensors that represent the sample input to a node
+            with only leaf children.
         """
         self._transition_fn = transition_fn
         self._topology = topology
@@ -74,8 +78,12 @@ class PostorderNodeMarkovChain(Distribution):
         )
 
     def _sample_n(self, n, seed=None):
+        batch_shape = self.batch_shape_tensor()
         taxon_count = self._topology.taxon_count
-        traversal_seeds = samplers.split_seed(seed=seed, n=self._topology.taxon_count)
+        traversal_seeds = samplers.split_seed(
+            seed=seed,
+            n=tf.convert_to_tensor(self._topology.taxon_count, dtype=tf.int32) - 1,
+        )
 
         def sample_mapping(child_samples, input, topology_data: PostorderTopologyData):
             node_seed, dist_input = input
@@ -90,7 +98,7 @@ class PostorderNodeMarkovChain(Distribution):
 
         dummy_leaf_init = tf.nest.map_structure(
             lambda shape, dtype: tf.zeros(
-                tf.concat([[taxon_count], [n], shape], 0), dtype
+                tf.concat([[taxon_count], [n], batch_shape, shape], 0), dtype
             ),
             self._dist_event_shape,
             self._dist_dtype,
