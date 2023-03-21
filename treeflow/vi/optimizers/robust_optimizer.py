@@ -26,7 +26,9 @@ class RobustOptimizer:  # Pseudo-optimizer
             assertion = tf.assert_less(self.retries, self.max_retries)
             with tf.control_dependencies([assertion]):
                 self.retries.assign_add(1)
-            return tf.no_op()
+            return tf.zeros(
+                (), dtype=tf.int64
+            )  # apply_gradients returns int64 iteration
 
         def update_handler():
             self.retries.assign(0)

@@ -1,7 +1,7 @@
 import typing as tp
 import numpy as np
-import scipy.stats
 import tensorflow as tf
+from tensorflow_probability.python.distributions import Normal
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
 from treeflow.evolution.calibration.mrca import get_mrca_index
@@ -33,7 +33,7 @@ class MRCACalibration:
         centre = self.get_normal_mean()
         low_boundary = self.low - centre
         probability = (1 - interval_mass) / 2.0
-        return low_boundary / scipy.stats.norm.ppf(probability)
+        return low_boundary / Normal(0.0, 1.0).quantile(probability).numpy()
 
     def get_normal_mean(self):
         return (self.high + self.low) / 2.0

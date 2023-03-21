@@ -1,5 +1,6 @@
 from functools import partial
 import typing as tp
+from typing_extensions import Protocol
 import tensorflow as tf
 from tensorflow.keras.optimizers import Optimizer
 from tensorflow_probability.python.distributions import Distribution
@@ -18,7 +19,7 @@ from treeflow.vi.util import default_vi_trace_fn
 from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
 
-class ApproximationBuilder(tp.Protocol):
+class ApproximationBuilder(Protocol):
     def __call__(
         self,
         model: Distribution,
