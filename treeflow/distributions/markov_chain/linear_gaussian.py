@@ -1,4 +1,3 @@
-from multiprocessing import dummy
 import tensorflow as tf
 from functools import reduce
 from treeflow.tree.topology.tensorflow_tree_topology import (
@@ -7,7 +6,6 @@ from treeflow.tree.topology.tensorflow_tree_topology import (
 from treeflow.distributions.markov_chain.postorder import PostorderNodeMarkovChain
 from tensorflow_probability.python.internal import distribution_util
 from tensorflow_probability.python.distributions import Normal, Independent
-from tensorflow_probability.python.util import ParameterProperties
 
 
 class LinearGaussianPostorderNodeMarkovChain(PostorderNodeMarkovChain):

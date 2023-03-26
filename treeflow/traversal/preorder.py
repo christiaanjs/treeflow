@@ -33,7 +33,7 @@ def preorder_traversal(
         parent_output = tf.nest.map_structure(
             lambda ta: ta.read(parent_index), tensorarrays
         )
-        node_input = tf.nest.map_structure(lambda x: x[..., i], input)
+        node_input = tf.nest.map_structure(lambda x: x[i], input)
         output = mapping(parent_output, node_input)
         tensorarrays = tf.nest.map_structure(
             lambda x, ta: ta.write(i, x), output, tensorarrays
