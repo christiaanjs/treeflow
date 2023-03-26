@@ -1,3 +1,4 @@
+from threading import local
 import typing as tp
 from numpy import isin
 import tensorflow as tf
@@ -16,7 +17,7 @@ class TriangularHighwayLayer(Bijector):
         ],
         bias: tf.Tensor,
         validate_args=False,
-        name="HighwayFlow",
+        name="TriangularHighwayLayer",
     ):
         params = locals()
         self._lambd = lambd
@@ -56,3 +57,34 @@ class TriangularHighwayLayer(Bijector):
             else LinearOperatorUpperTriangular(lhs)
         )
         return lhs_operator.solvevec(rhs)
+
+
+class HighwayActivationLayer(Bijector):
+    def __init__(
+        self,
+        lambd: tf.Tensor,
+        activation_function: Bijector,
+        validate_args=False,
+        name="HighwayActivationLayer",
+    ):
+        params = locals()
+        self._lambd = lambd
+        self._activation_function = activation_function
+        super().__init__(
+            validate_args=validate_args,
+            name=name,
+            forward_min_event_ndims=self._activation_function.forward_min_event_ndims,
+            inverse_min_event_ndims=self._activation_function.inverse_min_event_ndims,
+            parameters=params,
+        )
+
+    def _forward(self, x):
+        return x * self._lambd + (1 - self._lambd) * self._activation_function.forward(
+            x
+        )
+
+    def _forward_log_det_jacobian(self, x):
+        return tf.math.log(
+            self._lambd
+            + (1 - self._lambd) * self._activation_function.forward_log_det_jacobian(x)
+        )

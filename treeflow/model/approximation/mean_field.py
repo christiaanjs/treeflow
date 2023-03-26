@@ -1,12 +1,8 @@
 from functools import partial
 import typing as tp
-from pytest import param
 import tensorflow as tf
 import tensorflow_probability.python.distributions as tfd
 import tensorflow_probability.python.bijectors as tfb
-from tensorflow_probability.python.experimental.vi.util import (
-    build_trainable_linear_operator_block,
-)
 from tensorflow_probability.python.internal import tensorshape_util
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
@@ -121,17 +117,6 @@ def get_mean_field_approximation(
     event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
     seed=None,
 ) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Variable]]:
-    # operator_classes = get_mean_field_operator_classes(flat_event_size)
-    # linear_operator_block = build_trainable_linear_operator_block(
-    #     operator_classes, flat_event_size, dtype=dtype
-    # )
-    # scale_bijector = tfb.ScaleMatvecLinearOperatorBlock(linear_operator_block)
-
-    # loc_bijector = get_trainable_shift_bijector(
-    #     flat_event_size, init_loc_1d, dtype=dtype
-    # )
-
-    # base_standard_dist = get_base_distribution(flat_event_size, dtype=dtype)
     (
         event_shape_and_space_bijector,
         base_event_shape,
@@ -193,129 +178,3 @@ def get_fixed_topology_mean_field_approximation(
         joint_bijector_func=bijector_func,
         event_shape_fn=event_shape_fn,
     )
-
-
-DEFAULT_N_HIDDEN_LAYERS = 2
-DEFAULT_N_IAF_BIJECTORS = 2
-
-
-def get_inverse_autoregressive_flow_approximation(
-    model: tfd.JointDistribution,
-    hidden_units_per_layer: int,
-    dtype=DEFAULT_FLOAT_DTYPE_TF,
-    joint_bijector_func: tp.Callable[
-        [tfd.JointDistribution], tfb.Composition
-    ] = get_default_event_space_bijector,
-    event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
-    seed=None,
-    n_hidden_layers: int = DEFAULT_N_HIDDEN_LAYERS,
-    n_iaf_bijectors: int = DEFAULT_N_IAF_BIJECTORS,
-) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Variable]]:
-    (
-        event_shape_and_space_bijector,
-        base_event_shape,
-    ) = get_event_shape_and_space_bijector(
-        model, joint_bijector_func=joint_bijector_func, event_shape_fn=event_shape_fn
-    )
-    restructure_bijector = tfb.Restructure(
-        output_structure=tf.nest.pack_sequence_as(
-            base_event_shape, range(len(base_event_shape))
-        ),
-    )
-    flat_event_size = restructure_bijector.inverse_event_shape(base_event_shape)
-    flat_event_size_tensor = tf.concat(flat_event_size, axis=0)
-    split_bijector = tfb.Split(flat_event_size_tensor)
-    base_event_shape = tf.reduce_sum(flat_event_size_tensor)
-    base_dist = tfd.Sample(
-        tfd.Normal(tf.constant(0.0, dtype=dtype), tf.constant(1.0, dtype=dtype)),
-        base_event_shape,
-    )
-    iaf_bijectors = [
-        tfb.Invert(
-            tfb.MaskedAutoregressiveFlow(
-                shift_and_log_scale_fn=tfb.AutoregressiveNetwork(
-                    params=2,
-                    hidden_units=n_hidden_layers * [hidden_units_per_layer],
-                    activation="relu",
-                    dtype=dtype,
-                    event_shape=base_dist.event_shape,
-                )
-            )
-        )
-        for _ in range(n_iaf_bijectors)
-    ]
-    chain_bijector = tfb.Chain(
-        [
-            event_shape_and_space_bijector,
-            restructure_bijector,
-            split_bijector,
-        ]
-        + iaf_bijectors
-    )
-    distribution = tfd.TransformedDistribution(base_dist, chain_bijector)
-    distribution.sample()  # Build networks
-    variables = [
-        weight_variable
-        for bijector in iaf_bijectors
-        for weight_variable in bijector.bijector._shift_and_log_scale_fn._network.weights
-    ]
-    variables_dict = {variable.name: variable for variable in variables}
-    return distribution, variables_dict
-
-
-def get_fixed_topology_inverse_autoregressive_flow_approximation(
-    model: tfd.JointDistribution,
-    hidden_units_per_layer: int,
-    topology_pins: tp.Dict[str, TensorflowTreeTopology],
-    dtype=DEFAULT_FLOAT_DTYPE_TF,
-    n_hidden_layers: int = DEFAULT_N_HIDDEN_LAYERS,
-    n_iaf_bijectors: int = DEFAULT_N_IAF_BIJECTORS,
-    init_loc=None,  # ignored
-) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Tensor]]:
-    bijector_func = partial(
-        get_fixed_topology_joint_bijector, topology_pins=topology_pins
-    )
-    event_shape_fn = partial(
-        get_fixed_topology_event_shape, topology_pins=topology_pins
-    )
-    return get_inverse_autoregressive_flow_approximation(
-        model,
-        hidden_units_per_layer,
-        dtype=dtype,
-        joint_bijector_func=bijector_func,
-        event_shape_fn=event_shape_fn,
-        n_hidden_layers=n_hidden_layers,
-        n_iaf_bijectors=n_iaf_bijectors,
-    )
-
-
-def get_normal_conjugate_posterior_params(
-    prior_loc, prior_scale, observed_mean, n, sampling_scale
-):
-    prior_variance = tf.square(prior_scale)
-    sampling_variance = tf.square(sampling_scale)
-    posterior_variance = 1.0 / (1.0 / prior_variance + n / sampling_variance)
-    posterior_loc = posterior_variance * (
-        prior_loc / prior_variance + n * observed_mean / sampling_variance
-    )
-    return posterior_loc, tf.sqrt(posterior_variance)
-
-
-def get_lognormal_structured_rate_approximation(
-    log_distance_loc,
-    time,
-    rate_scale,
-    prior_loc,
-    prior_scale,
-    observation_weight,
-    batch_rank=0,
-):  # How can we do this with non-lognormal distributions?
-    rate_obs = log_distance_loc - tf.math.log(time)
-    posterior_loc, posterior_scale = get_normal_conjugate_posterior_params(
-        prior_loc, prior_scale, rate_obs, observation_weight, rate_scale
-    )
-    base_dist = tfd.LogNormal(posterior_loc, posterior_scale)
-    if batch_rank == 0:
-        return base_dist
-    else:
-        return tfd.Independent(base_dist, reinterpreted_batch_ndims=batch_rank)
