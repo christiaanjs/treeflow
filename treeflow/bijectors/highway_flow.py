@@ -1,8 +1,6 @@
-from threading import local
 import typing as tp
-from numpy import isin
 import tensorflow as tf
-from tensorflow_probability.python.bijectors import Bijector
+from tensorflow_probability.python.bijectors import Bijector, Chain
 from treeflow.tf_util.linear_operator_upper_triangular import (
     LinearOperatorUpperTriangular,
 )
@@ -87,4 +85,29 @@ class HighwayActivationLayer(Bijector):
         return tf.math.log(
             self._lambd
             + (1 - self._lambd) * self._activation_function.forward_log_det_jacobian(x)
+        )
+
+
+class HighwayFlow(Chain):
+    def __init__(
+        self,
+        lambd,
+        U,
+        L,
+        activation_function,
+        validate_args=False,
+        name="HighwayFlow",
+    ):
+        super().__init__(
+            [
+                HighwayActivationLayer(
+                    lambd, activation_function, validate_args=validate_args
+                ),
+                TriangularHighwayLayer(lambd, LinearOperatorUpperTriangular(U)),
+                TriangularHighwayLayer(
+                    lambd, tf.linalg.LinearOperatorLowerTriangular(L)
+                ),
+            ],
+            validate_args=validate_args,
+            name=name,
         )
