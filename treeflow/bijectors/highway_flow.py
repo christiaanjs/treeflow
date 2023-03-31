@@ -1,4 +1,6 @@
+from __future__ import annotations
 import typing as tp
+import attr
 import tensorflow as tf
 from tensorflow_probability.python.bijectors import Bijector, Chain
 from treeflow.tf_util.linear_operator_upper_triangular import (
@@ -88,13 +90,24 @@ class HighwayActivationLayer(Bijector):
         )
 
 
+@attr.s(auto_attribs=True)
+class HighwayFlowParameters:
+    U: tf.Tensor
+    bias_U: tf.Tensor
+    L: tf.Tensor
+    bias_L: tf.Tensor
+    lambd: tf.Tensor
+
+
 class HighwayFlow(Chain):
     def __init__(
         self,
-        lambd,
-        U,
-        L,
-        activation_function,
+        lambd: tf.Tensor,
+        U: tf.Tensor,
+        bias_U: tf.Tensor,
+        L: tf.Tensor,
+        bias_L: tf.Tensor,
+        activation_function: Bijector,
         validate_args=False,
         name="HighwayFlow",
     ):
@@ -103,11 +116,25 @@ class HighwayFlow(Chain):
                 HighwayActivationLayer(
                     lambd, activation_function, validate_args=validate_args
                 ),
-                TriangularHighwayLayer(lambd, LinearOperatorUpperTriangular(U)),
+                TriangularHighwayLayer(lambd, LinearOperatorUpperTriangular(U), bias_U),
                 TriangularHighwayLayer(
-                    lambd, tf.linalg.LinearOperatorLowerTriangular(L)
+                    lambd, tf.linalg.LinearOperatorLowerTriangular(L), bias_L
                 ),
             ],
             validate_args=validate_args,
             name=name,
+        )
+
+    @classmethod
+    def from_parameters(
+        cls, parameters: HighwayFlowParameters, activation_function: Bijector, **kwargs
+    ) -> HighwayFlow:
+        return cls(
+            lambd=parameters.lambd,
+            U=parameters.U,
+            bias_U=parameters.bias_U,
+            L=parameters.L,
+            bias_L=parameters.bias_L,
+            activation_function=activation_function,
+            **kwargs,
         )
