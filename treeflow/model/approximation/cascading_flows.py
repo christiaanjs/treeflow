@@ -13,7 +13,10 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.bijectors.highway_flow import HighwayFlowParameters
-from treeflow.bijectors.highway_flow_node_bijector import HighwayFlowNodeBijector
+from treeflow.bijectors.highway_flow_node_bijector import (
+    HighwayFlowNodeBijector,
+    DEFAULT_ACTIVATION_FUNCTIONS,
+)
 from treeflow.bijectors.fixed_topology_bijector import FixedTopologyRootedTreeBijector
 from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioChainBijector
 from treeflow.traversal.anchor_heights import get_anchor_heights_tensor
@@ -35,11 +38,11 @@ def build_highway_L(L_offdiag: tf.Tensor) -> tf.Tensor:
     offdiag_triu = fill_triangular(L_offdiag, upper=True)
     batch_shape = tf.shape(L_offdiag)[:-1]
     batch_rank = tf.shape(batch_shape)[0]
-    k = tf.shape(offdiag_triu)[-1]
     paddings = tf.concat(
         [tf.zeros((batch_rank, 2), dtype=tf.int32), [[1, 0], [0, 1]]], axis=0
     )
     without_diag = tf.pad(offdiag_triu, paddings)
+    k = tf.shape(without_diag)[-1]
     diag = tf.ones(tf.concat([batch_shape, [k]], axis=0), dtype=L_offdiag.dtype)
     L = tf.linalg.set_diag(without_diag, diag)
     return L
@@ -60,7 +63,7 @@ def get_trainable_highway_flow_parameters(
     batch_shape: tf.Tensor = (),
     aux_k: tp.Optional[int] = None,
     prefix="",
-    lambd_init=1.0 - 1e-16,
+    lambd_init=1.0 - 1e-6,
     dtype=DEFAULT_FLOAT_DTYPE_TF,
     kernel_initializer: tp.Optional[tf.keras.initializers.Initializer] = None,
     bias_initializer: tp.Optional[tf.keras.initializers.Initializer] = None,
@@ -87,7 +90,7 @@ def get_trainable_highway_flow_parameters(
     U_diag_inv_softplus = tf.Variable(
         kernel_initializer(batch_and_k, dtype), name=f"{prefix}U_diag_inv_softplus"
     )
-    batch_and_offdiag_size = tf.concat([batch_shape, [k * (k - 1) // 2]])
+    batch_and_offdiag_size = tf.concat([batch_shape, [k * (k - 1) // 2]], axis=0)
     U_offdiag = tf.Variable(
         kernel_initializer(batch_and_offdiag_size, dtype), name=f"{prefix}U_offdiag"
     )
@@ -104,30 +107,39 @@ def get_trainable_highway_flow_parameters(
 
 
 def get_cascading_flows_tree_approximation(
-    tree: TensorflowRootedTree, name="tree", activation_fn=Sigmoid(), **kwargs
+    tree: TensorflowRootedTree,
+    name="tree",
+    activation_functions=DEFAULT_ACTIVATION_FUNCTIONS,
+    parameter_kwargs: tp.Optional[tp.Dict[str, object]] = None,
+    **highway_node_bijector_kwargs,
 ) -> None:
     dtype = tree.node_heights.dtype
-    batch_shape = tf.expand_dims(tree.topology.taxon_count - 1, 0)
+    batch_shape = tf.stack([len(activation_functions), tree.taxon_count - 1])
+
+    if parameter_kwargs is None:
+        parameter_kwargs = {}
     parameters = get_trainable_highway_flow_parameters(
-        2, batch_shape, prefix=f"{name}_", **kwargs
+        2, batch_shape, prefix=f"{name}_", **parameter_kwargs
     )
 
     flow_bijector = HighwayFlowNodeBijector(
         tree.topology,
         parameters,
         (),
-        activation_fn,
+        activation_functions=activation_functions,
     )
     tree_bijector = FixedTopologyRootedTreeBijector(
         tree.topology,
         NodeHeightRatioChainBijector(
-            tree.topology, get_anchor_heights_tensor(tree.topology, tree.sampling_times)
+            tree.topology,
+            get_anchor_heights_tensor(tree.topology, tree.sampling_times),
+            **highway_node_bijector_kwargs,
         ),
         sampling_times=tree.sampling_times,
     )
     chain_bijector = Chain([tree_bijector, flow_bijector])
     base_dist = Sample(
         Normal(tf.constant(0.0, dtype=dtype), tf.constant(1.0, dtype=dtype)),
-        batch_shape,
+        (tree.taxon_count - 1, 1),
     )
     return TransformedDistribution(base_dist, chain_bijector)

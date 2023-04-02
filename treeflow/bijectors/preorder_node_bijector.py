@@ -7,9 +7,13 @@ from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopolo
 from treeflow.traversal.preorder import preorder_traversal
 
 
-def _move_node_dimension_to_beginning(x):
+def _move_node_dimension_to_beginning(x, event_ndims):
     return tf.nest.map_structure(
-        lambda x: distribution_util.move_dimension(x, -1, 0), x
+        lambda x_elem, event_ndims_elem: distribution_util.move_dimension(
+            x_elem, -(event_ndims_elem + 1), 0
+        ),
+        x,
+        event_ndims,
     )
 
 
@@ -20,6 +24,7 @@ class PreorderNodeBijector(Bijector):
         input: object,
         bijector_func: tp.Callable[[object, object], Bijector],
         root_bijector_func: tp.Callable[[object], Bijector],
+        input_event_ndims: 0,
         name=None,
         validate_args=False,
     ):
@@ -35,9 +40,12 @@ class PreorderNodeBijector(Bijector):
         """
         parameters = locals()
         self._topology = topology
-        self._input_node_first = _move_node_dimension_to_beginning(input)
         self._bijector_func = bijector_func
         self._root_bijector_func = root_bijector_func
+
+        self._input_node_first = _move_node_dimension_to_beginning(
+            input, input_event_ndims
+        )
 
         self._root_bijector = self._root_bijector_func(
             tf.nest.map_structure(lambda x: x[-1], self._input_node_first),
