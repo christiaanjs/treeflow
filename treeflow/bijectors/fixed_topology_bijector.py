@@ -87,3 +87,12 @@ class FixedTopologyRootedTreeBijector(Bijector):
         return self.height_bijector.inverse_event_shape_tensor(
             output_shape.node_heights
         )
+
+    def inverse_event_ndims(self, event_ndims, **kwargs):
+        return self.height_bijector.inverse_event_ndims(event_ndims.node_heights)
+
+    def forward_event_ndims(self, event_ndims, **kwargs):
+        min_event_dims = tp.cast(TensorflowRootedTree, self.inverse_min_event_ndims)
+        return min_event_dims.with_node_heights(
+            self.height_bijector.forward_event_ndims(event_ndims)
+        )

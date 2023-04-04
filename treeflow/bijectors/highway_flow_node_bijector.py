@@ -11,7 +11,11 @@ from tensorflow_probability.python.bijectors import (
     Identity,
 )
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
-from treeflow.bijectors.highway_flow import HighwayFlow, HighwayFlowParameters
+from treeflow.bijectors.highway_flow import (
+    HighwayFlow,
+    HighwayFlowParameters,
+    HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
+)
 from treeflow.bijectors.preorder_node_bijector import PreorderNodeBijector
 
 
@@ -51,7 +55,7 @@ def highway_flow_bijector_func(
 def highway_flow_root_bijector_func(
     input: tp.Tuple[object, HighwayFlowParameters],
     activation_functions: tp.Iterable[Bijector],
-    root_link_fn: tp.Callable[[object, object], tf.Tensor],
+    root_link_fn: tp.Callable[[object], tf.Tensor],
     bijector_fn: tp.Callable[[tf.Tensor], Bijector],
 ) -> Bijector:
     node_input, flow_parameters = input
@@ -64,7 +68,7 @@ def highway_flow_root_bijector_func(
     return bijector_fn(params)
 
 
-_identity_link_fn = lambda x, input: x
+_identity_link_fn = lambda x, input, n_params: tf.stack([x] * n_params, axis=-1)
 
 
 def constant_root_link(input, loc, scale):
@@ -79,14 +83,17 @@ class HighwayFlowNodeBijector(PreorderNodeBijector):
         self,
         topology: TensorflowTreeTopology,
         highway_flow_parameters: HighwayFlowParameters,
-        node_parameter_input: object,
+        node_parameter_input: object = (),
         activation_functions: tp.Iterable[Bijector] = DEFAULT_ACTIVATION_FUNCTIONS,
-        link_fn: tp.Callable[[object, object], tf.Tensor] = _identity_link_fn,
+        link_fn: tp.Callable[[object, object], tf.Tensor] = partial(
+            _identity_link_fn, n_params=2
+        ),
         bijector_fn: tp.Callable[
             [tf.Tensor], Bijector
         ] = build_shift_and_scale_bijector,
         root_link_fn: tp.Optional[tp.Callable[[object], tf.Tensor]] = None,
         init_root_loc: tp.Union[float, tf.Tensor] = 0.0,
+        node_parameter_event_ndims: object = (),
         name="HighwayFlowNodeBijector",
         validate_args=False,
     ):
@@ -113,5 +120,11 @@ class HighwayFlowNodeBijector(PreorderNodeBijector):
                 bijector_fn=bijector_fn,
             ),
             name=name,
+            input_event_ndims=(
+                node_parameter_event_ndims,
+                HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
+            ),
+            forward_event_ndims=1,
+            inverse_event_ndims=1,
             validate_args=validate_args,
         )

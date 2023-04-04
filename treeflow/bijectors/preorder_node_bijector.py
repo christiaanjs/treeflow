@@ -1,5 +1,4 @@
 import typing as tp
-from sympy import root
 import tensorflow as tf
 from tensorflow_probability.python.internal import distribution_util
 from tensorflow_probability.python.bijectors import Bijector
@@ -24,7 +23,9 @@ class PreorderNodeBijector(Bijector):
         input: object,
         bijector_func: tp.Callable[[object, object], Bijector],
         root_bijector_func: tp.Callable[[object], Bijector],
-        input_event_ndims: 0,
+        input_event_ndims: object = 0,
+        forward_event_ndims: object = 0,
+        inverse_event_ndims: object = 0,
         name=None,
         validate_args=False,
     ):
@@ -42,6 +43,10 @@ class PreorderNodeBijector(Bijector):
         self._topology = topology
         self._bijector_func = bijector_func
         self._root_bijector_func = root_bijector_func
+
+        self._input_event_ndims = input_event_ndims
+        self._forward_event_ndims = forward_event_ndims
+        self._inverse_event_ndims = inverse_event_ndims
 
         self._input_node_first = _move_node_dimension_to_beginning(
             input, input_event_ndims
@@ -64,12 +69,14 @@ class PreorderNodeBijector(Bijector):
             name=name,
         )
 
-    def _forward_mapping(self, parent_output: object, input_and_x: object) -> object:
+    def _forward_mapping(
+        self, parent_output: object, input_and_x: tp.Tuple[object, object]
+    ) -> object:
         bijector_input, x = input_and_x
         return self._bijector_func(parent_output, bijector_input).forward(x)
 
     def _forward(self, x):
-        x_node_first = _move_node_dimension_to_beginning(x)
+        x_node_first = _move_node_dimension_to_beginning(x, self._forward_event_ndims)
         res = preorder_traversal(
             self._topology,
             self._forward_mapping,
@@ -85,7 +92,7 @@ class PreorderNodeBijector(Bijector):
     def _inverse_bijectors_and_y_node_first(
         self, y
     ) -> tp.Tuple[Bijector, object, object]:
-        y_node_first = _move_node_dimension_to_beginning(y)
+        y_node_first = _move_node_dimension_to_beginning(y, self._inverse_event_ndims)
         parent_values = tf.nest.map_structure(
             lambda y_elem: tf.gather(
                 y_elem,

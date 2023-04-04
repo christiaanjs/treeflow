@@ -99,6 +99,9 @@ class HighwayFlowParameters:
     lambd: tf.Tensor
 
 
+HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS = HighwayFlowParameters(2, 1, 2, 1, 1)
+
+
 class HighwayFlow(Chain):
     def __init__(
         self,
