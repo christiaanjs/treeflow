@@ -29,7 +29,13 @@ def push_through_flow(
     flow_parameters: HighwayFlowParameters,
 ) -> tf.Tensor:
     index, activation_fn = index_and_activation_fn
-    layer_params = tf.nest.map_structure(lambda x: x[index], flow_parameters)
+    layer_params = tf.nest.map_structure(
+        lambda x, event_ndims: tf.gather(
+            x, tf.expand_dims(index, 0), axis=-(1 + event_ndims)
+        ),
+        flow_parameters,
+        HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
+    )
     flow = HighwayFlow.from_parameters(layer_params, activation_fn)
     return flow.forward(params)
 

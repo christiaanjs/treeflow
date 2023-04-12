@@ -49,8 +49,18 @@ class FixedTopologyRootedTreeBijector(Bijector):
     def _log_det_jacobian(self, x):
         return self.height_bijector.log_det_jacobian(x)
 
-    def _inverse_log_det_jacobian(self, tree):
-        return self.height_bijector.inverse_log_det_jacobian(tree.node_heights)
+    # def _inverse_log_det_jacobian(self, tree):
+    #     return self.height_bijector.inverse_log_det_jacobian(tree.node_heights)
+
+    def _call_forward_log_det_jacobian(self, x, event_ndims, name, **kwargs):
+        return self.height_bijector.forward_log_det_jacobian(
+            x, event_ndims=event_ndims, name=name, **kwargs
+        )
+
+    def _call_inverse_log_det_jacobian(self, y, event_ndims, name, **kwargs):
+        return self.height_bijector.inverse_log_det_jacobian(
+            y.node_heights, event_ndims=event_ndims.node_heights, name=name, **kwargs
+        )
 
     def _forward_dtype(self, input_dtype, **kwargs):
         return TensorflowRootedTree(

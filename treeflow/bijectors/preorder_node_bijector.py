@@ -86,7 +86,10 @@ class PreorderNodeBijector(Bijector):
             ),
         )
         return tf.nest.map_structure(
-            lambda x: distribution_util.move_dimension(x, 0, -1), res
+            lambda x: distribution_util.move_dimension(
+                x, 0, -(1 + self._forward_event_ndims)
+            ),
+            res,
         )
 
     def _inverse_bijectors_and_y_node_first(

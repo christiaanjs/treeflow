@@ -1,8 +1,9 @@
 from functools import partial
 import typing as tp
 import tensorflow as tf
-from tensorflow_probability.python.bijectors import Sigmoid, Softplus, Chain
+from tensorflow_probability.python.bijectors import Sigmoid, Softplus, Chain, Reshape
 from tensorflow_probability.python.distributions import (
+    Distribution,
     Normal,
     Sample,
     TransformedDistribution,
@@ -112,7 +113,7 @@ def get_cascading_flows_tree_approximation(
     activation_functions=DEFAULT_ACTIVATION_FUNCTIONS,
     parameter_kwargs: tp.Optional[tp.Dict[str, object]] = None,
     **highway_node_bijector_kwargs,
-) -> None:
+) -> Distribution:
     dtype = tree.node_heights.dtype
     batch_shape = tf.stack([len(activation_functions), tree.taxon_count - 1])
 
@@ -137,9 +138,12 @@ def get_cascading_flows_tree_approximation(
         ),
         sampling_times=tree.sampling_times,
     )
-    chain_bijector = Chain([tree_bijector, flow_bijector])
+    flat_shape = (tree.taxon_count - 1,)
+    unflat_shape = flat_shape + (1,)
+    reshape_bijector = Reshape(flat_shape, event_shape_in=unflat_shape)
+    chain_bijector = Chain([tree_bijector, reshape_bijector, flow_bijector])
     base_dist = Sample(
         Normal(tf.constant(0.0, dtype=dtype), tf.constant(1.0, dtype=dtype)),
-        (tree.taxon_count - 1, 1),
+        unflat_shape,
     )
     return TransformedDistribution(base_dist, chain_bijector)
