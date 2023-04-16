@@ -6,6 +6,7 @@ TInputStructure = tp.TypeVar("TInputStructure")
 TOutputStructure = tp.TypeVar("TOutputStructure")
 
 
+@tf.function
 def preorder_traversal(
     topology: TensorflowTreeTopology,
     mapping: tp.Callable[[TOutputStructure, TInputStructure], TOutputStructure],
