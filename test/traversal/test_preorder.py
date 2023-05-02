@@ -8,20 +8,28 @@ from treeflow_test_helpers.ratio_helpers import (
 )
 from treeflow.traversal.preorder import preorder_traversal
 from treeflow.traversal.ratio_transform import move_outside_axis_to_inside
+from tensorflow_probability.python.internal import distribution_util
 
 
 def c(x):
     return tf.constant(x, dtype=DEFAULT_FLOAT_DTYPE_TF)
 
 
+def move_inside_axis_to_outside(x):
+    return distribution_util.move_dimension(x, -1, 0)
+
+
 def ratios_to_node_heights_traversal(topology, ratios, anchor_heights):
-    input = (ratios, anchor_heights)
+    input = (
+        move_inside_axis_to_outside(ratios),
+        move_inside_axis_to_outside(anchor_heights),
+    )
 
     def mapping(parent_height, input):
         ratio, anchor_height = input
         return (parent_height - anchor_height) * ratio + anchor_height
 
-    init = input[0][..., -1] + input[1][..., -1]
+    init = input[0][-1] + input[1][-1]
 
     traversal_res = preorder_traversal(topology, mapping, input, init)
     return move_outside_axis_to_inside(traversal_res)

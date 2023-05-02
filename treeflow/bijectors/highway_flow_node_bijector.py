@@ -1,5 +1,6 @@
 import typing as tp
 from functools import partial, reduce
+import attr
 import tensorflow as tf
 from tensorflow_probability.python.math import softplus_inverse
 from tensorflow_probability.python.bijectors import (
@@ -17,6 +18,7 @@ from treeflow.bijectors.highway_flow import (
     HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
 )
 from treeflow.bijectors.preorder_node_bijector import PreorderNodeBijector
+from tensorflow_probability.python.experimental.util import DeferredModule
 
 
 def build_shift_and_scale_bijector(input: tf.Tensor):
@@ -29,12 +31,18 @@ def push_through_flow(
     flow_parameters: HighwayFlowParameters,
 ) -> tf.Tensor:
     index, activation_fn = index_and_activation_fn
+    if type(flow_parameters) is HighwayFlowParameters:
+        event_ndims = HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS
+    else:
+        event_ndims = type(flow_parameters)(
+            **attr.asdict(HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS)
+        )
     layer_params = tf.nest.map_structure(
         lambda x, event_ndims: tf.gather(
             x, tf.expand_dims(index, 0), axis=-(1 + event_ndims)
         ),
         flow_parameters,
-        HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
+        event_ndims,
     )
     flow = HighwayFlow.from_parameters(layer_params, activation_fn)
     return flow.forward(params)
@@ -100,6 +108,7 @@ class HighwayFlowNodeBijector(PreorderNodeBijector):
         root_link_fn: tp.Optional[tp.Callable[[object], tf.Tensor]] = None,
         init_root_loc: tp.Union[float, tf.Tensor] = 0.0,
         node_parameter_event_ndims: object = (),
+        flow_parameter_event_ndims: HighwayFlowParameters = HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
         name="HighwayFlowNodeBijector",
         validate_args=False,
     ):
@@ -128,7 +137,7 @@ class HighwayFlowNodeBijector(PreorderNodeBijector):
             name=name,
             input_event_ndims=(
                 node_parameter_event_ndims,
-                HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
+                flow_parameter_event_ndims,
             ),
             forward_event_ndims=1,
             inverse_event_ndims=1,

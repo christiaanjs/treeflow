@@ -1,5 +1,5 @@
-from functools import partial
 import typing as tp
+import attr
 import tensorflow as tf
 from tensorflow_probability.python.bijectors import Sigmoid, Softplus, Chain, Reshape
 from tensorflow_probability.python.distributions import (
@@ -8,12 +8,16 @@ from tensorflow_probability.python.distributions import (
     Sample,
     TransformedDistribution,
 )
+from tensorflow_probability.python.util import DeferredTensor
 from tensorflow_probability.python.experimental.util import DeferredModule
 from tensorflow_probability.python.math import fill_triangular
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
-from treeflow.bijectors.highway_flow import HighwayFlowParameters
+from treeflow.bijectors.highway_flow import (
+    HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
+    HighwayFlowParameters,
+)
 from treeflow.bijectors.highway_flow_node_bijector import (
     HighwayFlowNodeBijector,
     DEFAULT_ACTIVATION_FUNCTIONS,
@@ -49,7 +53,8 @@ def build_highway_L(L_offdiag: tf.Tensor) -> tf.Tensor:
     return L
 
 
-def build_lambd(lambd_logit: tf.Tensor, k: int, aux_k: tp.Optional[int] = None):
+def build_highway_lambd(lambd_logit: tf.Tensor, k: int, aux_k: tp.Optional[int] = None):
+    print(f"Running builder on type {type(lambd_logit)}")
     lambd = Sigmoid().forward(lambd_logit)
     if aux_k is None:
         return lambd
@@ -57,6 +62,63 @@ def build_lambd(lambd_logit: tf.Tensor, k: int, aux_k: tp.Optional[int] = None):
         # Don't gate auxiliary variables
         aux_lambd_shape = tf.concat([tf.shape(lambd_logit)[:-1], [aux_k]], axis=0)
         return tf.concat([lambd, tf.zeros(aux_lambd_shape, dtype=lambd.dtype)], axis=-1)
+
+
+@attr.s(auto_attribs=True, init=False)
+class HighwayFlowParametersFromUnconstrained(HighwayFlowParameters, tf.Module):
+    def _build_attribute(self, build_fn, *args, **kwargs):
+        if self._defer:
+            return DeferredModule(build_fn, *args, **kwargs)
+        else:
+            return build_fn(*args, **kwargs)
+
+    def __init__(
+        self,
+        U: tp.Optional[tf.Tensor] = None,
+        bias_U: tp.Optional[tf.Tensor] = None,
+        L: tp.Optional[tf.Tensor] = None,
+        bias_L: tp.Optional[tf.Tensor] = None,
+        lambd: tp.Optional[tf.Tensor] = None,
+        k: tp.Optional[int] = None,
+        U_diag_inv_softplus: tp.Optional[tf.Tensor] = None,
+        U_offdiag: tp.Optional[tf.Tensor] = None,
+        L_offdiag: tp.Optional[tf.Tensor] = None,
+        lambd_logit: tp.Optional[tf.Tensor] = None,
+        name=None,
+        defer=False,
+    ):
+        self._defer = defer
+        if U is None:
+            self._U_diag_inv_softplus = U_diag_inv_softplus
+            self._U_offdiag = U_offdiag
+            U = self._build_attribute(build_highway_U, U_diag_inv_softplus, U_offdiag)
+        else:
+            self._U_diag_inv_softplus = None
+            self._U_offdiag = None
+
+        if L is None:
+            self._L_offdiag = L_offdiag
+            L = self._build_attribute(build_highway_L, L_offdiag)
+        else:
+            self._L_offdiag = None
+
+        if lambd is None:
+            self._lambd_logit = lambd_logit
+            self._k = k
+            lambd = self._build_attribute(build_highway_lambd, lambd_logit, k, None)
+        else:
+            self._lambd_logit = None
+            self._k = None
+
+        super().__init__(U=U, bias_U=bias_U, L=L, bias_L=bias_L, lambd=lambd)
+        tf.Module.__init__(self, name=name)
+
+    def __getattribute__(self, __name: str) -> object:
+        res = super().__getattribute__(__name)
+        if isinstance(res, DeferredModule):
+            return res._build_module()
+        else:
+            return res
 
 
 def get_trainable_highway_flow_parameters(
@@ -68,6 +130,7 @@ def get_trainable_highway_flow_parameters(
     dtype=DEFAULT_FLOAT_DTYPE_TF,
     kernel_initializer: tp.Optional[tf.keras.initializers.Initializer] = None,
     bias_initializer: tp.Optional[tf.keras.initializers.Initializer] = None,
+    defer=True,
 ) -> HighwayFlowParameters:
     batch_and_k = tf.concat([batch_shape, [k]], axis=0)
     if aux_k is None:
@@ -81,7 +144,6 @@ def get_trainable_highway_flow_parameters(
     lambd_logit = tf.Variable(
         Sigmoid().inverse(lambd_tensor), name=f"{prefix}lambd_logit"
     )
-    lambd = DeferredModule(partial(build_lambd, k=k, aux_k=aux_k), lambd_logit)
 
     if kernel_initializer is None:
         kernel_initializer = tf.keras.initializers.RandomNormal()
@@ -95,16 +157,23 @@ def get_trainable_highway_flow_parameters(
     U_offdiag = tf.Variable(
         kernel_initializer(batch_and_offdiag_size, dtype), name=f"{prefix}U_offdiag"
     )
-    U = DeferredModule(build_highway_U, U_diag_inv_softplus, U_offdiag)
     bias_U = tf.Variable(bias_initializer(batch_and_k, dtype), name=f"{prefix}U_bias")
 
     # L is a lower triangular matrix with ones on the diagonal
     L_offdiag = tf.Variable(
         kernel_initializer(batch_and_offdiag_size, dtype), name=f"{prefix}L_offdiag"
     )
-    L = DeferredModule(build_highway_L, L_offdiag)
     bias_L = tf.Variable(bias_initializer(batch_and_k, dtype), name=f"{prefix}L_bias")
-    return HighwayFlowParameters(U=U, bias_U=bias_U, L=L, bias_L=bias_L, lambd=lambd)
+    return HighwayFlowParametersFromUnconstrained(
+        k=k,
+        U_diag_inv_softplus=U_diag_inv_softplus,
+        U_offdiag=U_offdiag,
+        bias_U=bias_U,
+        L_offdiag=L_offdiag,
+        bias_L=bias_L,
+        lambd_logit=lambd_logit,
+        defer=defer,
+    )
 
 
 def get_cascading_flows_tree_approximation(
@@ -127,6 +196,9 @@ def get_cascading_flows_tree_approximation(
         tree.topology,
         parameters,
         (),
+        flow_parameter_event_ndims=HighwayFlowParametersFromUnconstrained(
+            **attr.asdict(HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS)
+        ),
         activation_functions=activation_functions,
     )
     tree_bijector = FixedTopologyRootedTreeBijector(

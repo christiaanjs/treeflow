@@ -48,25 +48,30 @@ class PreorderNodeBijector(Bijector):
         self._forward_event_ndims = forward_event_ndims
         self._inverse_event_ndims = inverse_event_ndims
 
-        self._input_node_first = _move_node_dimension_to_beginning(
-            input, input_event_ndims
-        )
+        self._input = input
 
-        self._root_bijector = self._root_bijector_func(
-            tf.nest.map_structure(lambda x: x[-1], self._input_node_first),
-        )
-
+        root_bijector = self._root_bijector
         super().__init__(
             parameters=parameters,
             dtype=self._root_bijector.dtype,
             forward_min_event_ndims=tf.nest.map_structure(
-                lambda x: x + 1, self._root_bijector.forward_min_event_ndims
+                lambda x: x + 1, root_bijector.forward_min_event_ndims
             ),
             inverse_min_event_ndims=tf.nest.map_structure(
-                lambda x: x + 1, self._root_bijector.inverse_min_event_ndims
+                lambda x: x + 1, root_bijector.inverse_min_event_ndims
             ),
             validate_args=validate_args,
             name=name,
+        )
+
+    @property
+    def _input_node_first(self):
+        return _move_node_dimension_to_beginning(self._input, self._input_event_ndims)
+
+    @property
+    def _root_bijector(self):
+        return self._root_bijector_func(
+            tf.nest.map_structure(lambda x: x[-1], self._input_node_first),
         )
 
     def _forward_mapping(
@@ -77,7 +82,7 @@ class PreorderNodeBijector(Bijector):
 
     def _forward(self, x):
         x_node_first = _move_node_dimension_to_beginning(x, self._forward_event_ndims)
-        res = preorder_traversal(
+        res_node_first = preorder_traversal(
             self._topology,
             self._forward_mapping,
             (self._input_node_first, x_node_first),
@@ -85,12 +90,13 @@ class PreorderNodeBijector(Bijector):
                 tf.nest.map_structure(lambda x: x[-1], x_node_first)
             ),
         )
-        return tf.nest.map_structure(
+        res = tf.nest.map_structure(
             lambda x: distribution_util.move_dimension(
                 x, 0, -(1 + self._forward_event_ndims)
             ),
-            res,
+            res_node_first,
         )
+        return res
 
     def _inverse_bijectors_and_y_node_first(
         self, y
