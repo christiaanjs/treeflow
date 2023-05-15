@@ -1,6 +1,5 @@
 import typing as tp
 
-# from treeflow.tf_util.dict_wrapper import DictWrapper
 from abc import abstractproperty
 from treeflow.tree.taxon_set import TaxonSet
 
