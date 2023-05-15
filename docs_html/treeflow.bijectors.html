@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>treeflow.bijectors package &mdash; TreeFlow 0.0.1 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="_static/jquery.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="treeflow.cli package" href="treeflow.cli.html" />
+    <link rel="prev" title="treeflow.acceleration.bito package" href="treeflow.acceleration.bito.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            TreeFlow
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">TreeFlow API documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="treeflow.html">treeflow package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="treeflow.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="treeflow.acceleration.html">treeflow.acceleration package</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">treeflow.bijectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.cli.html">treeflow.cli package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.debug.html">treeflow.debug package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.distributions.html">treeflow.distributions package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.evolution.html">treeflow.evolution package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.model.html">treeflow.model package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.tf_util.html">treeflow.tf_util package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.traversal.html">treeflow.traversal package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.tree.html">treeflow.tree package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="treeflow.vi.html">treeflow.vi package</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="treeflow.html#module-treeflow">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">TreeFlow</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">TreeFlow API documentation</a></li>
+          <li class="breadcrumb-item"><a href="treeflow.html">treeflow package</a></li>
+      <li class="breadcrumb-item active">treeflow.bijectors package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/treeflow.bijectors.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="treeflow-bijectors-package">
+<h1>treeflow.bijectors package<a class="headerlink" href="#treeflow-bijectors-package" title="Permalink to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Permalink to this heading"></a></h2>
+</section>
+<section id="module-treeflow.bijectors.fixed_topology_bijector">
+<span id="treeflow-bijectors-fixed-topology-bijector-module"></span><h2>treeflow.bijectors.fixed_topology_bijector module<a class="headerlink" href="#module-treeflow.bijectors.fixed_topology_bijector" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.fixed_topology_bijector.FixedTopologyRootedTreeBijector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.fixed_topology_bijector.</span></span><span class="sig-name descname"><span class="pre">FixedTopologyRootedTreeBijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">topology</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="treeflow.tree.topology.html#treeflow.tree.topology.tensorflow_tree_topology.TensorflowTreeTopology" title="treeflow.tree.topology.tensorflow_tree_topology.TensorflowTreeTopology"><span class="pre">TensorflowTreeTopology</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">height_bijector</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Bijector</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_times</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'FixedTopologyRootedTreeBijector'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.fixed_topology_bijector.FixedTopologyRootedTreeBijector" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Bijector</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="treeflow.bijectors.fixed_topology_bijector.FixedTopologyRootedTreeBijector.forward_event_ndims">
+<span class="sig-name descname"><span class="pre">forward_event_ndims</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">event_ndims</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.fixed_topology_bijector.FixedTopologyRootedTreeBijector.forward_event_ndims" title="Permalink to this definition"></a></dt>
+<dd><p>Returns the number of event dimensions produced by <cite>forward</cite>.</p>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>event_ndims: Structure of Python and/or Tensor <cite>int`s, and/or `None</cite></dt><dd><p>values. The structure should match that of
+<cite>self.forward_min_event_ndims</cite>, and all non-<cite>None</cite> values must be
+greater than or equal to the corresponding value in
+<cite>self.forward_min_event_ndims</cite>.</p>
+</dd>
+</dl>
+<p><a href="#id1"><span class="problematic" id="id2">**</span></a>kwargs: Optional keyword arguments forwarded to nested bijectors.</p>
+</dd>
+<dt>Returns:</dt><dd><dl class="simple">
+<dt>forward_event_ndims: Structure of integers and/or <cite>None</cite> values matching</dt><dd><p><cite>self.inverse_min_event_ndims</cite>. These are computed using ‘prefer static’
+semantics: if any inputs are <cite>None</cite>, some or all of the outputs may be
+<cite>None</cite>, indicating that the output dimension could not be inferred
+(conversely, if all inputs are non-<cite>None</cite>, all outputs will be
+non-<cite>None</cite>). If all input <cite>event_ndims</cite> are Python <cite>int`s, all of the
+(non-`None</cite>) outputs will be Python <cite>int`s; otherwise, some or
+all of the outputs may be `Tensor</cite> <a href="#id3"><span class="problematic" id="id4">`</span></a>int`s.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="treeflow.bijectors.fixed_topology_bijector.FixedTopologyRootedTreeBijector.inverse_event_ndims">
+<span class="sig-name descname"><span class="pre">inverse_event_ndims</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">event_ndims</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.fixed_topology_bijector.FixedTopologyRootedTreeBijector.inverse_event_ndims" title="Permalink to this definition"></a></dt>
+<dd><p>Returns the number of event dimensions produced by <cite>inverse</cite>.</p>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>event_ndims: Structure of Python and/or Tensor <cite>int`s, and/or `None</cite></dt><dd><p>values. The structure should match that of
+<cite>self.inverse_min_event_ndims</cite>, and all non-<cite>None</cite> values must be
+greater than or equal to the corresponding value in
+<cite>self.inverse_min_event_ndims</cite>.</p>
+</dd>
+</dl>
+<p><a href="#id5"><span class="problematic" id="id6">**</span></a>kwargs: Optional keyword arguments forwarded to nested bijectors.</p>
+</dd>
+<dt>Returns:</dt><dd><dl class="simple">
+<dt>inverse_event_ndims: Structure of integers and/or <cite>None</cite> values matching</dt><dd><p><cite>self.forward_min_event_ndims</cite>. These are computed using ‘prefer static’
+semantics: if any inputs are <cite>None</cite>, some or all of the outputs may be
+<cite>None</cite>, indicating that the output dimension could not be inferred
+(conversely, if all inputs are non-<cite>None</cite>, all outputs will be
+non-<cite>None</cite>). If all input <cite>event_ndims</cite> are Python <cite>int`s, all of the
+(non-`None</cite>) outputs will be Python <cite>int`s; otherwise, some or
+all of the outputs may be `Tensor</cite> <a href="#id7"><span class="problematic" id="id8">`</span></a>int`s.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-treeflow.bijectors.highway_flow">
+<span id="treeflow-bijectors-highway-flow-module"></span><h2>treeflow.bijectors.highway_flow module<a class="headerlink" href="#module-treeflow.bijectors.highway_flow" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayActivationLayer">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow.</span></span><span class="sig-name descname"><span class="pre">HighwayActivationLayer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lambd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Bijector</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'HighwayActivationLayer'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayActivationLayer" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Bijector</span></code></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlow">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow.</span></span><span class="sig-name descname"><span class="pre">HighwayFlow</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlow" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Chain</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlow.from_parameters">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters" title="treeflow.bijectors.highway_flow.HighwayFlowParameters"><span class="pre">HighwayFlowParameters</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_function</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Bijector</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#treeflow.bijectors.highway_flow.HighwayFlow" title="treeflow.bijectors.highway_flow.HighwayFlow"><span class="pre">HighwayFlow</span></a></span></span><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlow.from_parameters" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlowParameters">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow.</span></span><span class="sig-name descname"><span class="pre">HighwayFlowParameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">U</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias_U</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">L</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias_L</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lambd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlowParameters.L">
+<span class="sig-name descname"><span class="pre">L</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters.L" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlowParameters.U">
+<span class="sig-name descname"><span class="pre">U</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters.U" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlowParameters.bias_L">
+<span class="sig-name descname"><span class="pre">bias_L</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters.bias_L" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlowParameters.bias_U">
+<span class="sig-name descname"><span class="pre">bias_U</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters.bias_U" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.HighwayFlowParameters.lambd">
+<span class="sig-name descname"><span class="pre">lambd</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters.lambd" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow.TriangularHighwayLayer">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow.</span></span><span class="sig-name descname"><span class="pre">TriangularHighwayLayer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lambd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">LinearOperatorLowerTriangular</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="treeflow.tf_util.html#treeflow.tf_util.linear_operator_upper_triangular.LinearOperatorUpperTriangular" title="treeflow.tf_util.linear_operator_upper_triangular.LinearOperatorUpperTriangular"><span class="pre">LinearOperatorUpperTriangular</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'TriangularHighwayLayer'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.highway_flow.TriangularHighwayLayer" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Bijector</span></code></p>
+</dd></dl>
+
+</section>
+<section id="module-treeflow.bijectors.highway_flow_node_bijector">
+<span id="treeflow-bijectors-highway-flow-node-bijector-module"></span><h2>treeflow.bijectors.highway_flow_node_bijector module<a class="headerlink" href="#module-treeflow.bijectors.highway_flow_node_bijector" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow_node_bijector.HighwayFlowNodeBijector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow_node_bijector.</span></span><span class="sig-name descname"><span class="pre">HighwayFlowNodeBijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">topology:</span> <span class="pre">~treeflow.tree.topology.tensorflow_tree_topology.TensorflowTreeTopology,</span> <span class="pre">highway_flow_parameters:</span> <span class="pre">~treeflow.bijectors.highway_flow.HighwayFlowParameters,</span> <span class="pre">node_parameter_input:</span> <span class="pre">object</span> <span class="pre">=</span> <span class="pre">(),</span> <span class="pre">activation_functions:</span> <span class="pre">~typing.Iterable[~tensorflow_probability.python.bijectors.bijector.Bijector]</span> <span class="pre">=</span> <span class="pre">(&lt;tfp.bijectors.Sigmoid</span> <span class="pre">'sigmoid'</span> <span class="pre">batch_shape=[]</span> <span class="pre">forward_min_event_ndims=0</span> <span class="pre">inverse_min_event_ndims=0</span> <span class="pre">dtype_x=?</span> <span class="pre">dtype_y=?&gt;,</span> <span class="pre">&lt;tfp.bijectors.Identity</span> <span class="pre">'identity'</span> <span class="pre">batch_shape=[]</span> <span class="pre">forward_min_event_ndims=0</span> <span class="pre">inverse_min_event_ndims=0</span> <span class="pre">dtype_x=?</span> <span class="pre">dtype_y=?&gt;),</span> <span class="pre">link_fn:</span> <span class="pre">~typing.Callable[[object,</span> <span class="pre">object],</span> <span class="pre">~tensorflow.python.framework.ops.Tensor]</span> <span class="pre">=</span> <span class="pre">functools.partial(&lt;function</span> <span class="pre">&lt;lambda&gt;&gt;,</span> <span class="pre">n_params=2),</span> <span class="pre">bijector_fn:</span> <span class="pre">~typing.Callable[[~tensorflow.python.framework.ops.Tensor],</span> <span class="pre">~tensorflow_probability.python.bijectors.bijector.Bijector]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">build_shift_and_scale_bijector&gt;,</span> <span class="pre">root_link_fn:</span> <span class="pre">~typing.Callable[[object],</span> <span class="pre">~tensorflow.python.framework.ops.Tensor]</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">init_root_loc:</span> <span class="pre">float</span> <span class="pre">|</span> <span class="pre">~tensorflow.python.framework.ops.Tensor</span> <span class="pre">=</span> <span class="pre">0.0,</span> <span class="pre">node_parameter_event_ndims:</span> <span class="pre">object</span> <span class="pre">=</span> <span class="pre">(),</span> <span class="pre">flow_parameter_event_ndims:</span> <span class="pre">~treeflow.bijectors.highway_flow.HighwayFlowParameters</span> <span class="pre">=</span> <span class="pre">HighwayFlowParameters(U=2,</span> <span class="pre">bias_U=1,</span> <span class="pre">L=2,</span> <span class="pre">bias_L=1,</span> <span class="pre">lambd=1),</span> <span class="pre">name='HighwayFlowNodeBijector',</span> <span class="pre">validate_args=False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.highway_flow_node_bijector.HighwayFlowNodeBijector" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#treeflow.bijectors.preorder_node_bijector.PreorderNodeBijector" title="treeflow.bijectors.preorder_node_bijector.PreorderNodeBijector"><code class="xref py py-class docutils literal notranslate"><span class="pre">PreorderNodeBijector</span></code></a></p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow_node_bijector.build_shift_and_scale_bijector">
+<span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow_node_bijector.</span></span><span class="sig-name descname"><span class="pre">build_shift_and_scale_bijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.highway_flow_node_bijector.build_shift_and_scale_bijector" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow_node_bijector.constant_root_link">
+<span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow_node_bijector.</span></span><span class="sig-name descname"><span class="pre">constant_root_link</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.highway_flow_node_bijector.constant_root_link" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow_node_bijector.highway_flow_bijector_func">
+<span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow_node_bijector.</span></span><span class="sig-name descname"><span class="pre">highway_flow_bijector_func</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parent_values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">object</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters" title="treeflow.bijectors.highway_flow.HighwayFlowParameters"><span class="pre">HighwayFlowParameters</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">Bijector</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">link_fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">object</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bijector_fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Bijector</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Bijector</span></span></span><a class="headerlink" href="#treeflow.bijectors.highway_flow_node_bijector.highway_flow_bijector_func" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow_node_bijector.highway_flow_root_bijector_func">
+<span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow_node_bijector.</span></span><span class="sig-name descname"><span class="pre">highway_flow_root_bijector_func</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters" title="treeflow.bijectors.highway_flow.HighwayFlowParameters"><span class="pre">HighwayFlowParameters</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">Bijector</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_link_fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bijector_fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Bijector</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Bijector</span></span></span><a class="headerlink" href="#treeflow.bijectors.highway_flow_node_bijector.highway_flow_root_bijector_func" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="treeflow.bijectors.highway_flow_node_bijector.push_through_flow">
+<span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.highway_flow_node_bijector.</span></span><span class="sig-name descname"><span class="pre">push_through_flow</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_and_activation_fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Bijector</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flow_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#treeflow.bijectors.highway_flow.HighwayFlowParameters" title="treeflow.bijectors.highway_flow.HighwayFlowParameters"><span class="pre">HighwayFlowParameters</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#treeflow.bijectors.highway_flow_node_bijector.push_through_flow" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-treeflow.bijectors.node_height_ratio_bijector">
+<span id="treeflow-bijectors-node-height-ratio-bijector-module"></span><h2>treeflow.bijectors.node_height_ratio_bijector module<a class="headerlink" href="#module-treeflow.bijectors.node_height_ratio_bijector" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioBijector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.node_height_ratio_bijector.</span></span><span class="sig-name descname"><span class="pre">NodeHeightRatioBijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">topology</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="treeflow.tree.topology.html#treeflow.tree.topology.tensorflow_tree_topology.TensorflowTreeTopology" title="treeflow.tree.topology.tensorflow_tree_topology.TensorflowTreeTopology"><span class="pre">TensorflowTreeTopology</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">anchor_heights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NodeHeightRatioBijector'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioBijector" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Bijector</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioBijector.anchor_heights">
+<span class="sig-name descname"><span class="pre">anchor_heights</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioBijector.anchor_heights" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioBijector.node_parent_indices">
+<span class="sig-name descname"><span class="pre">node_parent_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioBijector.node_parent_indices" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioChainBijector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.node_height_ratio_bijector.</span></span><span class="sig-name descname"><span class="pre">NodeHeightRatioChainBijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.node_height_ratio_bijector.NodeHeightRatioChainBijector" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Chain</span></code></p>
+</dd></dl>
+
+</section>
+<section id="module-treeflow.bijectors.preorder_node_bijector">
+<span id="treeflow-bijectors-preorder-node-bijector-module"></span><h2>treeflow.bijectors.preorder_node_bijector module<a class="headerlink" href="#module-treeflow.bijectors.preorder_node_bijector" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.preorder_node_bijector.PreorderNodeBijector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.preorder_node_bijector.</span></span><span class="sig-name descname"><span class="pre">PreorderNodeBijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">topology</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="treeflow.tree.topology.html#treeflow.tree.topology.tensorflow_tree_topology.TensorflowTreeTopology" title="treeflow.tree.topology.tensorflow_tree_topology.TensorflowTreeTopology"><span class="pre">TensorflowTreeTopology</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">object</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bijector_func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">object</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Bijector</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_bijector_func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Bijector</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_event_ndims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">object</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">forward_event_ndims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">object</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inverse_event_ndims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">object</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.preorder_node_bijector.PreorderNodeBijector" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Bijector</span></code></p>
+</dd></dl>
+
+</section>
+<section id="module-treeflow.bijectors.tree_ratio_bijector">
+<span id="treeflow-bijectors-tree-ratio-bijector-module"></span><h2>treeflow.bijectors.tree_ratio_bijector module<a class="headerlink" href="#module-treeflow.bijectors.tree_ratio_bijector" title="Permalink to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.tree_ratio_bijector.RootedTreeBijector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.tree_ratio_bijector.</span></span><span class="sig-name descname"><span class="pre">RootedTreeBijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.tree_ratio_bijector.RootedTreeBijector" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">JointMap</span></code></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="treeflow.bijectors.tree_ratio_bijector.TreeRatioBijector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">treeflow.bijectors.tree_ratio_bijector.</span></span><span class="sig-name descname"><span class="pre">TreeRatioBijector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#treeflow.bijectors.tree_ratio_bijector.TreeRatioBijector" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#treeflow.bijectors.tree_ratio_bijector.RootedTreeBijector" title="treeflow.bijectors.tree_ratio_bijector.RootedTreeBijector"><code class="xref py py-class docutils literal notranslate"><span class="pre">RootedTreeBijector</span></code></a></p>
+</dd></dl>
+
+</section>
+<section id="module-treeflow.bijectors">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-treeflow.bijectors" title="Permalink to this heading"></a></h2>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="treeflow.acceleration.bito.html" class="btn btn-neutral float-left" title="treeflow.acceleration.bito package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="treeflow.cli.html" class="btn btn-neutral float-right" title="treeflow.cli package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Christiaan Swanepoel.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
