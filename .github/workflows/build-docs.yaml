@@ -1,0 +1,17 @@
+name: Build docs
+on: pull_request
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Sphinx build
+        run: |
+          cd docs
+          make html
