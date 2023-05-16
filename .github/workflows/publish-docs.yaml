@@ -20,7 +20,7 @@ jobs:
           cd docs
           make html
       - name: Deploy
-        uses: actions@upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v1
         with:
           path:
-            docs/build/html
+            ./docs/build/html
