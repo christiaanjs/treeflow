@@ -1,9 +1,5 @@
-name: Publish docs
-on:
-  push:
-    branches: ['docs']
-permissions:
-    contents: write
+name: Build docs
+on: pull_request
 jobs:
   docs:
     runs-on: ubuntu-latest
@@ -19,8 +15,3 @@ jobs:
         run: |
           cd docs
           make html
-      - name: Deploy
-        uses: actions/upload-pages-artifact@v1
-        with:
-          path:
-            ./docs/build/html
