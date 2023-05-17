@@ -6,6 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+from silence_tensorflow import silence_tensorflow
+silence_tensorflow()
+
 project = "TreeFlow"
 copyright = "2023, Christiaan Swanepoel"
 author = "Christiaan Swanepoel"
@@ -14,7 +17,7 @@ release = "0.0.1"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["sphinx.ext.autodoc", "sphinx.ext.coverage", "sphinx_rtd_theme"]
+extensions = ["sphinx.ext.autodoc", "sphinx.ext.coverage", "sphinx_rtd_theme", "sphinxcontrib.napoleon"]
 
 templates_path = ["_templates"]
 exclude_patterns = []
