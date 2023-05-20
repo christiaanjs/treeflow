@@ -7,6 +7,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 from silence_tensorflow import silence_tensorflow
+
 silence_tensorflow()
 
 project = "TreeFlow"
@@ -17,11 +18,23 @@ release = "0.0.1"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["sphinx.ext.autodoc", "sphinx.ext.coverage", "sphinx_rtd_theme", "sphinxcontrib.napoleon"]
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.coverage",
+    "sphinx_rtd_theme",
+    "sphinxcontrib.napoleon",
+    "myst_parser",
+]
 
 templates_path = ["_templates"]
 exclude_patterns = []
-
+autodoc_default_options = {
+    "members": True,
+    "inherited-members": True,
+    "undoc-members": True,
+}
+autodoc_inherit_docstrings = True
+autodoc_member_order = "bysource"
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

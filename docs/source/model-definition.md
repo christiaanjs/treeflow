@@ -1,6 +1,6 @@
-# TreeFlow model definition YAML format
+# TreeFlow model definition format
 
-For an example model definition file, see [`examples/h3n2-model.yaml`](../examples/h3n2-model.yaml).
+For an example model definition file, see [`examples/h3n2-model.yaml`](https://github.com/christiaanjs/treeflow/blob/master/examples/h3n2-model.yaml).
 
 TreeFlow's command line interfaces use a YAML model definition format. Each model definition file has four sections:
 
@@ -34,7 +34,7 @@ substitution:
 
 ```
 
-Documentation on all the options is still to come, see the source code at [`treeflow.model.phylo_model.phylo_model_to_joint_distribution`](treeflow/model/phylo_model.py) for reference for now.
+Documentation on all the options is still to come, see the source code at [`treeflow.model.phylo_model.phylo_model_to_joint_distribution`](https://github.com/christiaanjs/treeflow/blob/master/treeflow/model/phylo_model.py) for reference for now.
 
 ## Prior distributions
 

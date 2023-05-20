@@ -1,6 +1,11 @@
 treeflow package
 ================
 
+.. automodule:: treeflow
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
@@ -18,11 +23,3 @@ Subpackages
    treeflow.traversal
    treeflow.tree
    treeflow.vi
-
-Module contents
----------------
-
-.. automodule:: treeflow
-   :members:
-   :undoc-members:
-   :show-inheritance:

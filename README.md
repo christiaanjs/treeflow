@@ -23,7 +23,7 @@ See [`examples/carnivores.ipynb`](examples/carnivores.ipynb) for a TreeFlow exam
 
 ### CLI
 
-TreeFlow has a command line interface for variational inference on a given tree topology with standard phylogenetic models. See [`docs/model-definition.md`](docs/model-definition.md) for documentation of the YAML model definition file format.
+TreeFlow has a command line interface for variational inference on a given tree topology with standard phylogenetic models. See [`docs/source/model-definition.md`](docs/source/model-definition.md) for documentation of the YAML model definition file format.
 
 ```
 treeflow_vi --help

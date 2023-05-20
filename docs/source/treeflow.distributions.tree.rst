@@ -1,11 +1,16 @@
 treeflow.distributions.tree package
 ===================================
 
+.. automodule:: treeflow.distributions.tree
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    treeflow.distributions.tree.birthdeath
    treeflow.distributions.tree.coalescent
@@ -13,26 +18,8 @@ Subpackages
 Submodules
 ----------
 
-treeflow.distributions.tree.base\_tree\_distribution module
------------------------------------------------------------
+.. toctree::
+   :maxdepth: 1
 
-.. automodule:: treeflow.distributions.tree.base_tree_distribution
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.distributions.tree.rooted\_tree\_distribution module
--------------------------------------------------------------
-
-.. automodule:: treeflow.distributions.tree.rooted_tree_distribution
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: treeflow.distributions.tree
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   treeflow.distributions.tree.base_tree_distribution
+   treeflow.distributions.tree.rooted_tree_distribution

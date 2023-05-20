@@ -1,11 +1,16 @@
 treeflow.distributions package
 ==============================
 
+.. automodule:: treeflow.distributions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    treeflow.distributions.markov_chain
    treeflow.distributions.tree
@@ -13,50 +18,11 @@ Subpackages
 Submodules
 ----------
 
-treeflow.distributions.discrete module
---------------------------------------
+.. toctree::
+   :maxdepth: 1
 
-.. automodule:: treeflow.distributions.discrete
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.distributions.discrete\_parameter\_mixture module
-----------------------------------------------------------
-
-.. automodule:: treeflow.distributions.discrete_parameter_mixture
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.distributions.discretized module
------------------------------------------
-
-.. automodule:: treeflow.distributions.discretized
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.distributions.leaf\_ctmc module
-----------------------------------------
-
-.. automodule:: treeflow.distributions.leaf_ctmc
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.distributions.sample\_weighted module
-----------------------------------------------
-
-.. automodule:: treeflow.distributions.sample_weighted
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: treeflow.distributions
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   treeflow.distributions.discrete
+   treeflow.distributions.discrete_parameter_mixture
+   treeflow.distributions.discretized
+   treeflow.distributions.leaf_ctmc
+   treeflow.distributions.sample_weighted

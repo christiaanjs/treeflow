@@ -1,11 +1,16 @@
 treeflow.vi package
 ===================
 
+.. automodule:: treeflow.vi
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    treeflow.vi.convergence_criteria
    treeflow.vi.optimizers
@@ -13,42 +18,10 @@ Subpackages
 Submodules
 ----------
 
-treeflow.vi.fixed\_topology\_advi module
-----------------------------------------
+.. toctree::
+   :maxdepth: 1
 
-.. automodule:: treeflow.vi.fixed_topology_advi
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.vi.marginal\_likelihood module
----------------------------------------
-
-.. automodule:: treeflow.vi.marginal_likelihood
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.vi.progress\_bar module
---------------------------------
-
-.. automodule:: treeflow.vi.progress_bar
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.vi.util module
------------------------
-
-.. automodule:: treeflow.vi.util
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: treeflow.vi
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   treeflow.vi.fixed_topology_advi
+   treeflow.vi.marginal_likelihood
+   treeflow.vi.progress_bar
+   treeflow.vi.util
