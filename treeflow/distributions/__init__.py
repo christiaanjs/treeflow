@@ -1,4 +1,4 @@
-from treeflow.distributions.tree.birthdeath import *
+from treeflow.distributions.tree.birthdeath import BirthDeathContemporarySampling, Yule
 from treeflow.distributions.tree.coalescent import *
 from treeflow.distributions.discretized import *
 from treeflow.distributions.discrete_parameter_mixture import *
