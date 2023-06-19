@@ -16,7 +16,12 @@ from treeflow.tf_util import (
     float_constant,
 )
 from treeflow.tree import parse_newick, convert_tree_to_tensor
-from treeflow.evolution import Alignment, WeightedAlignment
+from treeflow.evolution import (
+    Alignment,
+    WeightedAlignment,
+    AlignmentType,
+    AlignmentFormat,
+)
 
 __all__ = [
     "parse_newick",
@@ -24,4 +29,6 @@ __all__ = [
     "float_constant",
     "Alignment",
     "WeightedAlignment",
+    "AlignmentType",
+    "AlignmentFormat",
 ]
