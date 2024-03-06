@@ -22,6 +22,7 @@ from treeflow.evolution import (
     AlignmentType,
     AlignmentFormat,
 )
+from treeflow.model import PhyloModel, phylo_model_to_joint_distribution
 
 __all__ = [
     "parse_newick",
@@ -31,4 +32,6 @@ __all__ = [
     "WeightedAlignment",
     "AlignmentType",
     "AlignmentFormat",
+    "PhyloModel",
+    "phylo_model_to_joint_distribution",
 ]

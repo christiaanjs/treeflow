@@ -187,7 +187,7 @@ def treeflow_vi(
     else:
         with open(model_file) as f:
             model_dict = yaml.safe_load(f)
-    phylo_model = model = PhyloModel(model_dict)
+    phylo_model = PhyloModel(model_dict)
     model = phylo_model_to_joint_distribution(
         phylo_model, tree, alignment, pattern_counts=pattern_counts
     )
