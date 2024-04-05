@@ -6,6 +6,7 @@ from collections import Counter
 from enum import Enum
 import numpy as np
 import tensorflow as tf
+from dendropy import DataParseError
 from dendropy.datamodel.charmatrixmodel import (
     DiscreteCharacterMatrix,
     NucleotideCharacterMatrix,
@@ -136,6 +137,10 @@ def encode_sequence_mapping(
     )
 
 
+class AlignmentParseError(ValueError):
+    pass
+
+
 class Alignment:
     """
     Class to represent a multiple sequence alignment
@@ -168,9 +173,12 @@ class Alignment:
             self._sequence_mapping = sequence_mapping
         elif fasta_file is not None:
             self.fasta_file = fasta_file
-            self._sequence_mapping = parse_fasta(
-                fasta_file, format=format, data_type=data_type
-            )
+            try:
+                self._sequence_mapping = parse_fasta(
+                    fasta_file, format=format, data_type=data_type
+                )
+            except DataParseError as ex:
+                raise AlignmentParseError(f"Error parsing alignment: {ex}")
         else:
             raise ValueError(
                 "Either `sequence_mapping` or `fasta_file` must be supplied"

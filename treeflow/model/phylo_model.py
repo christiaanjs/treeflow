@@ -59,10 +59,37 @@ prior_distribution_classes = dict(
 RELAXED_CLOCK_MODELS = {"relaxed_lognormal"}
 
 
+class PhyloModelParseError(ValueError):
+    pass
+
+
 class PhyloModel:
     """Class to represent the configuration of a basic phylogenetic model"""
 
+    @classmethod
+    def check_model_dict(
+        cls, model_dict: tp.Dict[str, tp.Union[str, tp.Dict[str, object]]]
+    ):
+        assert isinstance(
+            model_dict, dict
+        ), "Expected dictionary for model specification"
+        main_keys = {"tree", "clock", "substitution"}
+        key_set = set(model_dict.keys())
+        assert main_keys.issubset(
+            key_set
+        ), "Tree, clock, and substitution models required in specification"
+        extra_keys = key_set.difference(main_keys)
+        allowed_extra_keys = {"site"}
+        not_allowed_extra_keys = extra_keys.difference(allowed_extra_keys)
+        assert (
+            len(not_allowed_extra_keys) == 0
+        ), f"Unknown keys provided in model specification: {not_allowed_extra_keys}"
+
     def __init__(self, model_dict: tp.Dict[str, tp.Union[str, tp.Dict[str, object]]]):
+        try:
+            type(self).check_model_dict(model_dict)
+        except AssertionError as ex:
+            raise PhyloModelParseError(f"Error parsing model dict: {ex}")
         self.tree_model, self.tree_params = parse_model(model_dict["tree"])
         self.clock_model, self.clock_params = parse_model(model_dict["clock"])
         self.subst_model, self.subst_params = parse_model(model_dict["substitution"])
