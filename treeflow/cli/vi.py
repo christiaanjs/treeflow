@@ -173,6 +173,13 @@ def treeflow_vi(
     subnewick_format,
     alignment_format,
 ):
+    """
+    Perform fixed-topology variational Bayesian inference for a phylogenetic model
+    with a given tree topology and multiple sequence alignment.
+
+    The tree prior and substitution model used can be specified using the TreeFlow
+    YAML model definition format (see the package documentation).
+    """
     optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
     print(f"Parsing topology {topology}")

@@ -25,6 +25,8 @@ extensions = [
     "sphinxcontrib.napoleon",
     "myst_parser",
     "sphinx_click",
+    "nbsphinx",
+    "nbsphinx_link",
 ]
 
 templates_path = ["_templates"]
@@ -42,3 +44,13 @@ autodoc_member_order = "bysource"
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
+
+nbsphinx_prolog = """
+.. raw:: html
+
+    <style>
+        div.output_area.stderr {
+            display: none;
+        }
+    </style>
+"""

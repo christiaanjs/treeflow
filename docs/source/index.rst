@@ -13,6 +13,7 @@ TreeFlow: automatic differentiation and probabilistic modelling with phylogeneti
    modules
    cli
    model-definition
+   tutorials
 
 
 

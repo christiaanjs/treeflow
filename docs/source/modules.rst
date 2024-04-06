@@ -1,4 +1,4 @@
-TreeFlow API documentation
+API documentation
 ==========================
 
 .. toctree::

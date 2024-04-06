@@ -1,4 +1,4 @@
-TreeFlow command line interfaces
+Command line interfaces
 ================================
 
 .. toctree::

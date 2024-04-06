@@ -1,4 +1,4 @@
-# TreeFlow model definition format
+# Model definition format
 
 For an example model definition file, see [`examples/h3n2-model.yaml`](https://github.com/christiaanjs/treeflow/blob/master/examples/h3n2-model.yaml).
 
