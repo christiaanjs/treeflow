@@ -1,4 +1,5 @@
 import ete3
+from ete3.parser.newick import NewickError
 import numpy as np
 import dendropy
 from dendropy.dataio import nexusprocessing
@@ -23,6 +24,10 @@ def remove_zero_edges(
 
 
 _remove_zero_edges_func = remove_zero_edges
+
+
+class TreeParseError(ValueError):
+    pass
 
 
 def parse_newick(
@@ -50,9 +55,12 @@ def parse_newick(
     -------
     NumpyRootedTree
         Parsed TreeFlow tree composed of Numpy arrays
-    
+
     """
-    t = ete3.Tree(newick_file, format=subnewick_format)
+    try:
+        t = ete3.Tree(newick_file, format=subnewick_format)
+    except NewickError as ex:
+        raise TreeParseError(f"Error parsing tree: {ex}")
     ordered_nodes = sorted(t.traverse("postorder"), key=lambda n: not n.is_leaf())
 
     indices = {n: i for i, n in enumerate(ordered_nodes)}
@@ -94,8 +102,6 @@ def tensor_to_dendro(
     return dendropy.Tree(
         taxon_namespace=taxon_namespace, seed_node=nodes[-1], is_rooted=True
     )
-
-
 
 
 class CustomNewickWriter(dendropy.dataio.newickwriter.NewickWriter):

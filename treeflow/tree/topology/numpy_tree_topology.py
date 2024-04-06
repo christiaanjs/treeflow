@@ -58,11 +58,11 @@ class NumpyTreeTopology(NumpyTreeTopologyAttrs):
 
     # Methods to allow pickling
     def __getstate__(self):
-        return super().__getstate__() + (self._taxon_set,)
+        return (super().__getstate__(), self._taxon_set)
 
     def __setstate__(self, state):
-        super().__setstate__(state[:-1])
-        self._taxon_set = state[-1]
+        super().__setstate__(state[0])
+        self._taxon_set = state[1]
 
 
 __all__ = ["NumpyTreeTopology"]
