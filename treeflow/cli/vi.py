@@ -90,6 +90,7 @@ approximation_builders = dict(
         list(optimizer_builders.keys()),
     ),
     default=ROBUST_ADAM_KEY,
+    show_default=True,
 )
 @click.option(
     "--init-values",
@@ -110,7 +111,12 @@ approximation_builders = dict(
     type=click.Path(),
     help="Path to save parameter samples in CSV format",
 )
-@click.option("--tree-samples-output", required=False, type=click.Path())
+@click.option(
+    "--tree-samples-output",
+    required=False,
+    type=click.Path(),
+    help="Path to save tree samples to in Nexus format",
+)
 @click.option(
     "--n-output-samples",
     required=True,
