@@ -4,9 +4,8 @@ TreeFlow is a library for phylogenetic modelling and inference based on [TensorF
 
 ## Installation
 
-1. (Optional) Build and install [`bito`](https://github.com/phylovi/bito) for accelerated computations - not used in CLI
-2. Clone this repository and navigate to the cloned directory
-3. `pip install -e .`
+See [installation instructions](docs/source/installation.md)
+* (Optional) Build and install [`bito`](https://github.com/phylovi/bito) for accelerated computations - not used in CLI
 
 ## Citation
 

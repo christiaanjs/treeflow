@@ -12,8 +12,8 @@
         2. Follow the link that appears to Jupyter (`http://127.0.0.1:8888/lab?token=...`), changing the port if necessary
         3. To stop the process, use `docker kill {container}` (you can use `docker ps` to lookup the ID)
             * On Linux `docker ps | grep treeflow | awk '{print $1}' | xargs docker kill` will stop all TreeFlow containers
-    * To run a command line interface:
+    * To run one of [TreeFlow's command line applications](cli):
         * `docker run treeflow {command}`
-        * You may need to mount a data directory for input/output e.g. `docker run -v ../repo/data:data treeflow_vi -i data/alignment.fasta -t data/topology.nwk --tree-samples-output data/tree-results.nwk` 
+        * You may want to mount a data directory for input/output e.g. `docker run -v ../repo/data:data treeflow_vi -i data/alignment.fasta -t data/topology.nwk --tree-samples-output data/tree-results.nexus`
         
   
