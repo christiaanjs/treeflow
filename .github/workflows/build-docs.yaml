@@ -16,7 +16,7 @@ jobs:
           pip install .
       - name: Install pandoc
         run: |
-          apt install pandoc
+          sudo apt-get install pandoc
       - name: Sphinx build
         run: |
           cd docs
