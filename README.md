@@ -2,7 +2,7 @@
 
 TreeFlow is a library for phylogenetic modelling and inference based on [TensorFlow Probability](https://www.tensorflow.org/probability) (TFP).
 
-## Installation
+## Installation and getting started
 
 See [installation instructions](docs/source/installation.md)
 * (Optional) Build and install [`bito`](https://github.com/phylovi/bito) for accelerated computations - not used in CLI
