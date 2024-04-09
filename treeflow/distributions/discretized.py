@@ -8,7 +8,22 @@ from tensorflow_probability.python.internal import parameter_properties
 
 
 class DiscretizedDistribution(Distribution):
-    """A discrete distribution created by"""
+    """
+    A discrete distribution created by discretizing a continuous one by its quantiles
+
+    Parameters
+    ----------
+    category_count : tf.Tensor
+        Integer Tensor for number of categories to discretize distribution into
+    distribution : tfp.Distribution
+        Continuous univariate TensorFlow Probability distribution to discretize
+    epsilon : float
+        Tolerance for values in probability mas function
+    validate_args : bool
+        Argument passed to Distribution constructor
+    name : str
+        Argument passed to Distribution constructor (default: ``'Discretized' + distribution.name``)
+    """
 
     def __init__(
         self,

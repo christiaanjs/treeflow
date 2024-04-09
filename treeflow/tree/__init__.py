@@ -15,3 +15,5 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
     tree_from_arrays,
 )
 from treeflow.tree.io import parse_newick
+
+__all__ = ["parse_newick"]

@@ -11,7 +11,6 @@ from tensorflow_probability.python.internal import tensor_util
 from tensorflow_probability.python.util import ParameterProperties
 from tensorflow_probability.python.bijectors import softplus as softplus_bijector
 from tensorflow_probability.python.internal import dtype_util
-from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
 from treeflow.traversal.anchor_heights import get_anchor_heights_tensor
 
 COALESCENCE, SAMPLING, OTHER = -1, 1, 0
@@ -74,7 +73,7 @@ def _constant_coalescent_log_likelihood(
 class ConstantCoalescent(RootedTreeDistribution):
     def __init__(
         self,
-        taxon_count,
+        taxon_count: int,
         pop_size: tf.Tensor,
         sampling_times: tf.Tensor,
         validate_args=False,
@@ -82,6 +81,21 @@ class ConstantCoalescent(RootedTreeDistribution):
         name="ConstantCoalescent",
         tree_name: tp.Optional[str] = None,
     ):
+        """
+        Tree prior distribution based on a coalescent model with a constant population size and
+        serial sampling.
+
+        Parameters
+        ----------
+        taxon_count : int
+            Number of leaf taxa in the tree
+        pop_size : Tensor
+            Effective population size parameter (scalar, but can be vectorized over)
+        sampling_times : Tensor
+            Tensor of sampling times of size `taxon_count`
+        tree_name : str
+            Internal name assigned to this tree, separate to distribution name (can be used by TreeFlow)
+        """
         super().__init__(
             taxon_count=taxon_count,
             node_height_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
@@ -139,6 +153,8 @@ class ConstantCoalescent(RootedTreeDistribution):
         )
 
     def _default_event_space_bijector(self, topology: TensorflowTreeTopology):
+        from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
+
         return TreeRatioBijector(
             topology=topology,
             anchor_heights=get_anchor_heights_tensor(topology, self.sampling_times),

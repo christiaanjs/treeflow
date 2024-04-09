@@ -1,7 +1,7 @@
-TreeFlow API documentation
+API documentation
 ==========================
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 3
 
    treeflow

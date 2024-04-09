@@ -4,6 +4,7 @@ import tensorflow.keras.optimizers as keras_optimizers
 from treeflow.vi.optimizers.robust_optimizer import RobustOptimizer
 from treeflow.model.phylo_model import DEFAULT_TREE_VAR_NAME, PhyloModel
 from treeflow.tree.io import write_tensor_trees
+from treeflow.evolution.seqio import AlignmentFormat
 
 ADAM_KEY = "adam"
 ROBUST_ADAM_KEY = "robust_adam"
@@ -13,6 +14,9 @@ optimizer_builders = {
         keras_optimizers.Adam(*args, **kwargs)
     ),
 }
+
+ALIGNMENT_FORMATS = {format.value: format for format in AlignmentFormat}
+DEFAULT_ALIGNMENT_FORMAT = AlignmentFormat.FASTA.value
 
 EXAMPLE_PHYLO_MODEL_DICT = dict(
     tree=dict(coalescent=dict(pop_size=dict(exponential=dict(rate=0.1)))),
@@ -29,9 +33,27 @@ def parse_init_value(init_value_string: str) -> tp.Union[float, tp.List[float]]:
         return split
 
 
-def parse_init_values(init_values_string: str) -> tp.Dict[str, tf.Tensor]:
-    str_dict = dict(item.split("=") for item in init_values_string.split(","))
-    return {key: parse_init_value(value) for key, value in str_dict.items()}
+class InitialValueParseError(ValueError):
+    pass
+
+
+def parse_init_values(
+    init_values_string: str, model_names: tp.Optional[tp.Iterable[str]] = None
+) -> tp.Dict[str, tf.Tensor]:
+    try:
+        str_dict = dict(item.split("=") for item in init_values_string.split(","))
+        res = {key: parse_init_value(value) for key, value in str_dict.items()}
+    except ValueError as ex:
+        raise InitialValueParseError(f"Error parsing initial values: {ex}")
+
+    if model_names is not None:
+        extra_keys = set(res.keys()).difference(model_names)
+        if len(extra_keys) > 0:
+            raise InitialValueParseError(
+                f"Unknown parameters in initial values: {extra_keys}"
+            )
+
+    return res
 
 
 def get_tree_vars(model: PhyloModel) -> tp.Set[str]:

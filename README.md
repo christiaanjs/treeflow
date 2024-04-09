@@ -2,11 +2,10 @@
 
 TreeFlow is a library for phylogenetic modelling and inference based on [TensorFlow Probability](https://www.tensorflow.org/probability) (TFP).
 
-## Installation
+## Installation and getting started
 
-1. (Optional) Build and install [`bito`](https://github.com/phylovi/bito) for accelerated computations - not used in CLI
-2. Clone this repository and navigate to the cloned directory
-3. `pip install -e .`
+See [installation instructions](docs/source/installation.md)
+* (Optional) Build and install [`bito`](https://github.com/phylovi/bito) for accelerated computations - not used in CLI
 
 ## Citation
 
@@ -23,7 +22,7 @@ See [`examples/carnivores.ipynb`](examples/carnivores.ipynb) for a TreeFlow exam
 
 ### CLI
 
-TreeFlow has a command line interface for variational inference on a given tree topology with standard phylogenetic models. See [`docs/model-definition.md`](docs/model-definition.md) for documentation of the YAML model definition file format.
+TreeFlow has a command line interface for variational inference on a given tree topology with standard phylogenetic models. See [`docs/source/model-definition.md`](docs/source/model-definition.md) for documentation of the YAML model definition file format.
 
 ```
 treeflow_vi --help

@@ -3,6 +3,8 @@ import tensorflow as tf
 
 
 class FiniteDiscreteDistribution(Protocol):
+    """Interface for discrete probability distributions with a finite support"""
+
     @property
     def support(self) -> tf.Tensor:
         """Values that discrete distribution can take"""

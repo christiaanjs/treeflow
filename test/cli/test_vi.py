@@ -42,7 +42,7 @@ def test_vi(
         "--progress-bar" if progress_bar else "--no-progress-bar",
     ]
     if model_file is None:
-        init_values_string = "rate=0.01"
+        init_values_string = "clock_rate=0.01"
     else:
         args = args + ["-m", model_file]
         init_values_string = "pop_size=10"
@@ -54,6 +54,7 @@ def test_vi(
         args,
         catch_exceptions=False,
     )
+    assert res.exit_code == 0
     print(res.stdout)
     samples = pd.read_csv(samples_output_path)
     assert samples.shape[0] == n_output_samples

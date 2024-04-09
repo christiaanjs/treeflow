@@ -1,9 +1,0 @@
-- taxa: [Mustela_vison_, Gulo_gulo_]
-  range: [12.2, 27.6]
-  name: Guloninae, Mustilinae
-- taxa: [Neofelis_nebulosa_, Felis_silvestris_]
-  range: [14, 20]
-  name: Felidae
-- taxa: [Odobenus_rosmarus_, Erignathus_barbatus_]
-  range: [19, 34]
-  name: Pinnipedia

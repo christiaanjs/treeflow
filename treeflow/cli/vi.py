@@ -10,6 +10,7 @@ from treeflow.model.phylo_model import (
     phylo_model_to_joint_distribution,
     PhyloModel,
     DEFAULT_TREE_VAR_NAME,
+    PhyloModelParseError,
 )
 from treeflow.model.approximation import (
     get_fixed_topology_mean_field_approximation,
@@ -18,8 +19,8 @@ from treeflow.model.approximation import (
 )
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
-from treeflow.tree.io import parse_newick
-from treeflow.evolution.seqio import Alignment
+from treeflow.tree.io import parse_newick, TreeParseError
+from treeflow.evolution.seqio import Alignment, AlignmentParseError
 from treeflow.model.io import write_samples_to_file
 from treeflow.vi.convergence_criteria import NonfiniteConvergenceCriterion
 from treeflow.vi.util import VIResults
@@ -30,6 +31,9 @@ from treeflow.cli.inference_common import (
     EXAMPLE_PHYLO_MODEL_DICT,
     get_tree_vars,
     write_trees,
+    ALIGNMENT_FORMATS,
+    DEFAULT_ALIGNMENT_FORMAT,
+    InitialValueParseError,
 )
 
 convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
@@ -86,6 +90,7 @@ approximation_builders = dict(
         list(optimizer_builders.keys()),
     ),
     default=ROBUST_ADAM_KEY,
+    show_default=True,
 )
 @click.option(
     "--init-values",
@@ -106,7 +111,12 @@ approximation_builders = dict(
     type=click.Path(),
     help="Path to save parameter samples in CSV format",
 )
-@click.option("--tree-samples-output", required=False, type=click.Path())
+@click.option(
+    "--tree-samples-output",
+    required=False,
+    type=click.Path(),
+    help="Path to save tree samples to in Nexus format",
+)
 @click.option(
     "--n-output-samples",
     required=True,
@@ -134,6 +144,14 @@ approximation_builders = dict(
 )
 @click.option("--progress-bar/--no-progress-bar", default=True)
 @click.option(
+    "--alignment-format",
+    required=True,
+    type=click.Choice(list(ALIGNMENT_FORMATS.keys())),
+    default=DEFAULT_ALIGNMENT_FORMAT,
+    show_default=True,
+    help="File format for alignment",
+)
+@click.option(
     "--subnewick-format",
     type=int,
     required=True,
@@ -159,40 +177,65 @@ def treeflow_vi(
     elbo_samples,
     progress_bar,
     subnewick_format,
+    alignment_format,
 ):
+    """
+    Perform fixed-topology variational Bayesian inference for a phylogenetic model
+    with a given tree topology and multiple sequence alignment.
+
+    The tree prior and substitution model used can be specified using the TreeFlow
+    YAML model definition format (see the package documentation).
+    """
     optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
     print(f"Parsing topology {topology}")
-    tree = convert_tree_to_tensor(
-        parse_newick(topology, subnewick_format=subnewick_format)
-    )
+    try:
+        tree = convert_tree_to_tensor(
+            parse_newick(topology, subnewick_format=subnewick_format)
+        )
+    except TreeParseError as ex:
+        raise click.ClickException(str(ex))
 
     print(f"Parsing alignment {input}")
-    alignment = Alignment(input).get_compressed_alignment()
+    try:
+        alignment = Alignment(
+            input, format=ALIGNMENT_FORMATS[alignment_format]
+        ).get_compressed_alignment()
+    except AlignmentParseError as ex:
+        raise click.ClickException(str(ex))
     encoded_sequences = alignment.get_encoded_sequence_tensor(tree.taxon_set)
     pattern_counts = alignment.get_weights_tensor()
 
-    print(f"Parsing initial values...")
-    init_values_dict = (
-        None
-        if init_values is None
-        else {
-            key: tf.constant(value, dtype=DEFAULT_FLOAT_DTYPE_TF)
-            for key, value in parse_init_values(init_values).items()
-        }
-    )
-
+    print("Parsing model...")
     if model_file is None:
         model_dict = EXAMPLE_PHYLO_MODEL_DICT
     else:
         with open(model_file) as f:
             model_dict = yaml.safe_load(f)
-    phylo_model = model = PhyloModel(model_dict)
+    try:
+        phylo_model = PhyloModel(model_dict)
+    except PhyloModelParseError as ex:
+        raise click.ClickException(str(ex))
     model = phylo_model_to_joint_distribution(
         phylo_model, tree, alignment, pattern_counts=pattern_counts
     )
     pinned_model = model.experimental_pin(alignment=encoded_sequences)
     model_names = set(pinned_model._flat_resolve_names())
+
+    print(f"Parsing initial values...")
+    try:
+        init_values_dict = (
+            None
+            if init_values is None
+            else {
+                key: tf.constant(value, dtype=DEFAULT_FLOAT_DTYPE_TF)
+                for key, value in parse_init_values(
+                    init_values, model_names=model_names
+                ).items()
+            }
+        )
+    except InitialValueParseError as ex:
+        raise click.ClickException(str(ex))
 
     if init_values_dict is None:
         init_loc = None

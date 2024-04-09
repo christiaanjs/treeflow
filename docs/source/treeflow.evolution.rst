@@ -1,11 +1,16 @@
 treeflow.evolution package
 ==========================
 
+.. automodule:: treeflow.evolution
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    treeflow.evolution.calibration
    treeflow.evolution.substitution
@@ -13,18 +18,7 @@ Subpackages
 Submodules
 ----------
 
-treeflow.evolution.seqio module
--------------------------------
+.. toctree::
+   :maxdepth: 1
 
-.. automodule:: treeflow.evolution.seqio
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: treeflow.evolution
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   treeflow.evolution.seqio

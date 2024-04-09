@@ -1,5 +1,3 @@
-from platform import node
-from treeflow.tree import topology
 from treeflow.tree.rooted.base_rooted_tree import AbstractRootedTree
 from treeflow.tree.taxon_set import TaxonSet
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology

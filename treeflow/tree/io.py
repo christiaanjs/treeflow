@@ -1,6 +1,8 @@
 import ete3
+from ete3.parser.newick import NewickError
 import numpy as np
 import dendropy
+from dendropy.dataio import nexusprocessing
 from treeflow import DEFAULT_FLOAT_DTYPE_NP
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
 from treeflow.tree.taxon_set import DictTaxonSet
@@ -24,14 +26,41 @@ def remove_zero_edges(
 _remove_zero_edges_func = remove_zero_edges
 
 
+class TreeParseError(ValueError):
+    pass
+
+
 def parse_newick(
     newick_file: str,
     remove_zero_edges: bool = True,
     epsilon: float = _EPSILON,
     subnewick_format=0,
 ) -> NumpyRootedTree:
-    """Return leaves followed by nodes (postorder)"""
-    t = ete3.Tree(newick_file, format=subnewick_format)
+    """
+    Read a rooted TreeFlow Numpy tree from a Newick file
+
+    Parameters
+    ----------
+    newick_file : str
+        File to read tree from
+    remove_zero_edges : bool
+        Whether to expand zero-length edges (default: True)
+    epsilon : float
+        Value to expand zero-length edges to (default: 1e-6)
+    subnewick_format : int
+        Format passed to `ete3.Tree` (default: 0)
+        (see documentation at http://etetoolkit.org/docs/latest/reference/reference_tree.html)
+
+    Returns
+    -------
+    NumpyRootedTree
+        Parsed TreeFlow tree composed of Numpy arrays
+
+    """
+    try:
+        t = ete3.Tree(newick_file, format=subnewick_format)
+    except NewickError as ex:
+        raise TreeParseError(f"Error parsing tree: {ex}")
     ordered_nodes = sorted(t.traverse("postorder"), key=lambda n: not n.is_leaf())
 
     indices = {n: i for i, n in enumerate(ordered_nodes)}
@@ -73,9 +102,6 @@ def tensor_to_dendro(
     return dendropy.Tree(
         taxon_namespace=taxon_namespace, seed_node=nodes[-1], is_rooted=True
     )
-
-
-from dendropy.dataio import nexusprocessing
 
 
 class CustomNewickWriter(dendropy.dataio.newickwriter.NewickWriter):

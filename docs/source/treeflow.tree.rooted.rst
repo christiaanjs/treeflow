@@ -1,37 +1,17 @@
 treeflow.tree.rooted package
 ============================
 
-Submodules
-----------
-
-treeflow.tree.rooted.base\_rooted\_tree module
-----------------------------------------------
-
-.. automodule:: treeflow.tree.rooted.base_rooted_tree
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.tree.rooted.numpy\_rooted\_tree module
------------------------------------------------
-
-.. automodule:: treeflow.tree.rooted.numpy_rooted_tree
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.tree.rooted.tensorflow\_rooted\_tree module
-----------------------------------------------------
-
-.. automodule:: treeflow.tree.rooted.tensorflow_rooted_tree
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
 .. automodule:: treeflow.tree.rooted
    :members:
    :undoc-members:
    :show-inheritance:
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   treeflow.tree.rooted.base_rooted_tree
+   treeflow.tree.rooted.numpy_rooted_tree
+   treeflow.tree.rooted.tensorflow_rooted_tree

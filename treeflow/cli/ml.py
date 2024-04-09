@@ -11,15 +11,19 @@ from treeflow.cli.inference_common import (
     EXAMPLE_PHYLO_MODEL_DICT,
     get_tree_vars,
     write_trees,
+    ALIGNMENT_FORMATS,
+    DEFAULT_ALIGNMENT_FORMAT,
+    InitialValueParseError,
 )
 from treeflow.model.phylo_model import (
     phylo_model_to_joint_distribution,
     PhyloModel,
+    PhyloModelParseError,
     DEFAULT_TREE_VAR_NAME,
 )
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
-from treeflow.tree.io import parse_newick, write_tensor_trees
-from treeflow.evolution.seqio import Alignment
+from treeflow.tree.io import parse_newick, TreeParseError
+from treeflow.evolution.seqio import Alignment, AlignmentParseError
 from treeflow.model.io import write_samples_to_file
 from treeflow.model.ml import MLResults, fit_fixed_topology_maximum_likelihood_sgd
 
@@ -63,6 +67,22 @@ from treeflow.model.ml import MLResults, fit_fixed_topology_maximum_likelihood_s
     required=False,
     type=str,
 )
+@click.option(
+    "--alignment-format",
+    required=True,
+    type=click.Choice(list(ALIGNMENT_FORMATS.keys())),
+    default=DEFAULT_ALIGNMENT_FORMAT,
+    show_default=True,
+    help="File format for alignment",
+)
+@click.option(
+    "--subnewick-format",
+    type=int,
+    required=True,
+    default=0,
+    help="Subnewick format (see `ete3.Tree`)",
+    show_default=True,
+)
 @click.option("--trace-output", required=False, type=click.Path())
 @click.option("--variables-output", required=False, type=click.Path())
 @click.option("--tree-output", required=False, type=click.Path())
@@ -79,14 +99,32 @@ def treeflow_ml(
     variables_output,
     tree_output,
     progress_bar,
+    subnewick_format,
+    alignment_format,
 ):
+    """
+    Perform fixed-topology maximum likelihood inference for a phylogenetic model
+    with a given tree topology and multiple sequence alignment.
+
+    The tree prior and substitution model used can be specified using the TreeFlow
+    YAML model definition format (see the package documentation).
+    """
     optimizer = optimizer_builders[optimizer](learning_rate=learning_rate)
 
-    print(f"Parsing topology {topology}")
-    tree = convert_tree_to_tensor(parse_newick(topology))
+    try:
+        tree = convert_tree_to_tensor(
+            parse_newick(topology, subnewick_format=subnewick_format)
+        )
+    except TreeParseError as ex:
+        raise click.ClickException(str(ex))
 
     print(f"Parsing alignment {input}")
-    alignment = Alignment(input).get_compressed_alignment()
+    try:
+        alignment = Alignment(
+            input, format=ALIGNMENT_FORMATS[alignment_format]
+        ).get_compressed_alignment()
+    except AlignmentParseError as ex:
+        raise click.ClickException(str(ex))
     encoded_sequences = alignment.get_encoded_sequence_tensor(tree.taxon_set)
     pattern_counts = alignment.get_weights_tensor()
 
@@ -100,17 +138,36 @@ def treeflow_ml(
         }
     )
 
+    print("Parsing model...")
     if model_file is None:
         model_dict = EXAMPLE_PHYLO_MODEL_DICT
     else:
         with open(model_file) as f:
             model_dict = yaml.safe_load(f)
-    phylo_model = model = PhyloModel(model_dict)
+    try:
+        phylo_model = PhyloModel(model_dict)
+    except PhyloModelParseError as ex:
+        raise click.ClickException(str(ex))
     model = phylo_model_to_joint_distribution(
         phylo_model, tree, alignment, pattern_counts=pattern_counts
     )
     pinned_model = model.experimental_pin(alignment=encoded_sequences)
     model_names = set(pinned_model._flat_resolve_names())
+
+    print(f"Parsing initial values...")
+    try:
+        init_values_dict = (
+            None
+            if init_values is None
+            else {
+                key: tf.constant(value, dtype=DEFAULT_FLOAT_DTYPE_TF)
+                for key, value in parse_init_values(
+                    init_values, model_names=model_names
+                ).items()
+            }
+        )
+    except InitialValueParseError as ex:
+        raise click.ClickException(str(ex))
 
     if init_values_dict is None:
         init = None

@@ -1,0 +1,32 @@
+clock:
+  strict:
+    clock_rate:
+      lognormal:
+        loc: -2.0
+        scale: 2.0
+site:
+  discrete_gamma:
+    category_count: 4
+    site_gamma_shape:
+      lognormal:
+        loc: 0.0
+        scale: 1.0
+substitution:
+  hky:
+    kappa:
+      lognormal:
+        loc: 1.0
+        scale: 1.25
+    frequencies:
+      dirichlet:
+        concentration:
+        - 2.0
+        - 2.0
+        - 2.0
+        - 2.0
+tree:
+  coalescent:
+    pop_size:
+      lognormal:
+        loc: 1.0
+        scale: 1.5

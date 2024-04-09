@@ -21,7 +21,6 @@ from treeflow import DEFAULT_FLOAT_DTYPE_TF
 class TensorflowRootedTreeAttrs(
     AbstractRootedTree[tf.Tensor, tf.Tensor, TensorflowUnrootedTree]
 ):
-
     node_heights: tf.Tensor
     sampling_times: tf.Tensor
     topology: TensorflowTreeTopology
@@ -79,6 +78,22 @@ class TensorflowRootedTree(TensorflowRootedTreeAttrs):
 def convert_tree_to_tensor(
     numpy_tree: NumpyRootedTree, height_dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF
 ) -> TensorflowRootedTree:
+    """
+    Convert a TreeFlow tree composed to Numpy arrays to one composed of TensorFlow
+    Tensors
+
+    Parameters
+    ----------
+    numpy_tree : NumpyRootedTree
+        Tree to convert
+    height_dtype : tf.DType
+        TensorFlow datatype to use for tree times (defaults to TreeFlow default)
+
+    Returns
+    -------
+    TensorflowRootedTree
+        Tree with arrays converted to Tensors
+    """
     topology = numpy_topology_to_tensor(numpy_tree.topology)
     return TensorflowRootedTree(
         sampling_times=tf.convert_to_tensor(
@@ -96,7 +111,6 @@ def tree_from_arrays(
     taxon_set: tp.Optional[TaxonSet] = None,
     height_dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF,
 ) -> TensorflowRootedTree:
-
     node_heights_np = (
         node_heights.numpy() if isinstance(node_heights, tf.Tensor) else node_heights
     )

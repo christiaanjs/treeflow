@@ -1,10 +1,13 @@
 import pytest
+import yaml
 import numpy as np
 import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree import TensorflowRootedTree
 from treeflow.evolution import Alignment, get_transition_probabilities_tree, JC
-from treeflow.distributions import ConstantCoalescent, LeafCTMC
+from treeflow.distributions.tree import ConstantCoalescent
+from treeflow.distributions import LeafCTMC
+from treeflow.model.phylo_model import phylo_model_to_joint_distribution, PhyloModel
 from treeflow.model.approximation import get_fixed_topology_mean_field_approximation
 from treeflow.vi import estimate_log_ml_importance_sampling
 from tensorflow_probability.python.distributions import (
@@ -46,6 +49,33 @@ def test_marginal_likelihood(
     )
     model_pinned = model.experimental_pin(
         sequences=hello_alignment.get_encoded_sequence_tensor(
+            hello_tensor_tree.taxon_set
+        )
+    )
+    approx, variable_dict = get_fixed_topology_mean_field_approximation(
+        model_pinned, dict(tree=hello_tensor_tree.topology)
+    )
+    res = estimate_log_ml_importance_sampling(
+        model_pinned, approx, n_samples=10, vectorize_log_prob=vectorize_log_prob
+    )
+    assert tuple(res.shape) == ()
+    assert np.isfinite(res.numpy())
+
+
+def test_marginal_likelihood_joint_distribution_coroutine(
+    hello_alignment: Alignment,
+    hello_tensor_tree: TensorflowRootedTree,
+    actual_model_file,
+):
+    vectorize_log_prob = False
+
+    with open(actual_model_file) as f:
+        model_dict = yaml.safe_load(f)
+    model = phylo_model_to_joint_distribution(
+        PhyloModel(model_dict), hello_tensor_tree, hello_alignment
+    )
+    model_pinned = model.experimental_pin(
+        alignment=hello_alignment.get_encoded_sequence_tensor(
             hello_tensor_tree.taxon_set
         )
     )

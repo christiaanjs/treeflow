@@ -5,7 +5,10 @@ from typing_extensions import Protocol
 
 class TaxonSet(Protocol):
     """
-    Interface for taxon sets.
+    Interface representing a taxon set.
+
+    A TaxonSet is an ordered set of taxon names, usually associated with
+    the ordered leaves of a phylogenetic tree.
     """
 
     def __init__(self, taxa: tp.Iterable[str]):
@@ -26,8 +29,11 @@ class TaxonSet(Protocol):
 
 class DictTaxonSet(tp.Dict[str, None]):
     """
-    Dict-based taxon set.
-    Dictionary is used an ordered set (of keys)
+    Taxon set implementation based on the built-in dictionary type.
+
+    An TaxonSet is an ordered set of taxon names, usually associated with
+    the ordered leaves of a phylogenetic tree.
+    The dictionary is used as an ordered set - the keys are the taxon names.
     """
 
     def __init__(self, taxa: tp.Iterable[str]):
@@ -54,8 +60,14 @@ class DictTaxonSet(tp.Dict[str, None]):
 
 class TupleTaxonSet(tp.Tuple[str, ...]):
     """
-    Tuple-based taxon set.
-    Required for AutoCompositeTensor.
+    Taxon set implementation based on the built-in tuple type.
+
+    An TaxonSet is an ordered set of taxon names, usually associated with
+    the ordered leaves of a phylogenetic tree.
+    This implementation is required for some TensorFlow functionality.
     """
 
     pass
+
+
+__all__ = ["TaxonSet", "DictTaxonSet", "TupleTaxonSet"]

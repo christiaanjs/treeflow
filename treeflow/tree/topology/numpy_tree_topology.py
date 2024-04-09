@@ -16,6 +16,16 @@ class NumpyTreeTopologyAttrs(AbstractTreeTopology[np.ndarray, int]):
 
 
 class NumpyTreeTopology(NumpyTreeTopologyAttrs):
+    """
+    Class representing a bifurcating tree topology as a composition of integer
+    NumPy arrays.
+
+    For a phylogenetic tree with ``n`` taxa at the leaves, the representation
+    maintains a labelling of the ``1n-1`` nodes with integer indices. The labelling
+    convention is that the leaves are the first ``n`` indices and the root is at the
+    last index (``2n-2``).
+    """
+
     def __init__(
         self, parent_indices: np.ndarray, taxon_set: tp.Optional[TaxonSet] = None
     ):
@@ -48,8 +58,11 @@ class NumpyTreeTopology(NumpyTreeTopologyAttrs):
 
     # Methods to allow pickling
     def __getstate__(self):
-        return super().__getstate__() + (self._taxon_set,)
+        return (super().__getstate__(), self._taxon_set)
 
     def __setstate__(self, state):
-        super().__setstate__(state[:-1])
-        self._taxon_set = state[-1]
+        super().__setstate__(state[0])
+        self._taxon_set = state[1]
+
+
+__all__ = ["NumpyTreeTopology"]

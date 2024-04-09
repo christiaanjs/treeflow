@@ -1,11 +1,16 @@
 treeflow.tree package
 =====================
 
+.. automodule:: treeflow.tree
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    treeflow.tree.rooted
    treeflow.tree.topology
@@ -14,34 +19,9 @@ Subpackages
 Submodules
 ----------
 
-treeflow.tree.base\_tree module
--------------------------------
+.. toctree::
+   :maxdepth: 1
 
-.. automodule:: treeflow.tree.base_tree
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.tree.io module
------------------------
-
-.. automodule:: treeflow.tree.io
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-treeflow.tree.taxon\_set module
--------------------------------
-
-.. automodule:: treeflow.tree.taxon_set
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: treeflow.tree
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   treeflow.tree.base_tree
+   treeflow.tree.io
+   treeflow.tree.taxon_set

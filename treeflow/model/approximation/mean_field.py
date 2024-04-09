@@ -116,6 +116,7 @@ def get_mean_field_approximation(
     ] = get_default_event_space_bijector,
     event_shape_fn: tp.Callable[[tfd.JointDistribution], object] = event_shape_fn,
     seed=None,
+    var_name_prefix="",
 ) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Variable]]:
     (
         event_shape_and_space_bijector,
@@ -142,7 +143,7 @@ def get_mean_field_approximation(
                     batch_and_event_shape=s,
                     parameter_dtype=dtype,
                     seed=seed,
-                    var_name_prefix=name + "_",
+                    var_name_prefix=var_name_prefix + name + "_",
                 ),
                 reinterpreted_batch_ndims=tensorshape_util.rank(s),
             )
@@ -164,6 +165,7 @@ def get_fixed_topology_mean_field_approximation(
     topology_pins: tp.Dict[str, TensorflowTreeTopology],
     init_loc=None,
     dtype=DEFAULT_FLOAT_DTYPE_TF,
+    var_name_prefix="",
 ) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Tensor]]:
     bijector_func = partial(
         get_fixed_topology_joint_bijector, topology_pins=topology_pins
@@ -177,4 +179,5 @@ def get_fixed_topology_mean_field_approximation(
         dtype=dtype,
         joint_bijector_func=bijector_func,
         event_shape_fn=event_shape_fn,
+        var_name_prefix=var_name_prefix,
     )
