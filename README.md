@@ -2,9 +2,15 @@
 
 TreeFlow is a library for phylogenetic modelling and inference based on [TensorFlow Probability](https://www.tensorflow.org/probability) (TFP).
 
+It also includes [command line interfaces](https://treeflow.readthedocs.io/en/latest/cli.html) for fixed-topology phylogenetic inference.
+
+## Documentation
+
+[Online manual: tutorials, API documentation, CLI description](https://treeflow.readthedocs.io/en/latest/)
+
 ## Installation and getting started
 
-See [installation instructions](docs/source/installation.md)
+See [installation instructions](https://treeflow.readthedocs.io/en/latest/installation.html)
 * (Optional) Build and install [`bito`](https://github.com/phylovi/bito) for accelerated computations - not used in CLI
 
 ## Citation
@@ -13,52 +19,9 @@ If you want to cite or read about TreeFlow, please see the paper:
 
 Christiaan Swanepoel, Mathieu Fourment, Xiang Ji, Hassan Nasif, Marc A Suchard, Frederick A Matsen IV, Alexei Drummond. ["TreeFlow: probabilistic programming and automatic differentiation for phylogenetics"](https://arxiv.org/abs/2211.05220). arXiv preprint arXiv:2211.05220 (2022).
 
-## Usage
-
-### Python API
-
-See the TFP documentation for examples of probabilistic programming and inference.
-See [`examples/carnivores.ipynb`](examples/carnivores.ipynb) for a TreeFlow example.
-
-### CLI
-
-TreeFlow has a command line interface for variational inference on a given tree topology with standard phylogenetic models. See [`docs/source/model-definition.md`](docs/source/model-definition.md) for documentation of the YAML model definition file format.
-
-```
-treeflow_vi --help
-
-Usage: treeflow_vi [OPTIONS]
-
-Options:
-  -i, --input PATH                Alignment file (FASTA format)  [required]
-  -t, --topology PATH             Topology file  [required]
-  -m, --model-file PATH           YAML model definition file
-  -n, --num-steps INTEGER         Number of VI iterations  [default: 40000;
-                                  required]
-  -o, --optimizer [adam|robust_adam]
-                                  [required]
-  --init-values TEXT              Initial values in the format 'scalar_paramet
-                                  er=value1,vector_parameter=value2a|value2b'
-  -s, --seed INTEGER
-  --trace-output PATH             Path to save pickled optimization trace
-  --samples-output PATH           Path to save parameter samples in CSV format
-  --tree-samples-output PATH
-  --n-output-samples INTEGER      Number of samples to use for outputs
-                                  [default: 200; required]
-  -r, --learning-rate FLOAT       [default: 0.001; required]
-  -c, --convergence-criterion [nonfinite]
-  --elbo-samples INTEGER RANGE    Number of samples to use in displayed
-                                  estimate of evidence lower bound  [default:
-                                  100; x>=1; required]
-  --progress-bar / --no-progress-bar
-  --subnewick-format INTEGER      Subnewick format (see `ete3.Tree`)
-                                  [default: 0; required]
-  --help                          Show this message and exit.
-```
-
 ## Unit tests
 
-1. `pip install ".test"`
+1. `pip install -r dev/requirements.txt`
 2. `pytest`
 
 Note tests for acceleration and the benchmark CLI will fail if the extra dependencies for those components are not installed (and `bito` cannot yet be installed with `pip`)
