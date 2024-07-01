@@ -14,6 +14,6 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
     convert_tree_to_tensor,
     tree_from_arrays,
 )
-from treeflow.tree.io import parse_newick
+from treeflow.tree.io import parse_newick, write_tensor_trees
 
-__all__ = ["parse_newick"]
+__all__ = ["parse_newick", "convert_tree_to_tensor", "write_tensor_trees"]

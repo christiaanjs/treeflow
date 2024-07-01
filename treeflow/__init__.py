@@ -15,7 +15,7 @@ from treeflow.tf_util import (
     DEFAULT_FLOAT_DTYPE_NP,
     float_constant,
 )
-from treeflow.tree import parse_newick, convert_tree_to_tensor
+from treeflow.tree import parse_newick, convert_tree_to_tensor, write_tensor_trees
 from treeflow.evolution import (
     Alignment,
     WeightedAlignment,
@@ -34,4 +34,5 @@ __all__ = [
     "AlignmentFormat",
     "PhyloModel",
     "phylo_model_to_joint_distribution",
+    "write_tensor_trees",
 ]

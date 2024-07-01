@@ -1,9 +1,12 @@
+import typing as tp
 import ete3
 from ete3.parser.newick import NewickError
 import numpy as np
 import dendropy
 from dendropy.dataio import nexusprocessing
+import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_NP
+from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
 from treeflow.tree.taxon_set import DictTaxonSet
 
@@ -86,7 +89,11 @@ def parse_newick(
 
 
 def tensor_to_dendro(
-    topology, taxon_namespace, taxon_names, branch_lengths, branch_metadata={}
+    topology: NumpyTreeTopology,
+    taxon_namespace: dendropy.TaxonNamespace,
+    taxon_names: tp.Sequence[str],
+    branch_lengths: tp.Sequence[float],
+    branch_metadata: tp.Optional[tp.Dict[str, tp.Sequence[float]]] = None,
 ):
     taxon_count = len(taxon_names)
     leaves = [
@@ -95,8 +102,9 @@ def tensor_to_dendro(
     nodes = leaves + [dendropy.Node() for _ in range(taxon_count - 1)]
     for i, node in enumerate(nodes[:-1]):
         node.edge_length = branch_lengths[i]
-        for key, value in branch_metadata.items():
-            node.annotations[key] = value[i]
+        if branch_metadata is not None:
+            for key, value in branch_metadata.items():
+                node.annotations[key] = value[i]
         parent = nodes[topology.parent_indices[i]]
         parent.add_child(node)
     return dendropy.Tree(
@@ -153,14 +161,28 @@ class CustomNexusWriter(dendropy.dataio.nexuswriter.NexusWriter):
         self._newick_writer = CustomNewickWriter(**newick_kwargs)
 
 
-def fit_successful(variational_fit):
-    return np.isfinite(variational_fit["loss"]).all()
+def write_tensor_trees(
+    topology_file: str,
+    branch_lengths: tf.Tensor,
+    output_file: str,
+    branch_metadata: tp.Optional[tp.Mapping[str, tf.Tensor]] = None,
+):
+    """
+    Write a collection of Tensor tree branch lengths, and possibly branch metadata,
+    to a Nexus file
 
-
-NUMERICAL_ISSUE_N = 2
-
-
-def write_tensor_trees(topology_file, branch_lengths, output_file, branch_metadata={}):
+    Parameters
+    ----------
+    topology_file : str
+        Newick file to read tree topology from
+    branch_lengths : Tensor
+        Tensor of branch lengths with dimensions (num_samples, num_branches)
+    output_file : str
+        File to write trees to in Nexus format
+    branch_metadata : Mapping[str, Tensor] (optional)
+        Mapping from keys to Tensors with dimensions (num_samples, num_branches)
+        containing branch metadata
+    """
     taxon_namespace = dendropy.Tree.get(
         path=topology_file, schema="newick", preserve_underscores=True
     ).taxon_namespace
@@ -172,9 +194,11 @@ def write_tensor_trees(topology_file, branch_lengths, output_file, branch_metada
                 taxon_namespace,
                 tree.taxon_set,
                 branch_lengths[i],
-                branch_metadata={
-                    key: value[i] for key, value in branch_metadata.items()
-                },
+                branch_metadata=(
+                    None
+                    if branch_metadata is None
+                    else {key: value[i] for key, value in branch_metadata.items()}
+                ),
             )
             for i in range(branch_lengths.shape[0])
         ],

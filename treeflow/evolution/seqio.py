@@ -46,7 +46,6 @@ class AlignmentFormat(Enum):
     """Enum to represent the file format of a multiple sequence alignment"""
 
     FASTA = "fasta"
-    NEWICK = "newick"
     NEXUS = "nexus"
     NEXML = "nexml"
     PHYLIP = "phylip"

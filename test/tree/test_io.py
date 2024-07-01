@@ -1,11 +1,14 @@
-from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
-from treeflow.tree.taxon_set import TupleTaxonSet
-import pytest
+import typing as tp
 from pathlib import Path
-from treeflow.tree.io import parse_newick, remove_zero_edges
+import pytest
 import numpy as np
 from numpy.testing import assert_allclose
+import tensorflow as tf
 
+from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
+from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
+from treeflow.tree.taxon_set import TupleTaxonSet
+from treeflow.tree.io import parse_newick, remove_zero_edges, write_tensor_trees
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 
 data_dir = Path("test/data")
@@ -47,3 +50,36 @@ def test_remove_zero_edges():
     tree = NumpyRootedTree(heights, topology=NumpyTreeTopology(parent_indices))
     res = remove_zero_edges(tree, epsilon=epsilon)
     assert_allclose(res.heights, expected_heights)
+
+
+@pytest.mark.parametrize("branch_metadata_keys", [None, ["foo"]])
+def test_write_tensor_trees(
+    hello_newick_file: str,
+    hello_tensor_tree: TensorflowRootedTree,
+    tmp_path: Path,
+    branch_metadata_keys: tp.Optional[tp.List[str]],
+):
+    vec_branch_lengths = (
+        tf.expand_dims(
+            tf.range(1, 5, dtype=hello_tensor_tree.branch_lengths.dtype) / 7.0, -1
+        )
+        * hello_tensor_tree.branch_lengths
+    )
+    if branch_metadata_keys is None:
+        branch_metadata = {}
+    else:
+        branch_metadata = {
+            key: vec_branch_lengths * float(i + 2)
+            for i, key in enumerate(branch_metadata_keys)
+        }
+        print(branch_metadata)
+    output_file = tmp_path / "foo.nexus"
+    write_tensor_trees(
+        hello_newick_file,
+        vec_branch_lengths,
+        output_file,
+        branch_metadata=branch_metadata,
+    )
+
+    with open(output_file) as f:
+        print(f.read())
