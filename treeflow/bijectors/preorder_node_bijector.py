@@ -141,9 +141,10 @@ class PreorderNodeBijector(Bijector):
         )
 
         return tf.nest.map_structure(
-            lambda nonroot_elem, root_elem: tf.concat(
-                [nonroot_elem, tf.expand_dims(root_elem, -1)], -1
+            lambda nonroot_elem, root_elem, event_ndims: tf.concat(
+                [nonroot_elem, tf.expand_dims(root_elem, -1)], -(event_ndims + 1)
             ),
             nonroot_x_values,
             root_x_values,
+            self._forward_event_ndims,
         )

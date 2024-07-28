@@ -218,4 +218,5 @@ def get_cascading_flows_tree_approximation(
         Normal(tf.constant(0.0, dtype=dtype), tf.constant(1.0, dtype=dtype)),
         unflat_shape,
     )
-    return TransformedDistribution(base_dist, chain_bijector)
+    dist = TransformedDistribution(base_dist, chain_bijector)
+    return dist
