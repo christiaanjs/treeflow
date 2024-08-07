@@ -53,15 +53,25 @@ def build_highway_L(L_offdiag: tf.Tensor) -> tf.Tensor:
     return L
 
 
-def build_highway_lambd(lambd_logit: tf.Tensor, k: int, aux_k: tp.Optional[int] = None):
-    print(f"Running builder on type {type(lambd_logit)}")
+def build_highway_lambd(
+    lambd_logit: tf.Tensor,
+    k: int,
+    aux_k: tp.Optional[int] = None,
+    lambd_broadcast_shape: tp.Optional[tf.Tensor] = None,
+):
     lambd = Sigmoid().forward(lambd_logit)
     if aux_k is None:
-        return lambd
+        lambd_with_aux = lambd
     else:
         # Don't gate auxiliary variables
         aux_lambd_shape = tf.concat([tf.shape(lambd_logit)[:-1], [aux_k]], axis=0)
-        return tf.concat([lambd, tf.zeros(aux_lambd_shape, dtype=lambd.dtype)], axis=-1)
+        lambd_with_aux = tf.concat(
+            [lambd, tf.zeros(aux_lambd_shape, dtype=lambd.dtype)], axis=-1
+        )
+    if lambd_broadcast_shape is None:
+        return lambd_with_aux
+    else:
+        return tf.broadcast_to(lambd_with_aux, lambd_broadcast_shape)
 
 
 @attr.s(auto_attribs=True, init=False)
@@ -80,6 +90,8 @@ class HighwayFlowParametersFromUnconstrained(HighwayFlowParameters, tf.Module):
         bias_L: tp.Optional[tf.Tensor] = None,
         lambd: tp.Optional[tf.Tensor] = None,
         k: tp.Optional[int] = None,
+        aux_k: tp.Optional[int] = None,
+        lambd_broadcast_shape: tp.Optional[tf.Tensor] = None,
         U_diag_inv_softplus: tp.Optional[tf.Tensor] = None,
         U_offdiag: tp.Optional[tf.Tensor] = None,
         L_offdiag: tp.Optional[tf.Tensor] = None,
@@ -105,7 +117,9 @@ class HighwayFlowParametersFromUnconstrained(HighwayFlowParameters, tf.Module):
         if lambd is None:
             self._lambd_logit = lambd_logit
             self._k = k
-            lambd = self._build_attribute(build_highway_lambd, lambd_logit, k, None)
+            lambd = self._build_attribute(
+                build_highway_lambd, lambd_logit, k, aux_k, lambd_broadcast_shape
+            )
         else:
             self._lambd_logit = None
             self._k = None
@@ -127,16 +141,19 @@ def get_trainable_highway_flow_parameters(
     aux_k: tp.Optional[int] = None,
     prefix="",
     lambd_init=1.0 - 1e-6,
+    lambd_batch_shape: tp.Optional[tf.Tensor] = None,
     dtype=DEFAULT_FLOAT_DTYPE_TF,
     kernel_initializer: tp.Optional[tf.keras.initializers.Initializer] = None,
     bias_initializer: tp.Optional[tf.keras.initializers.Initializer] = None,
     defer=True,
 ) -> HighwayFlowParameters:
+    if lambd_batch_shape is None:
+        lambd_batch_shape = batch_shape
     batch_and_k = tf.concat([batch_shape, [k]], axis=0)
-    if aux_k is None:
-        lambd_shape = batch_and_k
+    if aux_k is None:  # TODO: Allow shared lambd between layers
+        lambd_shape = tf.concat([lambd_batch_shape, [k]], axis=0)
     else:
-        lambd_shape = tf.concat([batch_shape, [k - aux_k]], axis=0)
+        lambd_shape = tf.concat([lambd_batch_shape, [k - aux_k]], axis=0)
 
     lambd_tensor = tf.broadcast_to(
         tf.convert_to_tensor(lambd_init, dtype=dtype), lambd_shape
@@ -166,6 +183,8 @@ def get_trainable_highway_flow_parameters(
     bias_L = tf.Variable(bias_initializer(batch_and_k, dtype), name=f"{prefix}L_bias")
     return HighwayFlowParametersFromUnconstrained(
         k=k,
+        aux_k=aux_k,
+        lambd_broadcast_shape=batch_and_k,
         U_diag_inv_softplus=U_diag_inv_softplus,
         U_offdiag=U_offdiag,
         bias_U=bias_U,
@@ -185,11 +204,16 @@ def get_cascading_flows_tree_approximation(
 ) -> Distribution:
     dtype = tree.node_heights.dtype
     batch_shape = tf.stack([len(activation_functions), tree.taxon_count - 1])
+    lambd_batch_shape = tf.expand_dims(tree.taxon_count - 1, 0)
 
     if parameter_kwargs is None:
         parameter_kwargs = {}
     parameters = get_trainable_highway_flow_parameters(
-        2, batch_shape, prefix=f"{name}_", **parameter_kwargs
+        2,
+        batch_shape=batch_shape,
+        prefix=f"{name}_",
+        lambd_batch_shape=lambd_batch_shape,
+        **parameter_kwargs,
     )
 
     flow_bijector = HighwayFlowNodeBijector(

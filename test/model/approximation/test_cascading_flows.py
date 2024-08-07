@@ -1,6 +1,10 @@
 import numpy as np
 import pytest
 import tensorflow as tf
+from tensorflow_probability.python.bijectors import (
+    Sigmoid,
+    Identity,
+)
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 from treeflow.model.approximation.cascading_flows import (
     get_cascading_flows_tree_approximation,
@@ -11,7 +15,10 @@ from treeflow.model.approximation.cascading_flows import (
 def test_get_cascading_flows_tree_approximation(
     hello_tensor_tree: TensorflowRootedTree, function_mode: bool
 ):
-    approx = get_cascading_flows_tree_approximation(hello_tensor_tree)
+    activation_functions = [Sigmoid(), Sigmoid(), Identity()]
+    approx = get_cascading_flows_tree_approximation(
+        hello_tensor_tree, activation_functions=activation_functions
+    )
     trainable_variables = approx.trainable_variables
     sample_shape = (4,)
 
