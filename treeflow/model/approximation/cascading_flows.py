@@ -7,13 +7,12 @@ from tensorflow_probability.python.distributions import (
     Normal,
     Sample,
     TransformedDistribution,
+    JointDistribution,
 )
-from tensorflow_probability.python.util import DeferredTensor
 from tensorflow_probability.python.experimental.util import DeferredModule
 from tensorflow_probability.python.math import fill_triangular
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
-from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.bijectors.highway_flow import (
     HIGHWAY_FLOW_PARAMETER_EVENT_NDIMS,
     HighwayFlowParameters,
@@ -244,3 +243,9 @@ def get_cascading_flows_tree_approximation(
     )
     dist = TransformedDistribution(base_dist, chain_bijector)
     return dist
+
+
+def get_cascading_flows_approximation(
+    model: JointDistribution,
+) -> tp.Tuple[Distribution, tp.Dict[str, tf.Variable]]:
+    tf.Variable

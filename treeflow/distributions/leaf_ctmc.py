@@ -94,7 +94,7 @@ class LeafCTMC(Distribution):
             raise NotImplementedError("Topology batching not yet supported")
         else:
             return phylogenetic_likelihood(
-                x_b,
+                tf.cast(x_b, transition_probs.dtype),
                 transition_probs,
                 self.frequencies,
                 self.transition_probs_tree.topology.postorder_node_indices,
