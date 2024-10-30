@@ -1,6 +1,7 @@
 import yaml
 import tensorflow as tf
 from tensorflow_probability.python.distributions import (
+    Dirichlet,
     Normal,
     LogNormal,
     JointDistributionNamed,
@@ -14,7 +15,12 @@ from treeflow import (
     Alignment,
 )
 from treeflow.distributions.tree import ConstantCoalescent
-from treeflow.model.approximation.dependencies import get_named_dependencies
+from treeflow.model.approximation.dependencies import (
+    find_dependencies,
+    get_named_dependencies,
+    get_inverse_dependencies,
+    joint_distribution_from_dependency_graph,
+)
 
 
 def ct(x):
@@ -77,3 +83,43 @@ def test_get_named_dependencies_from_phylo_model(
         ],
     }
     check_deps(dependencies, expected)
+
+
+def test_get_inverse_dependencies():
+    dependencies = [[], [0], [0, 1], [], [2, 3]]
+    inverse_dependencies = get_inverse_dependencies(dependencies)
+    expected = [[1, 2], [2], [4], [4], []]
+    assert len(inverse_dependencies) == len(expected)
+    for var_inverse_deps, expected_deps in zip(inverse_dependencies, expected):
+        assert set(var_inverse_deps) == set(expected_deps)
+
+
+def test_joint_distribution_from_dependency_graph():
+    flat_event_size = [3, 1, 2, 4, 1]
+    dependencies = [[], [0], [], [1, 2], [0, 1, 3]]
+    dep_sizes = [
+        sum([flat_event_size[dep] for dep in var_deps]) for var_deps in dependencies
+    ]
+    weights = [
+        (
+            Dirichlet(tf.ones(dep_size + 1, dtype=DEFAULT_FLOAT_DTYPE_TF)).sample(
+                size, seed=i
+            )
+            if dep_size > 0
+            else None
+        )
+        for i, (size, dep_size) in enumerate(zip(flat_event_size, dep_sizes))
+    ]
+    dist = joint_distribution_from_dependency_graph(
+        flat_event_size, dependencies, weights
+    )
+    event_shape = dist.event_shape
+    assert isinstance(event_shape, list)
+    assert tuple([tuple(x.as_list()) for x in event_shape]) == tuple(
+        [(x,) for x in flat_event_size]
+    )
+
+    actual_deps = find_dependencies(dist)
+    assert tuple([tuple(x) for x in actual_deps]) == tuple(
+        [tuple(x) for x in dependencies]
+    )

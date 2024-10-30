@@ -25,18 +25,21 @@ from tensorflow_probability.python.internal.trainable_state_util import (
 )
 
 
+def single_variable_base_distribution(
+    flat_event_size: int, dtype=DEFAULT_FLOAT_DTYPE_TF
+):
+    return tfd.Sample(
+        tfd.Normal(
+            loc=tf.constant(0.0, dtype=dtype),
+            scale=tf.constant(1.0, dtype=dtype),
+        ),
+        flat_event_size,
+    )
+
+
 def get_base_distribution(flat_event_size, dtype=DEFAULT_FLOAT_DTYPE_TF):
     base_standard_dist = tfd.JointDistributionSequential(
-        [
-            tfd.Sample(
-                tfd.Normal(
-                    loc=tf.constant(0.0, dtype=dtype),
-                    scale=tf.constant(1.0, dtype=dtype),
-                ),
-                s,
-            )
-            for s in flat_event_size
-        ]
+        [single_variable_base_distribution(s, dtype=dtype) for s in flat_event_size]
     )
     return base_standard_dist
 
@@ -91,9 +94,9 @@ def make_trainable(
         # things out.
         params_as_variables.append(
             tf.nest.map_structure(
-                lambda t, n=name: t
-                if t is None
-                else tf.Variable(t, name=var_name_prefix + n),
+                lambda t, n=name: (
+                    t if t is None else tf.Variable(t, name=var_name_prefix + n)
+                ),
                 value,
                 expand_composites=True,
             )

@@ -1,11 +1,19 @@
 import typing as tp
 import attr
 import tensorflow as tf
-from tensorflow_probability.python.bijectors import Sigmoid, Softplus, Chain, Reshape
+from tensorflow_probability.python.bijectors import (
+    Bijector,
+    Sigmoid,
+    Softplus,
+    Chain,
+    Reshape,
+    SoftmaxCentered,
+)
 from tensorflow_probability.python.distributions import (
     Distribution,
     Normal,
     Sample,
+    Independent,
     TransformedDistribution,
     JointDistribution,
 )
@@ -24,6 +32,11 @@ from treeflow.bijectors.highway_flow_node_bijector import (
 from treeflow.bijectors.fixed_topology_bijector import FixedTopologyRootedTreeBijector
 from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioChainBijector
 from treeflow.traversal.anchor_heights import get_anchor_heights_tensor
+from treeflow.model.approximation.dependencies import (
+    find_dependencies,
+    get_inverse_dependencies,
+    joint_distribution_from_dependency_graph,
+)
 
 
 def build_highway_U(U_diag_inv_softplus: tf.Tensor, U_offdiag: tf.Tensor) -> tf.Tensor:
@@ -247,5 +260,15 @@ def get_cascading_flows_tree_approximation(
 
 def get_cascading_flows_approximation(
     model: JointDistribution,
+    aux_dim: tp.Optional[int] = 1,
+    weight_bijector_class: tp.Type[Bijector] = SoftmaxCentered,
 ) -> tp.Tuple[Distribution, tp.Dict[str, tf.Variable]]:
-    tf.Variable
+    dependencies = find_dependencies(model)
+    # Couple variables with linear model: weighted sum of parents and a random variate
+    # Coroutine to do this
+
+    # TODO: get event shape and shape bijector and flat size
+    # Get weight variables
+    #
+
+    forward_dist = joint_distribution_from_dependency_graph()
