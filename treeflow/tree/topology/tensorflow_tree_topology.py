@@ -3,7 +3,6 @@ from __future__ import annotations
 import typing as tp
 import attr
 import numpy as np
-from numpy.core.fromnumeric import transpose
 import tensorflow as tf
 from treeflow.tree.taxon_set import TaxonSet, TupleTaxonSet
 from treeflow.tree.topology.base_tree_topology import (
