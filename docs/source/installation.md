@@ -1,6 +1,6 @@
 # Installation
 
-1. Set up a Python environment (e.g. with `virtualenv` or `conda`) with Python 3.7 or later
+1. Set up a Python environment (e.g. with `virtualenv` or `conda`) with Python 3.9 or later (3.12 recommended)
 2. Clone and navigate to the repository: `git clone https://github.com/christiaanjs/treeflow.git` then `cd treeflow` 
 3. Install the Python package: `pip install .`
 4. Run TreeFlow
@@ -17,9 +17,9 @@
 3. Build the container: `docker build -t treeflow .`
 4. Run TreeFlow
     * To run Jupyter Lab:
-        1. `docker run treeflow -p 8888:8888`
-            * To use a different port (e.g. 8999) use `docker run -p 8999:8888 treeflow` 
-            * If you need to access a local directory (e.g. for input and output files) mount it into the docker image: `docker run treeflow -v /home/dev/repo/data:/app/data` to mount the directory `/home/dev/repo/data` to the `data` directory in the notebook (both must be absolute paths, and `/app` is the working directory in the container)
+        1. `docker run -p 8888:8888 treeflow`
+            * To use a different port (e.g. 8999) use `docker run -p 8999:8888 treeflow`
+            * If you need to access a local directory (e.g. for input and output files) mount it into the docker image: `docker run -v /home/dev/repo/data:/app/data treeflow` to mount the directory `/home/dev/repo/data` to the `data` directory in the notebook (both must be absolute paths, and `/app` is the working directory in the container)
             * If you need to save output to the mounted directory you'll need to give the Docker user (ID 10001) permissions: `mkdir /home/dev/repo/data/out` then `sudo chown -R 10001:10001 /home/dev/repo/data/out`
 
         2. Follow the link that appears to Jupyter (`http://127.0.0.1:8888/lab?token=...`), changing the port if necessary
