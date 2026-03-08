@@ -7,38 +7,33 @@ class RobustOptimizer:  # Pseudo-optimizer
         self.max_retries = max_retries
         self.retries = tf.Variable(0)
 
-    def apply_gradients(self, grads_and_vars, name=None, **kwargs):
-        """Apply gradients to variables.
+    def apply_gradients(self, grads_and_vars, **kwargs):
+        """Apply gradients to variables, skipping the step if any gradient
+        contains NaN.
 
-        Args:
-        grads_and_vars: List of (gradient, variable) pairs as returned by
-            `compute_gradients()`.
-        global_step: Optional `Variable` to increment by one after the
-            variables have been updated.
-        name: Optional name for the returned operation.  Default to the
-            name passed to the `Optimizer` constructor.
+        When NaN gradients are detected, all gradients are zeroed so that
+        the inner optimizer is still called with its expected variables
+        (required by Keras 3) but no parameters are updated, preserving
+        the original skip-step semantics.
         """
         grads_and_vars = list(grads_and_vars)
         grads = [grad for grad, var in grads_and_vars]
+        vars_ = [var for grad, var in grads_and_vars]
         any_nan = tf.reduce_any([tf.reduce_any(tf.math.is_nan(x)) for x in grads])
 
-        def nan_handler():
-            assertion = tf.assert_less(self.retries, self.max_retries)
-            with tf.control_dependencies([assertion]):
-                self.retries.assign_add(1)
-            return tf.zeros(
-                (), dtype=tf.int64
-            )  # apply_gradients returns int64 iteration
+        # Zero all gradients if any NaN — effectively skips the step
+        safe_grads = [tf.where(any_nan, tf.zeros_like(g), g) for g in grads]
 
-        def update_handler():
-            self.retries.assign(0)
-            return self.inner.apply_gradients(grads_and_vars, **kwargs)
-
-        return tf.cond(
-            any_nan,
-            nan_handler,
-            update_handler,
+        # Track consecutive NaN steps (assert before incrementing,
+        # matching original semantics)
+        tf.debugging.assert_less(
+            self.retries,
+            self.max_retries,
+            message="Too many consecutive NaN gradient steps",
         )
+        self.retries.assign(tf.where(any_nan, self.retries + 1, 0))
+
+        return self.inner.apply_gradients(zip(safe_grads, vars_), **kwargs)
 
 
 __all__ = ["RobustOptimizer"]
