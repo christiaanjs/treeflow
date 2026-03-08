@@ -32,7 +32,7 @@ class RobustOptimizer:  # Pseudo-optimizer
 
         def update_handler():
             self.retries.assign(0)
-            return self.inner.apply_gradients(grads_and_vars, name=name, **kwargs)
+            return self.inner.apply_gradients(grads_and_vars, **kwargs)
 
         return tf.cond(
             any_nan,
