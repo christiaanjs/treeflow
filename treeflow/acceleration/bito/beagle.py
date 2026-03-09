@@ -72,7 +72,7 @@ def phylogenetic_likelihood(
 
     def bito_func(x):
         """Wrapping likelihood and gradient evaluation via beagle."""
-        branch_lengths[:-1] = x
+        branch_lengths[:-1] = x * clock_rate
         gradient = inst.phylo_gradients()[0]
         grad_array = np.array(
             gradient.gradient["branch_lengths"], dtype=DEFAULT_FLOAT_DTYPE_NP
