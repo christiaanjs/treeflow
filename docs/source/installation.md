@@ -3,6 +3,7 @@
 1. Set up a Python environment (e.g. with `virtualenv` or `conda`) with Python 3.9 or later (3.12 recommended)
 2. Clone and navigate to the repository: `git clone https://github.com/christiaanjs/treeflow.git` then `cd treeflow` 
 3. Install the Python package: `pip install .`
+    * To run the example notebooks: `pip install ".[examples]"`
 4. Run TreeFlow
     * To run Jupyter Lab
         1. `jupyter lab`
