@@ -6,7 +6,7 @@
 
 # Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
 
-ARG PYTHON_VERSION=3.9.12
+ARG PYTHON_VERSION=3.11.12
 FROM python:${PYTHON_VERSION}-slim AS base
 
 # Prevents Python from writing pyc files.
@@ -40,6 +40,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY . .
 RUN python -m pip install .
+RUN chown -R appuser:appuser /app
 
 # Switch to the non-privileged user to run the application.
 USER appuser
