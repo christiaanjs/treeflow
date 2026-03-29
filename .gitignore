@@ -108,3 +108,4 @@ venv.bak/
 /scratch
 
 examples/demo-out/
+.DS_Store
