@@ -1,6 +1,9 @@
 import numpy as np
 import tensorflow as tf
 import pytest
+
+pytest.importorskip("bito")
+pytestmark = pytest.mark.bito
 from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioBijector
 from treeflow.tree.io import parse_newick
 from treeflow.traversal.anchor_heights import get_anchor_heights

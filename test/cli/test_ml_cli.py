@@ -1,5 +1,7 @@
 import pytest
 from click.testing import CliRunner
+
+pytestmark = pytest.mark.cli
 from treeflow.cli.ml import treeflow_ml
 
 

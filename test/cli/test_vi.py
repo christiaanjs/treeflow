@@ -1,5 +1,7 @@
 import pytest
 from tensorflow.python.keras.optimizer_v2.adam import Adam
+
+pytestmark = pytest.mark.cli
 from treeflow.cli.vi import treeflow_vi, approximation_builders
 from click.testing import CliRunner
 

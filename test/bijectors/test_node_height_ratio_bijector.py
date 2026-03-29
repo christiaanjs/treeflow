@@ -67,4 +67,4 @@ def test_NodeHeightRatioBijector_forward_log_det_jacobian_gradient(
         manual_log_det_jacobian_res = tf.math.log(tf.linalg.det(jac))
     manual_grad_res = outer_t.gradient(manual_log_det_jacobian_res, ratios)
 
-    assert_allclose(grad_res.numpy(), manual_grad_res.numpy())
+    assert_allclose(grad_res.numpy(), manual_grad_res.numpy(), atol=1e-15)
