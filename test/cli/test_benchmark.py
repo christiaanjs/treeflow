@@ -3,6 +3,8 @@ import pytest
 from treeflow.cli.benchmark import treeflow_benchmark
 from click.testing import CliRunner
 
+pytestmark = pytest.mark.cli
+
 
 @pytest.fixture
 def benchmark_output_path(tmp_path):
