@@ -14,4 +14,4 @@ jobs:
       - name: Install package and test dependencies
         run: pip install -e ".[test]"
       - name: Run tests
-        run: pytest -m "not bito"
+        run: pytest
