@@ -9,7 +9,10 @@ def benchmark_output_path(tmp_path):
     return tmp_path / "treeflow-benchmark.csv"
 
 
-@pytest.mark.parametrize(["use_bito", "gtr"], [(True, False), (False, True)])
+@pytest.mark.parametrize(["use_bito", "gtr"], [
+    pytest.param(True, False, marks=pytest.mark.bito),
+    (False, True),
+])
 def test_benchmark(
     hello_fasta_file, hello_newick_file, benchmark_output_path, use_bito, gtr
 ):
