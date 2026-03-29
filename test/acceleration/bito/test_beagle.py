@@ -1,4 +1,8 @@
 import pytest
+
+pytest.importorskip("bito")
+pytestmark = pytest.mark.bito
+
 from numpy.testing import assert_allclose
 import tensorflow as tf
 from treeflow.evolution.seqio import Alignment

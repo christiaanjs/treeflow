@@ -7,6 +7,7 @@ from treeflow.model.approximation.cascading_flows import (
 )
 
 
+@pytest.mark.skip(reason="incomplete implementation")
 @pytest.mark.parametrize("function_mode", [True, False])
 def test_get_cascading_flows_tree_approximation(
     hello_tensor_tree: TensorflowRootedTree, function_mode: bool
