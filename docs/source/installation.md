@@ -14,11 +14,9 @@
 ## Docker 
 
 1. Install Docker following the [official instructions](https://docs.docker.com/engine/install/)
-2. Clone and navigate to the repository: `git clone https://github.com/christiaanjs/treeflow.git` then `cd treeflow` 
-3. Build the container: `docker build -t treeflow .`
-4. Run TreeFlow
+2. Pull the Docker image and run TreeFlow
     * To run Jupyter Lab:
-        1. `docker run -p 8888:8888 treeflow`
+        1. `docker run -p 8888:8888 ghcr.io/christiaanjs/treeflow`
             * To use a different port (e.g. 8999) use `docker run -p 8999:8888 treeflow`
             * If you need to access a local directory (e.g. for input and output files) mount it into the docker image: `docker run -v /home/dev/repo/data:/app/data treeflow` to mount the directory `/home/dev/repo/data` to the `data` directory in the notebook (both must be absolute paths, and `/app` is the working directory in the container)
             * If you need to save output to the mounted directory you'll need to give the Docker user (ID 10001) permissions: `mkdir /home/dev/repo/data/out` then `sudo chown -R 10001:10001 /home/dev/repo/data/out`
@@ -30,4 +28,9 @@
         * `docker run treeflow {command}`
         * You may want to mount a data directory for input/output e.g. `docker run -v /home/dev/repo/data:/app/data treeflow_vi -i data/alignment.fasta -t data/topology.nwk --tree-samples-output data/tree-results.nexus`
         
-  
+### With local Docker image
+
+To run with a locally-built Docker container:
+1. Clone and navigate to the repository: `git clone https://github.com/christiaanjs/treeflow.git` then `cd treeflow` 
+2. Build the container: `docker build -t treeflow .`
+3. Follow the above steps tbut replace `ghcr.io/christiaanjs/treeflow` with just the local tag `treeflow`
