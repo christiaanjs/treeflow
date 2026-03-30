@@ -32,6 +32,7 @@ def _run_benchmark(hello_fasta_file, hello_newick_file, benchmark_output_path, u
         args,
         catch_exceptions=False,
     )
+    assert res.exit_code == 0
     print(res)
 
 
