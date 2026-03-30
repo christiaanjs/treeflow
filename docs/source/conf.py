@@ -22,7 +22,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.coverage",
     "sphinx_rtd_theme",
-    "sphinxcontrib.napoleon",
+    "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx_click",
     "nbsphinx",

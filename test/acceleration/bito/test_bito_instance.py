@@ -1,5 +1,8 @@
 import pytest
 
+pytest.importorskip("bito")
+pytestmark = pytest.mark.bito
+
 from treeflow.tree.io import parse_newick
 from treeflow.traversal.anchor_heights import get_anchor_heights
 from numpy.testing import assert_allclose, assert_equal

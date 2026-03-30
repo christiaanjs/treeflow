@@ -43,7 +43,7 @@ def phylogenetic_likelihood(
         raise ValueError(f"Unsupported substitution model: {subst_model}")
 
     if site_model == "discrete_weibull":
-        param_updates["Weibull shape"] = site_model_params["site_weibull_concentration"]
+        param_updates["Weibull_shape"] = site_model_params["site_weibull_concentration"]
         category_count = site_model_params["category_count"]
         site_model_string = f"weibull+{category_count}"
     elif site_model == "none":
@@ -72,7 +72,7 @@ def phylogenetic_likelihood(
 
     def bito_func(x):
         """Wrapping likelihood and gradient evaluation via beagle."""
-        branch_lengths[:-1] = x
+        branch_lengths[:-1] = x * clock_rate
         gradient = inst.phylo_gradients()[0]
         grad_array = np.array(
             gradient.gradient["branch_lengths"], dtype=DEFAULT_FLOAT_DTYPE_NP

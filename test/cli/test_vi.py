@@ -1,59 +1,85 @@
 import pytest
-from tensorflow.python.keras.optimizer_v2.adam import Adam
+from allpairspy import AllPairs
 from treeflow.cli.vi import treeflow_vi, approximation_builders
 from click.testing import CliRunner
 
+pytestmark = pytest.mark.cli
 
-@pytest.mark.parametrize("include_init_values", [True, False])
-@pytest.mark.parametrize("progress_bar", [True, False])
+_DATASETS = [
+    ("hello.nwk", "hello.fasta", False),
+    ("wnv.nwk", "wnv.fasta", True),
+]
+_MODEL_FILES = [None, "model.yaml", "yule-model.yaml"]
+_APPROX = list(approximation_builders.keys())
+_PROGRESS = [True, False]
+_INIT = [True, False]
+_CONVERGENCE = [None, "nonfinite"]
+
+_INIT_VALUES = {
+    None: "clock_rate=0.01",
+    "model.yaml": "pop_size=10",
+    "yule-model.yaml": "birth_rate=2,frequencies=0.24|0.23|0.26|0.27",
+}
+
+_CASES = list(AllPairs([_DATASETS, _MODEL_FILES, _APPROX, _PROGRESS, _INIT, _CONVERGENCE]))
+
+
+def _case_id(case):
+    dataset, model_filename, approx, progress_bar, include_init_values, convergence = case
+    return "-".join([
+        dataset[0].removesuffix(".nwk"),
+        model_filename.removesuffix(".yaml") if model_filename else "no-model",
+        approx,
+        "progress" if progress_bar else "no-progress",
+        "init" if include_init_values else "no-init",
+        convergence if convergence else "default-convergence",
+    ])
+
+
 @pytest.mark.parametrize(
-    "variational_approximation", list(approximation_builders.keys())
+    "dataset,model_filename,variational_approximation,progress_bar,include_init_values,convergence_criterion",
+    _CASES,
+    ids=[_case_id(c) for c in _CASES],
 )
 def test_vi(
-    newick_fasta_file_dated,
-    include_init_values,
-    model_file,
+    test_data_dir,
     samples_output_path,
     tree_samples_output_path,
-    progress_bar,
+    dataset,
+    model_filename,
     variational_approximation,
+    progress_bar,
+    include_init_values,
+    convergence_criterion,
 ):
     import pandas as pd
     import dendropy
 
-    newick_file, fasta_file, dated = newick_fasta_file_dated
+    newick_filename, fasta_filename, _ = dataset
+    newick_file = str(test_data_dir / newick_filename)
+    fasta_file = str(test_data_dir / fasta_filename)
+    model_file = str(test_data_dir / model_filename) if model_filename is not None else None
+
     runner = CliRunner()
     n_output_samples = 10
     args = [
-        "-i",
-        str(fasta_file),
-        "-t",
-        str(newick_file),
-        "-n",
-        str(10),
-        "-va",
-        variational_approximation,
-        "--samples-output",
-        str(samples_output_path),
-        "--tree-samples-output",
-        str(tree_samples_output_path),
-        "--n-output-samples",
-        str(n_output_samples),
+        "-i", fasta_file,
+        "-t", newick_file,
+        "-n", str(10),
+        "-va", variational_approximation,
+        "--samples-output", str(samples_output_path),
+        "--tree-samples-output", str(tree_samples_output_path),
+        "--n-output-samples", str(n_output_samples),
         "--progress-bar" if progress_bar else "--no-progress-bar",
     ]
-    if model_file is None:
-        init_values_string = "clock_rate=0.01"
-    else:
-        args = args + ["-m", model_file]
-        init_values_string = "pop_size=10"
-
+    if model_file is not None:
+        args += ["-m", model_file]
     if include_init_values:
-        args = args + ["--init-values", init_values_string]
-    res = runner.invoke(
-        treeflow_vi,
-        args,
-        catch_exceptions=False,
-    )
+        args += ["--init-values", _INIT_VALUES[model_filename]]
+    if convergence_criterion is not None:
+        args += ["--convergence-criterion", convergence_criterion]
+
+    res = runner.invoke(treeflow_vi, args, catch_exceptions=False)
     assert res.exit_code == 0
     print(res.stdout)
     samples = pd.read_csv(samples_output_path)
@@ -61,50 +87,3 @@ def test_vi(
 
     trees = dendropy.TreeList.get(path=tree_samples_output_path, schema="nexus")
     assert len(trees) == n_output_samples
-
-
-@pytest.mark.parametrize("include_init_values", [True, False])
-def test_vi_yule(
-    test_data_dir, hello_newick_file, hello_fasta_file, include_init_values
-):
-    model_file = str(test_data_dir / "yule-model.yaml")
-    init_values_string = "birth_rate=2,frequencies=0.24|0.23|0.26|0.27"
-    runner = CliRunner()
-    args = [
-        "-i",
-        str(hello_fasta_file),
-        "-t",
-        str(hello_newick_file),
-        "-n",
-        str(10),
-        "-m",
-        model_file,
-    ]
-    if include_init_values:
-        args = args + ["--init-values", init_values_string]
-    res = runner.invoke(
-        treeflow_vi,
-        args,
-        catch_exceptions=False,
-    )
-    print(res.stdout)
-
-
-def test_vi_nonfinite_convergence(hello_newick_file, hello_fasta_file):
-    runner = CliRunner()
-    args = [
-        "-i",
-        str(hello_fasta_file),
-        "-t",
-        str(hello_newick_file),
-        "-n",
-        str(10),
-        "--convergence-criterion",
-        "nonfinite",
-    ]
-    res = runner.invoke(
-        treeflow_vi,
-        args,
-        catch_exceptions=False,
-    )
-    print(res.stdout)

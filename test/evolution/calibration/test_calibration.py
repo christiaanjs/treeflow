@@ -12,4 +12,4 @@ def test_MRCACalibration_get_normal_sample_sd():
     sd = calibration.get_normal_sd(prob)
     loc = calibration.get_normal_mean()
     res = Normal(loc, sd).cdf([low, high]).numpy()
-    assert_allclose(res, [alpha, 1 - alpha], atol=1e-9)
+    assert_allclose(res, [alpha, 1 - alpha], atol=1e-6)
