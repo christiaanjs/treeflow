@@ -53,3 +53,10 @@ EXPOSE 8888
 
 # Run the application.
 CMD ["jupyter", "lab", "--ip=0.0.0.0", "--no-browser"]
+
+# Test stage — not pushed to registry
+FROM base AS test
+USER root
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install ".[test]"
+USER appuser
