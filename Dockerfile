@@ -60,3 +60,6 @@ USER root
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install ".[test]"
 USER appuser
+
+# Final runtime stage — default build output (no test dependencies)  
+FROM base AS runtime
