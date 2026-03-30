@@ -18,7 +18,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  test:
+  pytest:
     needs: build
     runs-on: ubuntu-latest
     strategy:
@@ -42,3 +42,12 @@ jobs:
           cache-from: type=gha
       - name: Run pytest (${{ matrix.name }})
         run: docker run --rm --workdir /app treeflow-test:ci pytest ${{ matrix.pytest_args }}
+
+  test:
+    if: always()
+    needs: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          result="${{ needs.pytest.result }}"
+          if [[ "$result" == "success" ]]; then exit 0; else exit 1; fi
