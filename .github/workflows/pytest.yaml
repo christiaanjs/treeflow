@@ -5,6 +5,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: unit
+            pytest_args: ""
+          - name: cli
+            pytest_args: --override-ini="addopts=" -m cli
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -18,5 +25,5 @@ jobs:
           tags: treeflow-test:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Run pytest
-        run: docker run --rm --workdir /app treeflow-test:ci pytest
+      - name: Run pytest (${{ matrix.name }})
+        run: docker run --rm --workdir /app treeflow-test:ci pytest ${{ matrix.pytest_args }}
