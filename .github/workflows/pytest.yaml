@@ -3,15 +3,51 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and cache test image
+        uses: docker/build-push-action@v6
         with:
-          python-version: "3.10"
-          cache: pip
-      - name: Install package and test dependencies
-        run: pip install -e ".[test]"
-      - name: Run tests
-        run: pytest
+          context: .
+          platforms: linux/amd64
+          target: test
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  pytest:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: unit
+            pytest_args: ""
+          - name: cli
+            pytest_args: --override-ini="addopts=" -m "cli and not bito"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Load test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          target: test
+          load: true
+          tags: treeflow-test:ci
+          cache-from: type=gha
+      - name: Run pytest (${{ matrix.name }})
+        run: docker run --rm --workdir /app treeflow-test:ci pytest ${{ matrix.pytest_args }}
+
+  test:
+    if: always()
+    needs: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          result="${{ needs.pytest.result }}"
+          if [[ "$result" == "success" ]]; then exit 0; else exit 1; fi
