@@ -8,8 +8,6 @@ from tensorflow_probability.python.distributions import (
     Sample,
     TransformedDistribution,
 )
-from tensorflow_probability.python.util import DeferredTensor
-from tensorflow_probability.python.experimental.util import DeferredModule
 from tensorflow_probability.python.math import fill_triangular
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
@@ -54,7 +52,6 @@ def build_highway_L(L_offdiag: tf.Tensor) -> tf.Tensor:
 
 
 def build_highway_lambd(lambd_logit: tf.Tensor, k: int, aux_k: tp.Optional[int] = None):
-    print(f"Running builder on type {type(lambd_logit)}")
     lambd = Sigmoid().forward(lambd_logit)
     if aux_k is None:
         return lambd
@@ -64,14 +61,11 @@ def build_highway_lambd(lambd_logit: tf.Tensor, k: int, aux_k: tp.Optional[int] 
         return tf.concat([lambd, tf.zeros(aux_lambd_shape, dtype=lambd.dtype)], axis=-1)
 
 
+_SENTINEL = object()
+
+
 @attr.s(auto_attribs=True, init=False)
 class HighwayFlowParametersFromUnconstrained(HighwayFlowParameters, tf.Module):
-    def _build_attribute(self, build_fn, *args, **kwargs):
-        if self._defer:
-            return DeferredModule(build_fn, *args, **kwargs)
-        else:
-            return build_fn(*args, **kwargs)
-
     def __init__(
         self,
         U: tp.Optional[tf.Tensor] = None,
@@ -87,25 +81,24 @@ class HighwayFlowParametersFromUnconstrained(HighwayFlowParameters, tf.Module):
         name=None,
         defer=False,
     ):
-        self._defer = defer
         if U is None:
             self._U_diag_inv_softplus = U_diag_inv_softplus
             self._U_offdiag = U_offdiag
-            U = self._build_attribute(build_highway_U, U_diag_inv_softplus, U_offdiag)
+            U = build_highway_U(U_diag_inv_softplus, U_offdiag)
         else:
             self._U_diag_inv_softplus = None
             self._U_offdiag = None
 
         if L is None:
             self._L_offdiag = L_offdiag
-            L = self._build_attribute(build_highway_L, L_offdiag)
+            L = build_highway_L(L_offdiag)
         else:
             self._L_offdiag = None
 
         if lambd is None:
             self._lambd_logit = lambd_logit
             self._k = k
-            lambd = self._build_attribute(build_highway_lambd, lambd_logit, k, None)
+            lambd = build_highway_lambd(lambd_logit, k, None)
         else:
             self._lambd_logit = None
             self._k = None
@@ -113,12 +106,26 @@ class HighwayFlowParametersFromUnconstrained(HighwayFlowParameters, tf.Module):
         super().__init__(U=U, bias_U=bias_U, L=L, bias_L=bias_L, lambd=lambd)
         tf.Module.__init__(self, name=name)
 
-    def __getattribute__(self, __name: str) -> object:
-        res = super().__getattribute__(__name)
-        if isinstance(res, DeferredModule):
-            return res._build_module()
-        else:
-            return res
+    def __getattribute__(self, name: str) -> object:
+        if name in ("U", "L", "lambd"):
+            try:
+                if name == "U":
+                    raw = object.__getattribute__(self, "_U_diag_inv_softplus")
+                    if raw is not None:
+                        offdiag = object.__getattribute__(self, "_U_offdiag")
+                        return build_highway_U(raw, offdiag)
+                elif name == "L":
+                    raw = object.__getattribute__(self, "_L_offdiag")
+                    if raw is not None:
+                        return build_highway_L(raw)
+                elif name == "lambd":
+                    raw = object.__getattribute__(self, "_lambd_logit")
+                    if raw is not None:
+                        k = object.__getattribute__(self, "_k")
+                        return build_highway_lambd(raw, k, None)
+            except AttributeError:
+                pass
+        return super().__getattribute__(name)
 
 
 def get_trainable_highway_flow_parameters(
