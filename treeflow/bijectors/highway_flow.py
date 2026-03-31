@@ -86,7 +86,10 @@ class HighwayActivationLayer(Bijector):
     def _forward_log_det_jacobian(self, x):
         return tf.math.log(
             self._lambd
-            + (1 - self._lambd) * self._activation_function.forward_log_det_jacobian(x)
+            + (1 - self._lambd)
+            * tf.exp(
+                self._activation_function.forward_log_det_jacobian(x, event_ndims=0)
+            )
         )
 
 

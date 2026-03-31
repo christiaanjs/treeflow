@@ -135,14 +135,15 @@ class PreorderNodeBijector(Bijector):
         ) = self._inverse_bijectors_and_y_node_first(y)
         nonroot_x_values_node_first = bijectors.inverse(nonroot_y_values)
         root_x_values = self._root_bijector.inverse(root_y_values)
+        node_axis = -(1 + self._forward_event_ndims)
         nonroot_x_values = tf.nest.map_structure(
-            lambda x: distribution_util.move_dimension(x, 0, -1),
+            lambda x: distribution_util.move_dimension(x, 0, node_axis),
             nonroot_x_values_node_first,
         )
 
         return tf.nest.map_structure(
             lambda nonroot_elem, root_elem: tf.concat(
-                [nonroot_elem, tf.expand_dims(root_elem, -1)], -1
+                [nonroot_elem, tf.expand_dims(root_elem, node_axis)], node_axis
             ),
             nonroot_x_values,
             root_x_values,
