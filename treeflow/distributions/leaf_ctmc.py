@@ -1,5 +1,4 @@
 import typing as tp
-import warnings
 import tensorflow as tf
 from tensorflow_probability.python.internal import prefer_static as ps
 from tensorflow_probability.python.util import ParameterProperties
@@ -10,6 +9,7 @@ from tensorflow_probability.python.distributions import (
     Distribution,
 )
 from treeflow.traversal.phylo_likelihood import phylogenetic_likelihood
+from treeflow.traversal.sample_ctmc import sample_ctmc_preorder
 
 
 class LeafCTMC(Distribution):
@@ -59,11 +59,23 @@ class LeafCTMC(Distribution):
         )
 
     def _sample_n(self, n, seed=None):
-        warnings.warn("Dummy sampling of alignment")
-        sample_shape = tf.concat(
-            [[n], self.batch_shape_tensor(), self.event_shape_tensor()], axis=0
+        if self.transition_probs_tree.topology.has_batch_dimensions():
+            raise NotImplementedError("Topology batching not yet supported")
+        batch_shape = self.batch_shape_tensor()
+        transition_probs = self._broadcast_transition_probs(
+            tf.concat([[n], batch_shape], axis=0)
         )
-        return tf.zeros(sample_shape, dtype=tf.int32)
+        topology = self.transition_probs_tree.topology
+        return sample_ctmc_preorder(
+            transition_probs=transition_probs,
+            frequencies=self.frequencies,
+            preorder_indices=topology.preorder_indices,
+            parent_indices=topology.parent_indices,
+            taxon_count=topology.taxon_count,
+            n=n,
+            batch_shape=batch_shape,
+            seed=seed,
+        )
 
     def _broadcast_transition_probs(self, sample_and_batch_shape) -> tf.Tensor:
         transition_probs_shape = ps.shape(self.transition_probs_tree.branch_lengths)
