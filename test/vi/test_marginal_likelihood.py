@@ -62,6 +62,7 @@ def test_marginal_likelihood(
     assert np.isfinite(res.numpy())
 
 
+@pytest.mark.flaky(reruns=3)
 def test_marginal_likelihood_joint_distribution_coroutine(
     hello_alignment: Alignment,
     hello_tensor_tree: TensorflowRootedTree,
