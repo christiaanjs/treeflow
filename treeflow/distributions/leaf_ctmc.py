@@ -26,7 +26,7 @@ class LeafCTMC(Distribution):
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=name,
-            dtype=tf.int32,
+            dtype=frequencies.dtype,
             reparameterization_type=NOT_REPARAMETERIZED,
             parameters=parameters,
         )

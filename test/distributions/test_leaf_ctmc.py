@@ -226,7 +226,7 @@ def test_LeafCTMC_sample_shape(transition_prob_tree, hky_params):
     samples = dist.sample(n, seed=(0, 1))
 
     assert samples.shape == (n, taxon_count, state_count)
-    assert samples.dtype == tf.int32
+    assert samples.dtype == frequencies.dtype
     # Each row must be a valid one-hot vector
     row_sums = tf.reduce_sum(samples, axis=-1)
     assert tf.reduce_all(row_sums == 1).numpy()
@@ -262,9 +262,8 @@ def test_LeafCTMC_sample_prob_positive(transition_prob_tree):
     frequencies = tf.fill([state_count], 1.0 / state_count)
     dist = LeafCTMC(transition_prob_tree, frequencies)
 
-    sample = dist.sample(seed=(0, 1))  # [taxon_count, state_count] int32 one-hot
-    # _prob expects float one-hot; cast to match what the likelihood function uses
-    p = dist.prob(tf.cast(sample, tf.float32))
+    sample = dist.sample(seed=(0, 1))  # [taxon_count, state_count] float one-hot
+    p = dist.prob(sample)
     assert tf.math.is_finite(p).numpy()
     assert p.numpy() > 0.0
 

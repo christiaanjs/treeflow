@@ -127,7 +127,7 @@ def sample_ctmc_preorder(
     perm = tf.concat([tf.range(1, n_dims + 1), [0]], axis=0)
     leaf_states = tf.transpose(leaf_states, perm)
 
-    return tf.one_hot(leaf_states, state_count, dtype=tf.int32)
+    return tf.one_hot(leaf_states, state_count, dtype=frequencies.dtype)
 
 
 __all__ = ["sample_ctmc_preorder"]
