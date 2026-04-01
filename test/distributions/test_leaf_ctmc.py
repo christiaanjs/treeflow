@@ -9,14 +9,7 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import (
     TensorflowRootedTree,
     convert_tree_to_tensor,
 )
-from treeflow.tree.topology.tensorflow_tree_topology import (
-    numpy_topology_to_tensor,
-    TensorflowTreeTopology,
-)
-from treeflow.tree.topology.numpy_topology_operations import (
-    get_child_indices,
-    get_preorder_indices,
-)
+from treeflow.tree.topology.tensorflow_tree_topology import numpy_topology_to_tensor
 from treeflow.evolution.substitution.nucleotide.hky import HKY
 from treeflow.distributions.leaf_ctmc import LeafCTMC
 from treeflow.evolution.seqio import Alignment
@@ -205,27 +198,29 @@ def test_leaf_ctmc_discrete_mixture(
 
 
 @pytest.fixture
-def two_taxon_transition_prob_tree():
-    """Minimal 2-taxon tree: leaves 0,1; root 2; branches 0 and 1."""
-    parent_indices = np.array([2, 2], dtype=np.int32)
-    child_indices = get_child_indices(parent_indices)
-    preorder_indices = get_preorder_indices(child_indices)
-    topology = TensorflowTreeTopology(
-        parent_indices=tf.constant(parent_indices),
-        child_indices=tf.constant(child_indices),
-        preorder_indices=tf.constant(preorder_indices),
+def identity_transition_prob_tree(flat_tree_test_data):
+    """3-taxon tree (from flat_tree_test_data) with identity transition matrices."""
+    tree = convert_tree_to_tensor(
+        NumpyRootedTree(
+            node_heights=flat_tree_test_data.node_heights,
+            sampling_times=flat_tree_test_data.sampling_times,
+            parent_indices=flat_tree_test_data.parent_indices,
+        )
+    ).get_unrooted_tree()
+    state_count = 5
+    n_branches = tree.branch_lengths.shape[0]
+    identity_probs = tf.tile(tf.eye(state_count)[tf.newaxis], [n_branches, 1, 1])
+    return TensorflowUnrootedTree(
+        branch_lengths=identity_probs,
+        topology=numpy_topology_to_tensor(tree.topology),
     )
-    state_count = 4
-    # Uniform transition probs
-    transition_probs = tf.fill([2, state_count, state_count], 1.0 / state_count)
-    return TensorflowUnrootedTree(branch_lengths=transition_probs, topology=topology)
 
 
-def test_LeafCTMC_sample_shape(two_taxon_transition_prob_tree):
-    state_count = two_taxon_transition_prob_tree.branch_lengths.shape[-1]
-    taxon_count = two_taxon_transition_prob_tree.taxon_count
-    frequencies = tf.fill([state_count], 0.25)
-    dist = LeafCTMC(two_taxon_transition_prob_tree, frequencies)
+def test_LeafCTMC_sample_shape(transition_prob_tree, hky_params):
+    state_count = transition_prob_tree.branch_lengths.shape[-1]
+    taxon_count = transition_prob_tree.taxon_count
+    frequencies = tf.fill([state_count], 1.0 / state_count)
+    dist = LeafCTMC(transition_prob_tree, frequencies)
 
     n = 7
     samples = dist.sample(n, seed=(0, 1))
@@ -238,41 +233,36 @@ def test_LeafCTMC_sample_shape(two_taxon_transition_prob_tree):
     assert tf.reduce_all((samples == 0) | (samples == 1)).numpy()
 
 
-def test_LeafCTMC_sample_identity_transition(two_taxon_transition_prob_tree):
+def test_LeafCTMC_sample_identity_transition(identity_transition_prob_tree):
     """With identity transition matrices, all leaves must have the same state as root."""
-    state_count = two_taxon_transition_prob_tree.branch_lengths.shape[-1]
-    topology = two_taxon_transition_prob_tree.topology
-    # Identity transition: child always equals parent
-    identity_probs = tf.eye(state_count)[tf.newaxis, :, :]  # [1, state, state]
-    identity_probs = tf.tile(identity_probs, [2, 1, 1])  # [2, state, state]
-    transition_probs_tree = TensorflowUnrootedTree(
-        branch_lengths=identity_probs, topology=topology
-    )
-    frequencies = tf.constant([1.0, 0.0, 0.0, 0.0])  # always sample state 0 at root
-    dist = LeafCTMC(transition_probs_tree, frequencies)
+    state_count = identity_transition_prob_tree.branch_lengths.shape[-1]
+    # Force root to always be state 0
+    frequencies = tf.one_hot(0, state_count)
+    dist = LeafCTMC(identity_transition_prob_tree, frequencies)
 
-    samples = dist.sample(10, seed=(0, 1))  # [10, 2, 4]
-    # With freq=[1,0,0,0] and identity transitions, all leaves must be state 0
-    assert tf.reduce_all(samples[..., 0] == 1).numpy()  # one-hot position 0 always 1
+    n = 10
+    samples = dist.sample(n, seed=(0, 1))  # [10, 3, state_count]
+    # All leaves must be state 0 (one-hot position 0 is 1)
+    assert tf.reduce_all(samples[..., 0] == 1).numpy()
 
 
-def test_LeafCTMC_sample_seed_reproducibility(two_taxon_transition_prob_tree):
-    state_count = two_taxon_transition_prob_tree.branch_lengths.shape[-1]
-    frequencies = tf.fill([state_count], 0.25)
-    dist = LeafCTMC(two_taxon_transition_prob_tree, frequencies)
+def test_LeafCTMC_sample_seed_reproducibility(transition_prob_tree):
+    state_count = transition_prob_tree.branch_lengths.shape[-1]
+    frequencies = tf.fill([state_count], 1.0 / state_count)
+    dist = LeafCTMC(transition_prob_tree, frequencies)
 
     s1 = dist.sample(5, seed=(42, 0))
     s2 = dist.sample(5, seed=(42, 0))
     assert tf.reduce_all(s1 == s2).numpy()
 
 
-def test_LeafCTMC_sample_prob_positive(two_taxon_transition_prob_tree):
+def test_LeafCTMC_sample_prob_positive(transition_prob_tree):
     """Samples must lie in the support: prob should be positive and finite."""
-    state_count = two_taxon_transition_prob_tree.branch_lengths.shape[-1]
-    frequencies = tf.fill([state_count], 0.25)
-    dist = LeafCTMC(two_taxon_transition_prob_tree, frequencies)
+    state_count = transition_prob_tree.branch_lengths.shape[-1]
+    frequencies = tf.fill([state_count], 1.0 / state_count)
+    dist = LeafCTMC(transition_prob_tree, frequencies)
 
-    sample = dist.sample(seed=(0, 1))  # [2, 4] int32 one-hot
+    sample = dist.sample(seed=(0, 1))  # [taxon_count, state_count] int32 one-hot
     # _prob expects float one-hot; cast to match what the likelihood function uses
     p = dist.prob(tf.cast(sample, tf.float32))
     assert tf.math.is_finite(p).numpy()
@@ -280,10 +270,10 @@ def test_LeafCTMC_sample_prob_positive(two_taxon_transition_prob_tree):
 
 
 @pytest.mark.parametrize("function_mode", [True, False])
-def test_LeafCTMC_sample_tf_function(two_taxon_transition_prob_tree, function_mode):
-    state_count = two_taxon_transition_prob_tree.branch_lengths.shape[-1]
-    frequencies = tf.fill([state_count], 0.25)
-    dist = LeafCTMC(two_taxon_transition_prob_tree, frequencies)
+def test_LeafCTMC_sample_tf_function(transition_prob_tree, function_mode):
+    state_count = transition_prob_tree.branch_lengths.shape[-1]
+    frequencies = tf.fill([state_count], 1.0 / state_count)
+    dist = LeafCTMC(transition_prob_tree, frequencies)
 
     def sample_fn():
         return dist.sample(3, seed=(0, 1))
@@ -292,4 +282,4 @@ def test_LeafCTMC_sample_tf_function(two_taxon_transition_prob_tree, function_mo
         sample_fn = tf.function(sample_fn)
 
     result = sample_fn()
-    assert result.shape == (3, two_taxon_transition_prob_tree.taxon_count, state_count)
+    assert result.shape == (3, transition_prob_tree.taxon_count, state_count)
