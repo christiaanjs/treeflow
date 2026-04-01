@@ -6,7 +6,12 @@ Treeflow is a phylogenetics library built on TensorFlow and TensorFlow Probabili
 
 ## Environment Setup (Claude Code Web Session)
 
-Run the following commands at the start of a session before running tests:
+A `SessionStart` hook (`.claude/hooks/session-start.sh`) runs automatically and handles setup in most cases:
+
+- **Cached container** (normal case): the hook detects packages are already installed, fixes `PATH`, and exits in ~0.1s synchronously — no delay, no manual steps needed.
+- **Fresh container** (first session or recycled environment): the hook goes async so Claude starts immediately, then installs everything in the background (~60–90s). There is a short race window where tests will fail if run before the background install finishes. Check `.claude/hooks/session-start.log` to confirm it completed, or run the commands below manually if needed.
+
+If you need to set up manually (fresh container, failed hook, or local dev):
 
 ```bash
 # Upgrade setuptools first to fix legacy package build issues (ete3, silence_tensorflow)
