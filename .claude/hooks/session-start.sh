@@ -1,17 +1,22 @@
 #!/bin/bash
-set -euo pipefail
 
 # Only run in remote Claude Code web sessions
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
+# Idempotent PATH fix: only append if not already present
+_fix_path() {
+  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    grep -qF '/usr/local/bin:$PATH' "$CLAUDE_ENV_FILE" 2>/dev/null || \
+      echo 'export PATH="/usr/local/bin:$PATH"' >> "$CLAUDE_ENV_FILE"
+  fi
+}
+
 # Fast path: if already installed (cached container), fix PATH and exit synchronously.
 # This avoids any race condition on subsequent sessions.
 if python -c "import treeflow, pytest, pandas, allpairspy" 2>/dev/null; then
-  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-    echo 'export PATH="/usr/local/bin:$PATH"' >> "$CLAUDE_ENV_FILE"
-  fi
+  _fix_path
   exit 0
 fi
 
@@ -25,12 +30,15 @@ LOG="$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.log"
 {
   echo "[$(date -u)] Session start hook starting (fresh install)"
 
-  pip install --upgrade setuptools --ignore-installed -q
-  pip install -e "$CLAUDE_PROJECT_DIR/[test]" -q
+  pip install --upgrade setuptools --ignore-installed -q \
+    && echo "[$(date -u)] setuptools upgraded" \
+    || echo "[$(date -u)] WARNING: setuptools upgrade failed"
 
-  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-    echo 'export PATH="/usr/local/bin:$PATH"' >> "$CLAUDE_ENV_FILE"
-  fi
+  pip install -e "$CLAUDE_PROJECT_DIR[test]" -q \
+    && echo "[$(date -u)] treeflow installed" \
+    || echo "[$(date -u)] WARNING: pip install failed"
+
+  _fix_path
 
   echo "[$(date -u)] Session start hook complete"
 } >> "$LOG" 2>&1
