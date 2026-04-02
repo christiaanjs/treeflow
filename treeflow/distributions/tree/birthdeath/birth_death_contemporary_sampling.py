@@ -65,21 +65,17 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
     def _sample_n(self, n, seed=None):
         from treeflow.distributions.tree.birthdeath.cpp_sampler import sample_bd_tree
 
-        # When called inside tf.function (for shape inference by TFP's
-        # get_output_spec / JointDistribution tracing), TF ops produce
-        # SymbolicTensors that cannot be numpy-converted.  The caller only
-        # needs output shapes, so return dummy samples in that case.
-        # if tf.inside_function():
-        #     return self._make_dummy_samples(
-        #         tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
-        #     )
-        # try:
-        #     n_int = int(n)
-        #     n_taxa_int = int(self.taxon_count)
-        # except TypeError:
-        #     return self._make_dummy_samples(
-        #         tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
-        #     )
+        # n and taxon_count must be Python ints for the pure-TF sampler to
+        # build static-shape tensors.  During tf.function tracing they are
+        # usually static Python ints; fall back to dummy samples only when
+        # they are genuinely symbolic (e.g. TFP JointDistribution get_output_spec).
+        try:
+            n_int = int(n)
+            n_taxa_int = int(self.taxon_count)
+        except (TypeError, ValueError):
+            return self._make_dummy_samples(
+                tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
+            )
 
         r = self.birth_diff_rate
         a = self.relative_death_rate

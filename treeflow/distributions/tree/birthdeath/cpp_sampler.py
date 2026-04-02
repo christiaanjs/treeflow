@@ -13,7 +13,6 @@ from tensorflow_probability.python.internal import samplers
 
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
-import treeflow.tree.topology.numpy_topology_operations as np_top_ops
 
 
 def sample_origin_age(n_taxa, lambda_, mu, rho, n_samples, seed, grid_size=1000):
@@ -228,19 +227,108 @@ def sample_speciation_times(T, n_taxa, lambda_, mu, rho, seed):
     return tau
 
 
+def _compute_preorder_tf(child_indices, n_total, n_taxa):
+    """
+    Compute preorder (DFS) traversal indices from child_indices using pure TF.
+
+    Implements an iterative DFS: root is pushed onto a stack first; at each
+    step the top node is popped and recorded; if it is an internal node its
+    right child is pushed then its left child (so the left child is popped
+    first, matching the conventional preorder).
+
+    Parameters
+    ----------
+    child_indices : tf.Tensor
+        Shape [n_total, 2*n_taxa-1, 2].  Leaves have child value -1.
+    n_total : int
+        Number of independent topologies (Python int).
+    n_taxa : int
+        Number of leaf taxa (Python int).
+
+    Returns
+    -------
+    tf.Tensor
+        Preorder indices, shape [n_total, 2*n_taxa-1].
+    """
+    node_count = 2 * n_taxa - 1
+    root = node_count - 1  # = 2*n_taxa-2
+    s_idx = tf.range(n_total, dtype=tf.int32)
+    zeros = tf.zeros([n_total], dtype=tf.int32)
+    ones = tf.ones([n_total], dtype=tf.int32)
+
+    # Stack tensor and size counter
+    stack = tf.fill([n_total, node_count], -1)
+    stack = tf.tensor_scatter_nd_update(
+        stack,
+        tf.stack([s_idx, zeros], axis=1),
+        tf.fill([n_total], root),
+    )
+    stack_size = tf.ones([n_total], dtype=tf.int32)
+
+    preorder = tf.zeros([n_total, node_count], dtype=tf.int32)
+    preorder_pos = tf.zeros([n_total], dtype=tf.int32)
+
+    # Exactly node_count iterations are needed for a complete binary tree
+    for _ in range(node_count):
+        # Pop top of stack
+        top_pos = stack_size - 1  # [n_total]
+        current_node = tf.gather_nd(stack, tf.stack([s_idx, top_pos], axis=1))
+        stack_size = stack_size - 1
+
+        # Record current_node in preorder output
+        preorder = tf.tensor_scatter_nd_update(
+            preorder,
+            tf.stack([s_idx, preorder_pos], axis=1),
+            current_node,
+        )
+        preorder_pos = preorder_pos + 1
+
+        # Gather children of current_node
+        child0 = tf.gather_nd(
+            child_indices, tf.stack([s_idx, current_node, zeros], axis=1)
+        )  # [n_total]
+        child1 = tf.gather_nd(
+            child_indices, tf.stack([s_idx, current_node, ones], axis=1)
+        )  # [n_total]
+
+        is_internal = tf.not_equal(child0, -1)  # leaves have child_indices == -1
+
+        # Push right child (child1) first so left child (child0) is popped first
+        push1_pos = stack_size
+        cur1 = tf.gather_nd(stack, tf.stack([s_idx, push1_pos], axis=1))
+        stack = tf.tensor_scatter_nd_update(
+            stack,
+            tf.stack([s_idx, push1_pos], axis=1),
+            tf.where(is_internal, child1, cur1),
+        )
+        stack_size = tf.where(is_internal, stack_size + 1, stack_size)
+
+        # Push left child (child0)
+        push0_pos = stack_size
+        cur0 = tf.gather_nd(stack, tf.stack([s_idx, push0_pos], axis=1))
+        stack = tf.tensor_scatter_nd_update(
+            stack,
+            tf.stack([s_idx, push0_pos], axis=1),
+            tf.where(is_internal, child0, cur0),
+        )
+        stack_size = tf.where(is_internal, stack_size + 1, stack_size)
+
+    return preorder
+
+
 def build_random_topologies(n_total, n_taxa, seed):
     """
-    Stage 3: Build n_total random labeled ranked tree topologies.
+    Stage 3: Build n_total random labeled ranked tree topologies via pure TF.
 
-    Uses TF stateless random ops for reproducible position sampling,
-    then constructs topology arrays with numpy for correctness.
+    Uses only TF stateless random ops and tensor operations — no NumPy, no
+    .numpy() calls — so it is fully compatible with tf.function tracing.
 
     Parameters
     ----------
     n_total : int
-        Number of independent topologies to generate.
+        Number of independent topologies to generate (Python int).
     n_taxa : int
-        Number of leaf taxa.
+        Number of leaf taxa (Python int).
     seed : seed
         TFP-compatible stateless seed.
 
@@ -261,17 +349,29 @@ def build_random_topologies(n_total, n_taxa, seed):
             preorder_indices=tf.zeros([0, node_count], dtype=tf.int32),
         )
 
-    # Generate per-step random positions using TF stateless ops (reproducible)
+    # Split a seed per coalescence step
     if n > 1:
         step_seeds = samplers.split_seed(seed, n=n - 1)
     else:
         step_seeds = []
 
-    pos_pairs = []
+    s_idx = tf.range(n_total, dtype=tf.int32)
+
+    # --- Initialise state tensors (all int32) ---
+    parent_indices = tf.fill([n_total, 2 * n - 2], tf.constant(-1, dtype=tf.int32))
+    child_indices = tf.fill([n_total, node_count, 2], tf.constant(-1, dtype=tf.int32))
+    # active[s, :n_active] contains currently active lineages; initialised to leaf indices
+    active = tf.tile(
+        tf.expand_dims(tf.range(n, dtype=tf.int32), 0), [n_total, 1]
+    )  # [n_total, n]
+
     for j in range(n - 1):
-        n_active = n - j  # Python int
+        n_active = n - j       # Python int: number of active lineages this step
+        internal_node = n + j  # Python int: index of the new internal node
+
         seed_a, seed_b = samplers.split_seed(step_seeds[j], n=2)
 
+        # Sample two distinct positions in the active list
         pos_a = tf.random.stateless_uniform(
             [n_total], seed_a, minval=0, maxval=n_active, dtype=tf.int32
         )
@@ -279,67 +379,86 @@ def build_random_topologies(n_total, n_taxa, seed):
             pos_b_raw = tf.random.stateless_uniform(
                 [n_total], seed_b, minval=0, maxval=n_active - 1, dtype=tf.int32
             )
-            # Adjust pos_b to skip pos_a (uniformly over distinct pairs)
             pos_b = tf.where(pos_b_raw >= pos_a, pos_b_raw + 1, pos_b_raw)
         else:
             pos_b = tf.zeros([n_total], dtype=tf.int32)
 
-        pos_pairs.append((pos_a.numpy(), pos_b.numpy()))
+        # Gather the two coalescing lineages
+        ca = tf.gather_nd(active, tf.stack([s_idx, pos_a], axis=1))  # [n_total]
+        cb = tf.gather_nd(active, tf.stack([s_idx, pos_b], axis=1))
 
-    # Build topology arrays in numpy (simpler than batched TF scatter)
-    parent_indices_np = np.full((n_total, 2 * n - 2), -1, dtype=np.int32)
-    child_indices_np = np.full((n_total, node_count, 2), -1, dtype=np.int32)
-    # active_np[s, :n_active] holds the currently active lineages for sample s
-    active_np = np.tile(np.arange(n, dtype=np.int32), (n_total, 1))  # [n_total, n]
+        # --- Update parent_indices ---
+        int_fill = tf.fill([n_total], internal_node)
+        parent_indices = tf.tensor_scatter_nd_update(
+            parent_indices, tf.stack([s_idx, ca], axis=1), int_fill
+        )
+        parent_indices = tf.tensor_scatter_nd_update(
+            parent_indices, tf.stack([s_idx, cb], axis=1), int_fill
+        )
 
-    s_idx = np.arange(n_total)  # helper for fancy indexing
+        # --- Update child_indices (store children sorted: min first) ---
+        child0 = tf.minimum(ca, cb)
+        child1 = tf.maximum(ca, cb)
+        int_node_fill = tf.fill([n_total], internal_node)
+        zero_fill = tf.zeros([n_total], dtype=tf.int32)
+        one_fill = tf.ones([n_total], dtype=tf.int32)
+        child_indices = tf.tensor_scatter_nd_update(
+            child_indices,
+            tf.stack([s_idx, int_node_fill, zero_fill], axis=1),
+            child0,
+        )
+        child_indices = tf.tensor_scatter_nd_update(
+            child_indices,
+            tf.stack([s_idx, int_node_fill, one_fill], axis=1),
+            child1,
+        )
 
-    for j, (pos_a, pos_b) in enumerate(pos_pairs):
-        n_active = n - j  # Python int
-        internal_node = n + j  # Python int
+        # --- Update active list ---
+        # Remove ca (at pos_a) and cb (at pos_b), add internal_node.
+        # Strategy: keep n_active-1 elements in positions 0..n_active-2.
+        #
+        # Three cases based on whether pos_a or pos_b is the last active slot:
+        #   Case 1 (pos_a == last): write internal_node at pos_b; drop last slot.
+        #   Case 2 (pos_b == last): write internal_node at pos_a; drop last slot.
+        #   Case 3 (normal):        write internal_node at pos_a;
+        #                           fill pos_b with the last active element.
+        last_pos_fill = tf.fill([n_total], n_active - 1)
+        last_elems = tf.gather_nd(active, tf.stack([s_idx, last_pos_fill], axis=1))
 
-        # Retrieve lineage indices
-        ca = active_np[s_idx, pos_a]   # [n_total]
-        cb = active_np[s_idx, pos_b]   # [n_total]
+        is_pa_last = tf.equal(pos_a, n_active - 1)
+        is_pb_last = tf.equal(pos_b, n_active - 1)
+        is_normal = tf.logical_not(tf.logical_or(is_pa_last, is_pb_last))
 
-        # Record parent and child relationships
-        parent_indices_np[s_idx, ca] = internal_node
-        parent_indices_np[s_idx, cb] = internal_node
-        child_indices_np[s_idx, internal_node, 0] = np.minimum(ca, cb)
-        child_indices_np[s_idx, internal_node, 1] = np.maximum(ca, cb)
+        # Write 1: place internal_node at pos_b (case 1) or pos_a (cases 2 & 3)
+        write1_pos = tf.where(is_pa_last, pos_b, pos_a)
+        active = tf.tensor_scatter_nd_update(
+            active,
+            tf.stack([s_idx, write1_pos], axis=1),
+            int_fill,
+        )
 
-        # Update active list: remove ca and cb, add internal_node.
-        # Strategy: "swap the removed element with the last active element".
-        # Three cases depending on which positions are at the last slot.
-        last_elems = active_np[:, n_active - 1].copy()
-        is_pa_last = pos_a == (n_active - 1)  # [n_total] bool
-        is_pb_last = pos_b == (n_active - 1)
-        is_normal = ~is_pa_last & ~is_pb_last
+        # Write 2: fill pos_b appropriately
+        #   case 1: write internal_node back (no-op — already written to pos_b)
+        #   case 2: write cb back (no-op — pos_b==last, not used after decrement)
+        #   case 3: write last_elem into pos_b to fill the gap
+        value2 = tf.where(
+            is_pa_last,
+            int_fill,
+            tf.where(is_pb_last, cb, last_elems),
+        )
+        active = tf.tensor_scatter_nd_update(
+            active,
+            tf.stack([s_idx, pos_b], axis=1),
+            value2,
+        )
 
-        # Case 1: pa is the last slot — cb at pos_b gets internal_node
-        if np.any(is_pa_last):
-            idx = s_idx[is_pa_last]
-            active_np[idx, pos_b[is_pa_last]] = internal_node
-
-        # Case 2: pb is the last slot — ca at pos_a gets internal_node
-        if np.any(is_pb_last):
-            idx = s_idx[is_pb_last]
-            active_np[idx, pos_a[is_pb_last]] = internal_node
-
-        # Case 3: normal — replace ca at pos_a with internal_node,
-        #         fill vacated pos_b with the last active element
-        if np.any(is_normal):
-            idx = s_idx[is_normal]
-            active_np[idx, pos_a[is_normal]] = internal_node
-            active_np[idx, pos_b[is_normal]] = last_elems[is_normal]
-
-    # Derive preorder indices from child_indices using existing numpy routine
-    preorder_np = np_top_ops.get_preorder_indices(child_indices_np)  # [n_total, node_count]
+    # Compute preorder indices via a pure-TF DFS traversal
+    preorder_indices = _compute_preorder_tf(child_indices, n_total, n_taxa)
 
     return TensorflowTreeTopology(
-        parent_indices=tf.constant(parent_indices_np, dtype=tf.int32),
-        child_indices=tf.constant(child_indices_np, dtype=tf.int32),
-        preorder_indices=tf.constant(preorder_np, dtype=tf.int32),
+        parent_indices=parent_indices,
+        child_indices=child_indices,
+        preorder_indices=preorder_indices,
     )
 
 
