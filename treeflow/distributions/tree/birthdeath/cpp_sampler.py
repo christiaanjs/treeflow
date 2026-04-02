@@ -12,7 +12,10 @@ import tensorflow as tf
 from tensorflow_probability.python.internal import samplers
 
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
-from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
+from treeflow.tree.topology.tensorflow_tree_topology import (
+    TensorflowTreeTopology,
+    compute_preorder_indices,
+)
 
 
 def sample_origin_age(n_taxa, lambda_, mu, rho, n_samples, seed, grid_size=1000):
@@ -227,95 +230,6 @@ def sample_speciation_times(T, n_taxa, lambda_, mu, rho, seed):
     return tau
 
 
-def _compute_preorder_tf(child_indices, n_total, n_taxa):
-    """
-    Compute preorder (DFS) traversal indices from child_indices using pure TF.
-
-    Implements an iterative DFS: root is pushed onto a stack first; at each
-    step the top node is popped and recorded; if it is an internal node its
-    right child is pushed then its left child (so the left child is popped
-    first, matching the conventional preorder).
-
-    Parameters
-    ----------
-    child_indices : tf.Tensor
-        Shape [n_total, 2*n_taxa-1, 2].  Leaves have child value -1.
-    n_total : int
-        Number of independent topologies (Python int).
-    n_taxa : int
-        Number of leaf taxa (Python int).
-
-    Returns
-    -------
-    tf.Tensor
-        Preorder indices, shape [n_total, 2*n_taxa-1].
-    """
-    node_count = 2 * n_taxa - 1
-    root = node_count - 1  # = 2*n_taxa-2
-    s_idx = tf.range(n_total, dtype=tf.int32)
-    zeros = tf.zeros([n_total], dtype=tf.int32)
-    ones = tf.ones([n_total], dtype=tf.int32)
-
-    # Stack tensor and size counter
-    stack = tf.fill([n_total, node_count], -1)
-    stack = tf.tensor_scatter_nd_update(
-        stack,
-        tf.stack([s_idx, zeros], axis=1),
-        tf.fill([n_total], root),
-    )
-    stack_size = tf.ones([n_total], dtype=tf.int32)
-
-    preorder = tf.zeros([n_total, node_count], dtype=tf.int32)
-    preorder_pos = tf.zeros([n_total], dtype=tf.int32)
-
-    # Exactly node_count iterations are needed for a complete binary tree
-    for _ in range(node_count):
-        # Pop top of stack
-        top_pos = stack_size - 1  # [n_total]
-        current_node = tf.gather_nd(stack, tf.stack([s_idx, top_pos], axis=1))
-        stack_size = stack_size - 1
-
-        # Record current_node in preorder output
-        preorder = tf.tensor_scatter_nd_update(
-            preorder,
-            tf.stack([s_idx, preorder_pos], axis=1),
-            current_node,
-        )
-        preorder_pos = preorder_pos + 1
-
-        # Gather children of current_node
-        child0 = tf.gather_nd(
-            child_indices, tf.stack([s_idx, current_node, zeros], axis=1)
-        )  # [n_total]
-        child1 = tf.gather_nd(
-            child_indices, tf.stack([s_idx, current_node, ones], axis=1)
-        )  # [n_total]
-
-        is_internal = tf.not_equal(child0, -1)  # leaves have child_indices == -1
-
-        # Push right child (child1) first so left child (child0) is popped first
-        push1_pos = stack_size
-        cur1 = tf.gather_nd(stack, tf.stack([s_idx, push1_pos], axis=1))
-        stack = tf.tensor_scatter_nd_update(
-            stack,
-            tf.stack([s_idx, push1_pos], axis=1),
-            tf.where(is_internal, child1, cur1),
-        )
-        stack_size = tf.where(is_internal, stack_size + 1, stack_size)
-
-        # Push left child (child0)
-        push0_pos = stack_size
-        cur0 = tf.gather_nd(stack, tf.stack([s_idx, push0_pos], axis=1))
-        stack = tf.tensor_scatter_nd_update(
-            stack,
-            tf.stack([s_idx, push0_pos], axis=1),
-            tf.where(is_internal, child0, cur0),
-        )
-        stack_size = tf.where(is_internal, stack_size + 1, stack_size)
-
-    return preorder
-
-
 def build_random_topologies(n_total, n_taxa, seed):
     """
     Stage 3: Build n_total random labeled ranked tree topologies via pure TF.
@@ -453,7 +367,7 @@ def build_random_topologies(n_total, n_taxa, seed):
         )
 
     # Compute preorder indices via a pure-TF DFS traversal
-    preorder_indices = _compute_preorder_tf(child_indices, n_total, n_taxa)
+    preorder_indices = compute_preorder_indices(child_indices)
 
     return TensorflowTreeTopology(
         parent_indices=parent_indices,
