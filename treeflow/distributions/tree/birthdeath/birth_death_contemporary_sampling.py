@@ -59,15 +59,42 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
             allow_nan_stats=allow_nan_stats,
             name=name,
             tree_name=tree_name,
-            support_topology_batch_dims=False,
+            support_topology_batch_dims=True,
         )
 
     def _sample_n(self, n, seed=None):
-        import warnings
+        from treeflow.distributions.tree.birthdeath.cpp_sampler import sample_bd_tree
 
-        warnings.warn("Dummy sampling")
-        return self._make_dummy_samples(
-            tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
+        # When called inside tf.function (for shape inference by TFP's
+        # get_output_spec / JointDistribution tracing), TF ops produce
+        # SymbolicTensors that cannot be numpy-converted.  The caller only
+        # needs output shapes, so return dummy samples in that case.
+        # if tf.inside_function():
+        #     return self._make_dummy_samples(
+        #         tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
+        #     )
+        # try:
+        #     n_int = int(n)
+        #     n_taxa_int = int(self.taxon_count)
+        # except TypeError:
+        #     return self._make_dummy_samples(
+        #         tf.zeros(self.taxon_count, dtype=self.dtype.sampling_times), n
+        #     )
+
+        r = self.birth_diff_rate
+        a = self.relative_death_rate
+        # Convert (r = lambda-mu, a = mu/lambda) → (lambda, mu)
+        lambda_ = r / (tf.cast(1.0, r.dtype) - a)
+        mu = r * a / (tf.cast(1.0, r.dtype) - a)
+        rho = self.sample_probability
+
+        return sample_bd_tree(
+            n_taxa=n_taxa_int,
+            lambda_=lambda_,
+            mu=mu,
+            rho=rho,
+            n_samples=n_int,
+            seed=seed,
         )
 
     def _log_coeff(self, dtype):
