@@ -400,6 +400,137 @@ def build_random_topologies(n_total, n_taxa, seed):
     )
 
 
+def sample_ranking(n_taxa, child_indices, parent_indices, n_total, seed):
+    """
+    Sample ``n_total`` uniformly random linear extensions of the internal-node
+    partial order of a fixed tree topology.
+
+    A *linear extension* (ranking) assigns ranks 0..n_internal-1 to the
+    internal nodes such that every parent has a strictly higher rank than its
+    children (rank 0 = youngest node, rank n_internal-1 = root).
+
+    At each step the algorithm picks uniformly from the set of *eligible*
+    nodes — those whose every internal child has already been ranked.  This
+    gives a uniform distribution over all linear extensions.
+
+    Parameters
+    ----------
+    n_taxa : int
+        Number of leaf taxa (Python int).
+    child_indices : tf.Tensor
+        Shape ``[2*n_taxa-1, 2]``.  Unbatched.  ``child_indices[i, :] = -1``
+        for leaf nodes.
+    parent_indices : tf.Tensor
+        Shape ``[2*n_taxa-2]``.  Unbatched.  ``parent_indices[i]`` = parent of
+        node ``i`` for all non-root nodes.
+    n_total : int
+        Number of independent rankings to draw (Python int).
+    seed
+        TFP-compatible stateless seed.
+
+    Returns
+    -------
+    sigma : tf.Tensor, shape ``[n_total, n_taxa-1]``, dtype ``tf.int32``
+        ``sigma[s, k]`` = local index (0-based, i.e. global − n_taxa) of the
+        internal node that receives rank ``k`` in sample ``s``.
+    """
+    n = n_taxa
+    n_internal = n - 1
+
+    if n_total == 0 or n_internal == 0:
+        return tf.zeros([n_total, n_internal], dtype=tf.int32)
+
+    # ── Pre-compute topology-dependent constants ───────────────────────────────
+    # Number of internal children for each internal node (local 0-indexed)
+    child0 = child_indices[n:, 0]  # [n_internal] global child indices
+    child1 = child_indices[n:, 1]
+    n_int_children = (
+        tf.cast(child0 >= n, tf.int32) + tf.cast(child1 >= n, tf.int32)
+    )  # [n_internal]: 0, 1, or 2
+
+    # Local parent index for each internal node (sentinel n_internal for root)
+    # parent_indices covers nodes 0..2n-3; slice [n:] gives internal non-root parents
+    non_root_parents = parent_indices[n:] - n  # [n_internal-1]
+    parent_local = tf.concat(
+        [non_root_parents, tf.constant([n_internal], dtype=tf.int32)], axis=0
+    )  # [n_internal]
+
+    # ── Initialise state ───────────────────────────────────────────────────────
+    step_seeds = samplers.split_seed(seed, n=n_internal)
+    s_idx = tf.range(n_total, dtype=tf.int32)
+
+    # Sort local node indices by n_int_children ascending so that initially
+    # eligible nodes (n_int_children == 0) fill positions 0..n_initial-1.
+    sorted_order = tf.argsort(n_int_children, stable=True)  # [n_internal]
+    eligible_list = tf.tile(
+        tf.expand_dims(sorted_order, 0), [n_total, 1]
+    )  # [n_total, n_internal]
+    n_initial = tf.reduce_sum(tf.cast(tf.equal(n_int_children, 0), tf.int32))
+    n_eligible = tf.fill([n_total], n_initial)  # [n_total]
+
+    n_ranked_of = tf.zeros([n_total, n_internal], dtype=tf.int32)
+    sigma_ta = tf.TensorArray(
+        dtype=tf.int32,
+        size=n_internal,
+        clear_after_read=False,
+        element_shape=[n_total],
+    )
+
+    # ── Main loop: one node ranked per step ───────────────────────────────────
+    for k in range(n_internal):
+        # 1. Sample a position uniformly within the eligible set.
+        # Multiply a Uniform[0,1) float by n_eligible to avoid modulo bias.
+        u = tf.random.stateless_uniform(
+            [n_total], step_seeds[k], minval=0.0, maxval=1.0, dtype=tf.float32
+        )
+        pos = tf.cast(
+            tf.math.floor(u * tf.cast(n_eligible, tf.float32)), tf.int32
+        )
+        pos = tf.minimum(pos, n_eligible - 1)  # guard against rounding to n_eligible
+
+        # 2. Identify the chosen node
+        chosen = tf.gather_nd(
+            eligible_list, tf.stack([s_idx, pos], axis=1)
+        )  # [n_total]
+        sigma_ta = sigma_ta.write(k, chosen)
+
+        # 3. Remove chosen: swap with the last eligible entry, then decrement
+        last_pos = n_eligible - 1
+        last_elem = tf.gather_nd(
+            eligible_list, tf.stack([s_idx, last_pos], axis=1)
+        )
+        eligible_list = tf.tensor_scatter_nd_update(
+            eligible_list, tf.stack([s_idx, pos], axis=1), last_elem
+        )
+        n_eligible = n_eligible - 1
+
+        # 4. Look up parent; sentinel n_internal marks the root (no parent)
+        parent = tf.gather(parent_local, chosen)  # [n_total]
+        is_valid = parent < n_internal
+        safe_parent = tf.where(is_valid, parent, tf.zeros_like(parent))
+
+        # 5. Increment n_ranked_of[s, parent[s]] for non-root chosen nodes
+        gather_idx = tf.stack([s_idx, safe_parent], axis=1)
+        cur_cnt = tf.gather_nd(n_ranked_of, gather_idx)
+        new_cnt = tf.where(is_valid, cur_cnt + 1, cur_cnt)
+        n_ranked_of = tf.tensor_scatter_nd_update(n_ranked_of, gather_idx, new_cnt)
+
+        # 6. Add parent to eligible list if all its internal children are ranked
+        req = tf.gather(n_int_children, safe_parent)
+        newly_eligible = is_valid & tf.equal(new_cnt, req)
+        add_pos = n_eligible  # first free slot (after decrement above)
+        add_idx = tf.stack([s_idx, add_pos], axis=1)
+        cur_at_add = tf.gather_nd(eligible_list, add_idx)
+        eligible_list = tf.tensor_scatter_nd_update(
+            eligible_list, add_idx,
+            tf.where(newly_eligible, safe_parent, cur_at_add)
+        )
+        n_eligible = tf.where(newly_eligible, n_eligible + 1, n_eligible)
+
+    # [n_internal, n_total] → [n_total, n_internal]
+    return tf.transpose(sigma_ta.stack())
+
+
 def sample_bd_tree(
     n_taxa,
     lambda_,
@@ -449,33 +580,81 @@ def sample_bd_tree(
     heights = sample_speciation_times(T, n_taxa, lambda_, mu, rho, seed2)
     # heights: [n_samples, *batch_shape, n_taxa-1]
 
-    # --- Stage 3: random topology ---
+    # --- Stage 3: topology + ranking ---
+    # n_total is needed in both branches (random and fixed topology)
+    shape_list = lambda_.shape.as_list()
+    if any(d is None for d in shape_list):
+        n_batch = int(tf.reduce_prod(tf.shape(lambda_)))
+    else:
+        n_batch = int(np.prod(shape_list)) if shape_list else 1
+    n_total = n_samples * max(n_batch, 1)
+
+    # Reshape [n_total, ...] → [n_samples, *batch_shape, ...] so that the base
+    # class's _call_sample_n can process the output correctly.
+    def _reshape(t, *event_dims):
+        target = tf.concat(
+            [tf.constant([n_samples]), batch_shape, tf.constant(list(event_dims))],
+            0,
+        )
+        return tf.reshape(t, target)
+
     if fixed_topology is None:
-        # Prefer static shape so this works inside tf.function tracing too
-        shape_list = lambda_.shape.as_list()
-        if any(d is None for d in shape_list):
-            n_batch = int(tf.reduce_prod(tf.shape(lambda_)))
-        else:
-            n_batch = int(np.prod(shape_list)) if shape_list else 1
-        n_total = n_samples * max(n_batch, 1)
-
         flat_topology = build_random_topologies(n_total, n_taxa, seed3)
-
-        # Reshape [n_total, ...] → [n_samples, *batch_shape, ...]
-        def _reshape(t, *event_dims):
-            target = tf.concat(
-                [tf.constant([n_samples]), batch_shape, tf.constant(list(event_dims))],
-                0,
-            )
-            return tf.reshape(t, target)
-
         topology = TensorflowTreeTopology(
             parent_indices=_reshape(flat_topology.parent_indices, 2 * n_taxa - 2),
             child_indices=_reshape(flat_topology.child_indices, 2 * n_taxa - 1, 2),
             preorder_indices=_reshape(flat_topology.preorder_indices, 2 * n_taxa - 1),
         )
     else:
-        topology = fixed_topology
+        # Sample a uniform random ranking for the fixed topology and permute
+        # the sorted speciation times to match it.  fixed_topology must be
+        # unbatched (child_indices shape [node_count, 2]).
+        n_internal = n_taxa - 1
+        ranking = sample_ranking(
+            n_taxa,
+            fixed_topology.child_indices,
+            fixed_topology.parent_indices,
+            n_total,
+            seed3,
+        )  # [n_total, n_internal]
+
+        # heights: [n_samples, *batch_shape, n_internal] → flatten → permute → restore
+        heights_flat = tf.reshape(heights, [n_total, n_internal])
+        # Scatter: output[s, ranking[s, k]] = heights_flat[s, k]
+        s_idx = tf.range(n_total, dtype=tf.int32)
+        s_exp = tf.tile(tf.expand_dims(s_idx, 1), [1, n_internal])
+        scatter_idx = tf.reshape(
+            tf.stack([s_exp, ranking], axis=2), [-1, 2]
+        )  # [n_total*n_internal, 2]
+        heights_permuted = tf.tensor_scatter_nd_update(
+            tf.zeros([n_total, n_internal], dtype=heights.dtype),
+            scatter_idx,
+            tf.reshape(heights_flat, [-1]),
+        )
+        heights = tf.reshape(heights_permuted, tf.shape(heights))
+
+        # Tile fixed_topology to [n_total, ...] then reshape to
+        # [n_samples, *batch_shape, ...] to match the base class's expectation.
+        topology = TensorflowTreeTopology(
+            parent_indices=_reshape(
+                tf.tile(
+                    tf.expand_dims(fixed_topology.parent_indices, 0), [n_total, 1]
+                ),
+                2 * n_taxa - 2,
+            ),
+            child_indices=_reshape(
+                tf.tile(
+                    tf.expand_dims(fixed_topology.child_indices, 0), [n_total, 1, 1]
+                ),
+                2 * n_taxa - 1, 2,
+            ),
+            preorder_indices=_reshape(
+                tf.tile(
+                    tf.expand_dims(fixed_topology.preorder_indices, 0), [n_total, 1]
+                ),
+                2 * n_taxa - 1,
+            ),
+        )
 
     # Sampling times: all zero (contemporaneous sampling)
     sampling_times = tf.zeros(
@@ -494,5 +673,6 @@ __all__ = [
     "sample_origin_age",
     "sample_speciation_times",
     "build_random_topologies",
+    "sample_ranking",
     "sample_bd_tree",
 ]

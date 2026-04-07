@@ -36,6 +36,7 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
         birth_diff_rate,
         relative_death_rate,
         sample_probability=1.0,
+        fixed_topology=None,
         validate_args=False,
         allow_nan_stats=True,
         name="BirthDeathContemporarySampling",
@@ -49,6 +50,7 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
         self.sample_probability = tensor_util.convert_nonref_to_tensor(
             sample_probability, dtype=dtype
         )
+        self.fixed_topology = fixed_topology
         super().__init__(
             taxon_count,
             sampling_time_reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
@@ -91,6 +93,7 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
             rho=rho,
             n_samples=n_int,
             seed=seed,
+            fixed_topology=self.fixed_topology,
         )
 
     def _log_coeff(self, dtype):

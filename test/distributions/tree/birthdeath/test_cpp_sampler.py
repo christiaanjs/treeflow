@@ -11,8 +11,10 @@ from treeflow.distributions.tree.birthdeath.cpp_sampler import (
     build_random_topologies,
     sample_bd_tree,
     sample_origin_age,
+    sample_ranking,
     sample_speciation_times,
 )
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.distributions.tree.birthdeath.birth_death_contemporary_sampling import (
     BirthDeathContemporarySampling,
 )
@@ -313,6 +315,147 @@ def test_bd_sample_batch_log_prob_finite():
     lp = dist.log_prob(samples)
     assert lp.shape == (5, 2), f"Expected (5, 2), got {lp.shape}"
     assert tf.reduce_all(tf.math.is_finite(lp)).numpy()
+
+
+# ── sample_ranking ───────────────────────────────────────────────────────────
+
+# Caterpillar n_taxa=4: 4->{0,1}, 5->{4,2}, 6->{5,3}
+# parent_indices[0..5] = [4,4,5,6,5,6]  (parents of nodes 0..5; root 6 absent)
+# child_indices[4]=[0,1], [5]=[2,4], [6]=[3,5]  (sorted min-first)
+_CAT4_PARENT = tf.constant([4, 4, 5, 6, 5, 6], dtype=tf.int32)
+_CAT4_CHILD = tf.constant(
+    [[-1,-1],[-1,-1],[-1,-1],[-1,-1],[0,1],[2,4],[3,5]], dtype=tf.int32
+)
+# Only one valid ranking: local 0 (node 4) < local 1 (node 5) < local 2 (node 6)
+
+# Balanced n_taxa=4: 4->{0,1}, 5->{2,3}, 6->{4,5}
+# parent_indices[0..5] = [4,4,5,5,6,6]
+# child_indices[4]=[0,1], [5]=[2,3], [6]=[4,5]
+_BAL4_PARENT = tf.constant([4, 4, 5, 5, 6, 6], dtype=tf.int32)
+_BAL4_CHILD = tf.constant(
+    [[-1,-1],[-1,-1],[-1,-1],[-1,-1],[0,1],[2,3],[4,5]], dtype=tf.int32
+)
+# Two valid rankings: [0,1,2] and [1,0,2]  (node 4 or node 5 can go first)
+
+
+def test_sample_ranking_is_permutation():
+    """sigma[s, :] contains every local index 0..n_internal-1 exactly once."""
+    n_taxa = 5
+    topo = build_random_topologies(1, n_taxa, SEED)
+    ci = topo.child_indices[0]   # [2n-1, 2]
+    pi = topo.parent_indices[0]  # [2n-2]
+    n_internal = n_taxa - 1
+    sigma = sample_ranking(n_taxa, ci, pi, 20, SEED)
+    for s in range(20):
+        assert sorted(sigma[s].numpy().tolist()) == list(range(n_internal)), (
+            f"sample {s}: sigma not a permutation: {sigma[s].numpy()}"
+        )
+
+
+def test_sample_ranking_parent_has_higher_rank():
+    """For caterpillar n_taxa=4, only one valid ranking — verify it is always produced."""
+    n_taxa = 4
+    n_samples = 50
+    sigma = sample_ranking(n_taxa, _CAT4_CHILD, _CAT4_PARENT, n_samples, SEED)
+    # sigma_inv[s, local_node] = rank of that node
+    # Build inverse: sigma_inv[s, sigma[s, k]] = k
+    sigma_np = sigma.numpy()
+    n_internal = n_taxa - 1
+    for s in range(n_samples):
+        sigma_inv = np.empty(n_internal, dtype=int)
+        sigma_inv[sigma_np[s]] = np.arange(n_internal)
+        # parent local indices: node 0→parent1(local 1), node 1→parent2(local 2)
+        # local 0: parent is local 1; local 1: parent is local 2 (root)
+        assert sigma_inv[1] > sigma_inv[0], f"sample {s}: parent rank <= child rank"
+        assert sigma_inv[2] > sigma_inv[1], f"sample {s}: root rank <= child rank"
+
+
+def test_sample_ranking_uniform():
+    """For balanced n_taxa=4, the two valid rankings should each occur ~50%."""
+    n_taxa = 4
+    n_samples = 2000
+    sigma = sample_ranking(n_taxa, _BAL4_CHILD, _BAL4_PARENT, n_samples, SEED)
+    sigma_np = sigma.numpy()
+    # Valid rankings in local space: [0,1,2] (node 4 first) or [1,0,2] (node 5 first)
+    count_01 = np.sum((sigma_np[:, 0] == 0) & (sigma_np[:, 1] == 1))
+    count_10 = np.sum((sigma_np[:, 0] == 1) & (sigma_np[:, 1] == 0))
+    assert count_01 + count_10 == n_samples, "Unexpected ranking produced"
+    # Each should be ~50%; allow 5-sigma tolerance for binomial(2000, 0.5)
+    expected = n_samples / 2
+    tol = 5 * (n_samples * 0.25) ** 0.5  # 5 * std
+    assert abs(count_01 - expected) < tol, (
+        f"Ranking [0,1,2] count {count_01} too far from {expected}"
+    )
+
+
+def test_sample_ranking_reproducible():
+    """Same seed produces identical sigma."""
+    n_taxa = 5
+    topo = build_random_topologies(1, n_taxa, SEED)
+    ci, pi = topo.child_indices[0], topo.parent_indices[0]
+    s1 = sample_ranking(n_taxa, ci, pi, 10, SEED)
+    s2 = sample_ranking(n_taxa, ci, pi, 10, SEED)
+    assert_allclose(s1.numpy(), s2.numpy())
+
+
+# ── BirthDeathContemporarySampling with fixed topology ───────────────────────
+
+def _make_fixed_topology(n_taxa):
+    """Return a balanced-ish fixed TensorflowTreeTopology for n_taxa."""
+    topo = build_random_topologies(1, n_taxa, SEED)
+    return TensorflowTreeTopology(
+        parent_indices=topo.parent_indices[0],
+        child_indices=topo.child_indices[0],
+        preorder_indices=topo.preorder_indices[0],
+    )
+
+
+def test_bd_fixed_topology_shape():
+    n_taxa = 5
+    fixed_topo = _make_fixed_topology(n_taxa)
+    dist = BirthDeathContemporarySampling(
+        n_taxa, _c(1.0), _c(0.5), sample_probability=_c(1.0),
+        fixed_topology=fixed_topo,
+    )
+    samples = dist.sample(4, seed=SEED)
+    assert samples.node_heights.shape == (4, n_taxa - 1)
+    assert samples.topology.parent_indices.shape == (4, 2 * n_taxa - 2)
+
+
+def test_bd_fixed_topology_parent_height_gt_child_height():
+    """For every internal-node parent/child pair the parent height must exceed the child height."""
+    n_taxa = 5
+    fixed_topo = _make_fixed_topology(n_taxa)
+    dist = BirthDeathContemporarySampling(
+        n_taxa, _c(1.0), _c(0.5), sample_probability=_c(1.0),
+        fixed_topology=fixed_topo,
+    )
+    samples = dist.sample(20, seed=SEED)
+    # node_heights[s, j] = height of internal node n_taxa+j (local index j)
+    heights = samples.node_heights.numpy()          # [20, n_taxa-1]
+    pi = fixed_topo.parent_indices.numpy()          # [2n-2]
+    n_internal = n_taxa - 1
+    for j in range(n_internal - 1):     # root (local n_internal-1) has no parent entry
+        parent_global = pi[n_taxa + j]  # global parent of internal node n_taxa+j
+        parent_local = parent_global - n_taxa
+        assert np.all(heights[:, parent_local] > heights[:, j]), (
+            f"Parent local {parent_local} height not always > child local {j}"
+        )
+
+
+def test_bd_fixed_topology_log_prob_finite():
+    n_taxa = 5
+    fixed_topo = _make_fixed_topology(n_taxa)
+    dist = BirthDeathContemporarySampling(
+        n_taxa, _c(1.0), _c(0.5), sample_probability=_c(1.0),
+        fixed_topology=fixed_topo,
+    )
+    samples = dist.sample(10, seed=SEED)
+    lp = dist.log_prob(samples)
+    assert lp.shape == (10,)
+    assert tf.reduce_all(tf.math.is_finite(lp)).numpy(), (
+        f"log_prob has non-finite values: {lp.numpy()}"
+    )
 
 
 # ── Yule subclass ─────────────────────────────────────────────────────────────
