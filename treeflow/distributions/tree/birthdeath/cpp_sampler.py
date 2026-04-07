@@ -5,6 +5,16 @@ Reference: Stadler (2011) J. Theor. Biol.; Lambert & Stadler (2013).
 
 The CPP converts tree simulation into iid sampling from a 1-D distribution
 with a closed-form inverse CDF, avoiding biased forward simulation.
+
+Topology distribution
+---------------------
+``build_random_topologies`` samples uniformly over *ranked labeled tree
+topologies* (labeled histories).  At each coalescence step j the two merging
+lineages are chosen uniformly at random from the j+1 active lineages, so
+every sequence of coalescence decisions is equally probable.  The resulting
+distribution is therefore uniform over all ranked labeled topologies (the
+set of labeled binary trees together with a total order on the internal
+nodes consistent with the parent-child relation).
 """
 
 import numpy as np
@@ -12,10 +22,7 @@ import tensorflow as tf
 from tensorflow_probability.python.internal import samplers
 
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
-from treeflow.tree.topology.tensorflow_tree_topology import (
-    TensorflowTreeTopology,
-    compute_preorder_indices,
-)
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 
 
 def sample_origin_age(n_taxa, lambda_, mu, rho, n_samples, seed, grid_size=1000):
@@ -237,6 +244,15 @@ def build_random_topologies(n_total, n_taxa, seed):
     Uses only TF stateless random ops and tensor operations — no NumPy, no
     .numpy() calls — so it is fully compatible with tf.function tracing.
 
+    The topology distribution is uniform over ranked labeled topologies
+    (labeled histories): at each step j the pair of merging lineages is chosen
+    uniformly from the C(j+1, 2) available pairs, so all ranked topologies are
+    equally probable.
+
+    ``preorder_indices`` is constructed directly from the creation order rather
+    than via DFS: internal nodes are created in postorder, so their reverse
+    (root first) is a valid preorder.  The same order holds for every sample.
+
     Parameters
     ----------
     n_total : int
@@ -366,8 +382,16 @@ def build_random_topologies(n_total, n_taxa, seed):
             value2,
         )
 
-    # Compute preorder indices via a pure-TF DFS traversal
-    preorder_indices = compute_preorder_indices(child_indices)
+    # Internal nodes are created in postorder (n_taxa, n_taxa+1, ..., root) because
+    # each new node is added only after both its children are active lineages.
+    # Reversing the creation order gives a valid preorder (root first, every parent
+    # before its children).  Leaves are appended last; since every leaf's parent is
+    # an internal node, the parent-before-child invariant still holds.
+    # This preorder is the same for every sample in the batch, so it is tiled.
+    internal_preorder = tf.range(node_count - 1, n - 1, -1, dtype=tf.int32)  # [n-1]
+    leaf_indices = tf.range(n, dtype=tf.int32)                                 # [n]
+    row = tf.concat([internal_preorder, leaf_indices], axis=0)                 # [node_count]
+    preorder_indices = tf.tile(tf.expand_dims(row, 0), [n_total, 1])          # [n_total, node_count]
 
     return TensorflowTreeTopology(
         parent_indices=parent_indices,

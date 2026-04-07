@@ -185,6 +185,76 @@ def test_build_random_topologies_n2():
     assert np.all(pi == 2), f"Both leaves should have parent 2, got:\n{pi}"
 
 
+# ── build_random_topologies: preorder / traversal validity ───────────────────
+
+def test_build_random_topologies_preorder_contains_all_nodes():
+    """preorder_indices contains every node 0..2n-1 exactly once."""
+    n_taxa = 5
+    node_count = 2 * n_taxa - 1
+    topo = build_random_topologies(20, n_taxa, SEED)
+    pre = topo.preorder_indices.numpy()
+    for s in range(20):
+        assert sorted(pre[s].tolist()) == list(range(node_count)), (
+            f"sample {s}: preorder does not contain all nodes"
+        )
+
+
+def test_build_random_topologies_preorder_parent_before_child():
+    """In preorder_indices every node's parent must appear at an earlier position."""
+    n_taxa = 5
+    topo = build_random_topologies(20, n_taxa, SEED)
+    pi = topo.parent_indices.numpy()   # [20, 2n-2]
+    pre = topo.preorder_indices.numpy()  # [20, 2n-1]
+    for s in range(20):
+        position = {int(node): pos for pos, node in enumerate(pre[s])}
+        for node in range(2 * n_taxa - 2):  # all non-root nodes
+            parent = int(pi[s, node])
+            assert position[parent] < position[node], (
+                f"sample {s}: parent {parent} (pos {position[parent]}) "
+                f"must precede node {node} (pos {position[node]})"
+            )
+
+
+def test_build_random_topologies_preorder_same_across_samples():
+    """preorder_indices is identical for every sample in the batch."""
+    n_taxa = 5
+    topo = build_random_topologies(20, n_taxa, SEED)
+    pre = topo.preorder_indices.numpy()
+    for s in range(1, 20):
+        np.testing.assert_array_equal(
+            pre[s], pre[0],
+            err_msg=f"sample {s} preorder differs from sample 0",
+        )
+
+
+def test_build_random_topologies_preorder_works_with_ratio_transform():
+    """Sampled topology preorder indices are compatible with ratios_to_node_heights."""
+    from treeflow.traversal.ratio_transform import ratios_to_node_heights
+
+    n_taxa = 5
+    n_internal = n_taxa - 1
+    topo = build_random_topologies(1, n_taxa, SEED)
+
+    # Squeeze the batch dim and work with raw tensors to avoid the batched
+    # restriction in the preorder_node_indices property.
+    pi = topo.parent_indices[0]             # [2n-2]
+    preorder = topo.preorder_indices[0]     # [2n-1]
+
+    # Filter to internal nodes (global index >= n_taxa) and shift to local space
+    mask = preorder >= n_taxa
+    pre_node_local = tf.boolean_mask(preorder, mask) - n_taxa   # [n-1]
+    pi_internal_local = pi[n_taxa:] - n_taxa                     # [n-2] (non-root only)
+
+    ratios = tf.fill([n_internal], tf.constant(0.5, dtype=tf.float32))
+    anchor = tf.zeros([n_internal], dtype=tf.float32)
+
+    heights = ratios_to_node_heights(pre_node_local, pi_internal_local, ratios, anchor)
+    assert heights.shape == (n_internal,), f"Unexpected shape {heights.shape}"
+    assert tf.reduce_all(tf.math.is_finite(heights)).numpy(), (
+        f"heights contains non-finite values: {heights.numpy()}"
+    )
+
+
 # ── Integration: BirthDeathContemporarySampling.sample ───────────────────────
 
 def test_bd_sample_shape():
