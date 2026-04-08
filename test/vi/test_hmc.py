@@ -97,6 +97,94 @@ def test_fit_fixed_topology_hmc_samples_finite(
             )
 
 
+@pytest.mark.parametrize("use_tf_function", [True, False])
+def test_fit_fixed_topology_hmc_tf_function_mode(
+    actual_model_file, hello_tensor_tree, hello_alignment, use_tf_function
+):
+    with open(actual_model_file) as f:
+        model_dict = yaml.safe_load(f)
+    phylo_model = PhyloModel(model_dict)
+    dist = phylo_model_to_joint_distribution(phylo_model, hello_tensor_tree, hello_alignment)
+
+    encoded_sequences = hello_alignment.get_encoded_sequence_tensor(
+        hello_tensor_tree.taxon_set
+    )
+    pinned = dist.experimental_pin(alignment=encoded_sequences)
+
+    result = fit_fixed_topology_hmc(
+        model=pinned,
+        topologies={DEFAULT_TREE_VAR_NAME: hello_tensor_tree.topology},
+        num_results=NUM_RESULTS,
+        num_burnin_steps=NUM_BURNIN,
+        num_adaptation_steps=NUM_BURNIN,
+        step_size=0.01,
+        num_leapfrog_steps=3,
+        use_tf_function=use_tf_function,
+    )
+
+    flat_names = pinned._flat_resolve_names()
+    flat_samples = pinned._model_flatten(result.samples)
+    samples_dict = dict(zip(flat_names, flat_samples))
+    tree_samples = samples_dict[DEFAULT_TREE_VAR_NAME]
+    assert tree_samples.node_heights.shape[0] == NUM_RESULTS
+
+
+def test_fit_fixed_topology_hmc_progress_bar_with_tf_function(
+    actual_model_file, hello_tensor_tree, hello_alignment
+):
+    """Progress bar updates must fire correctly when use_tf_function=True."""
+    with open(actual_model_file) as f:
+        model_dict = yaml.safe_load(f)
+    phylo_model = PhyloModel(model_dict)
+    dist = phylo_model_to_joint_distribution(phylo_model, hello_tensor_tree, hello_alignment)
+
+    encoded_sequences = hello_alignment.get_encoded_sequence_tensor(
+        hello_tensor_tree.taxon_set
+    )
+    pinned = dist.experimental_pin(alignment=encoded_sequences)
+
+    update_count = [0]
+
+    class _CountingBar:
+        def __init__(self, total):
+            self.n = 0
+            self.total = total
+
+        def update(self, n):
+            self.n += n
+            update_count[0] += 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def progress_bar_fn(total, **kwargs):
+        return _CountingBar(total)
+
+    result = fit_fixed_topology_hmc(
+        model=pinned,
+        topologies={DEFAULT_TREE_VAR_NAME: hello_tensor_tree.topology},
+        num_results=NUM_RESULTS,
+        num_burnin_steps=NUM_BURNIN,
+        num_adaptation_steps=NUM_BURNIN,
+        step_size=0.01,
+        num_leapfrog_steps=3,
+        progress_bar=progress_bar_fn,
+        progress_bar_step=1,
+        use_tf_function=True,
+    )
+
+    assert update_count[0] > 0
+
+    flat_names = pinned._flat_resolve_names()
+    flat_samples = pinned._model_flatten(result.samples)
+    samples_dict = dict(zip(flat_names, flat_samples))
+    tree_samples = samples_dict[DEFAULT_TREE_VAR_NAME]
+    assert tree_samples.node_heights.shape[0] == NUM_RESULTS
+
+
 def test_fit_fixed_topology_hmc_with_init_state(
     actual_model_file, hello_tensor_tree, hello_alignment
 ):
