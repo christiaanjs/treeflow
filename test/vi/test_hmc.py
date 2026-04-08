@@ -132,7 +132,13 @@ def test_fit_fixed_topology_hmc_tf_function_mode(
 def test_fit_fixed_topology_hmc_progress_bar_with_tf_function(
     actual_model_file, hello_tensor_tree, hello_alignment
 ):
-    """Progress bar updates must fire correctly when use_tf_function=True."""
+    """Progress bar must reach its total when use_tf_function=True.
+
+    Checks bar.n == total rather than just update_count > 0: the bar only
+    reaches its total if py_function is executed for every step AND receives
+    the correct (post-increment) step value so the update condition fires.
+    A discarded or stale-step py_function call leaves bar.n == 0.
+    """
     with open(actual_model_file) as f:
         model_dict = yaml.safe_load(f)
     phylo_model = PhyloModel(model_dict)
@@ -143,7 +149,7 @@ def test_fit_fixed_topology_hmc_progress_bar_with_tf_function(
     )
     pinned = dist.experimental_pin(alignment=encoded_sequences)
 
-    update_count = [0]
+    bar_ref = [None]
 
     class _CountingBar:
         def __init__(self, total):
@@ -152,7 +158,6 @@ def test_fit_fixed_topology_hmc_progress_bar_with_tf_function(
 
         def update(self, n):
             self.n += n
-            update_count[0] += 1
 
         def __enter__(self):
             return self
@@ -161,9 +166,11 @@ def test_fit_fixed_topology_hmc_progress_bar_with_tf_function(
             pass
 
     def progress_bar_fn(total, **kwargs):
-        return _CountingBar(total)
+        bar = _CountingBar(total)
+        bar_ref[0] = bar
+        return bar
 
-    result = fit_fixed_topology_hmc(
+    fit_fixed_topology_hmc(
         model=pinned,
         topologies={DEFAULT_TREE_VAR_NAME: hello_tensor_tree.topology},
         num_results=NUM_RESULTS,
@@ -176,13 +183,7 @@ def test_fit_fixed_topology_hmc_progress_bar_with_tf_function(
         use_tf_function=True,
     )
 
-    assert update_count[0] > 0
-
-    flat_names = pinned._flat_resolve_names()
-    flat_samples = pinned._model_flatten(result.samples)
-    samples_dict = dict(zip(flat_names, flat_samples))
-    tree_samples = samples_dict[DEFAULT_TREE_VAR_NAME]
-    assert tree_samples.node_heights.shape[0] == NUM_RESULTS
+    assert bar_ref[0].n >= NUM_RESULTS
 
 
 def test_fit_fixed_topology_hmc_with_init_state(

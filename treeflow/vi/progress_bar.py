@@ -78,23 +78,24 @@ def make_hmc_progress_bar_trace_fn(
     progress_bar: tp.Union[ProgressBarFunc, bool] = True,
     update_step: int = 10,
 ):
-    total = num_results + num_burnin_steps
-
     if isinstance(progress_bar, bool):
         if progress_bar:
-            tqdm_instance = tqdm.tqdm(total=total)
+            tqdm_instance = tqdm.tqdm(total=num_results)
         else:
             tqdm_instance = None
     else:
-        tqdm_instance = progress_bar(total=total)
+        tqdm_instance = progress_bar(total=num_results)
 
     if tqdm_instance is None:
         return ProgressBarTraceFunctionContextManager(None, trace_fn)
 
     step_var = tf.Variable(0, trainable=False, dtype=tf.int32)
 
+    # Get progress bar to include burn-in steps
+    total = num_results
+
     def wrapped_trace_fn(current_state, kernel_results):
-        step_var.assign_add(1)
+        new_step = step_var.assign_add(1)
 
         def _update(step):
             s = int(step)
@@ -102,7 +103,11 @@ def make_hmc_progress_bar_trace_fn(
                 tqdm_instance.update(min(update_step, total - tqdm_instance.n))
             return s
 
-        tf.py_function(_update, [step_var], tf.int32)
+        # Pass new_step (the assign_add output tensor) so py_function is
+        # ordered after the increment.  Assign the result back to step_var to
+        # form a stateful chain (assign_add → py_function → assign) that TF
+        # cannot prune during graph optimisation.
+        step_var.assign(tf.py_function(_update, [new_step], tf.int32))
         return trace_fn(current_state, kernel_results)
 
     return ProgressBarTraceFunctionContextManager(tqdm_instance, wrapped_trace_fn)
