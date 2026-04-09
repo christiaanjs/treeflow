@@ -3,6 +3,7 @@ from treeflow.distributions.discrete import FiniteDiscreteDistribution
 from treeflow.distributions.discretized import DiscretizedDistribution
 from treeflow.distributions.discrete_parameter_mixture import DiscreteParameterMixture
 from treeflow.distributions.leaf_ctmc import LeafCTMC
+from treeflow.distributions.leaf_ctmc_rescaled import RescaledLeafCTMC
 from treeflow.distributions.sample_weighted import SampleWeighted
 
 
@@ -12,5 +13,6 @@ __all__ = [
     "DiscretizedDistribution",
     "DiscreteParameterMixture",
     "LeafCTMC",
+    "RescaledLeafCTMC",
     "SampleWeighted",
 ]
