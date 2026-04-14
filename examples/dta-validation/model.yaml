@@ -1,0 +1,14 @@
+tree: fixed
+clock:
+  strict:
+    clock_rate: 0.2
+substitution:
+  discrete_trait:
+    n_states: 4
+    frequencies:
+      dirichlet:
+        concentration: [1.0, 1.0, 1.0, 1.0]
+    rates:
+      dirichlet:
+        concentration: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+site: none
