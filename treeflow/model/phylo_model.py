@@ -27,7 +27,9 @@ from treeflow.evolution.substitution.base_substitution_model import (
 )
 from treeflow.evolution.substitution.nucleotide import JC, HKY, GTR
 from treeflow.evolution.substitution.nucleotide.gtr import GTR_RATE_ORDER
+from treeflow.evolution.substitution.discrete_trait.dta import DiscreteTraitModel
 from treeflow.evolution.seqio import Alignment, WeightedAlignment
+from treeflow.evolution.traitio import DiscreteTraitData
 from treeflow.distributions.discrete import FiniteDiscreteDistribution
 from treeflow.distributions.discretized import DiscretizedDistribution
 from treeflow.distributions.discrete_parameter_mixture import DiscreteParameterMixture
@@ -242,12 +244,21 @@ def get_tree_model(  # TODO: Support unrooted trees
 JC_KEY = "jc"
 GTR_KEY = "gtr"
 GTR_REL_KEY = "gtr_rel"
+DISCRETE_TRAIT_KEY = "discrete_trait"
 subst_model_classes = {JC_KEY: JC, "hky": HKY, GTR_KEY: GTR, GTR_REL_KEY: GTR}
 
 
 def get_subst_model(
     subst_model: str,
+    subst_params: tp.Optional[tp.Dict[str, object]] = None,
 ) -> EigendecompositionSubstitutionModel:  # TODO: Support non-eigen substitution models
+    if subst_model == DISCRETE_TRAIT_KEY:
+        if subst_params is None or "n_states" not in subst_params:
+            raise PhyloModelParseError(
+                "discrete_trait substitution model requires an `n_states` "
+                "integer in its parameter block"
+            )
+        return DiscreteTraitModel(int(subst_params["n_states"]))
     subst_model_class = subst_model_classes.get(subst_model, None)
     if subst_model_class is None:
         raise ValueError(f"Unknown substitution model {subst_model}")
@@ -278,6 +289,11 @@ def get_subst_model_params(
             ],
             axis=-1,
         )
+    elif subst_model == DISCRETE_TRAIT_KEY:
+        # n_states is a config value (required for model construction) and is
+        # not a parameter of the likelihood. Strip it so the remaining dict
+        # only contains the rate-matrix parameters passed to `eigen()`.
+        processed_params.pop("n_states", None)
     return processed_params, has_root
 
 
@@ -417,7 +433,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
 def phylo_model_to_joint_distribution(
     model: PhyloModel,
     initial_tree: TensorflowRootedTree,
-    initial_alignment: Alignment,
+    initial_alignment: tp.Union[Alignment, DiscreteTraitData],
     pattern_counts: tp.Optional[tf.Tensor] = None,
 ) -> JointDistributionCoroutine:
     def model_fn() -> tp.Generator[Distribution, tf.Tensor, None]:
@@ -434,7 +450,7 @@ def phylo_model_to_joint_distribution(
         subst_model_params, _ = yield from get_subst_model_params(
             model.subst_model, model.subst_params
         )
-        subst_model = get_subst_model(model.subst_model)
+        subst_model = get_subst_model(model.subst_model, model.subst_params)
 
         clock_model_params, clock_has_root_param = yield from get_params(
             model.clock_params
