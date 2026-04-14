@@ -1,0 +1,24 @@
+// DTA recovery experiment: simulate a K=4 discrete trait on a Yule tree
+// under a known time-reversible Q, then check whether treeflow_dta_hmc
+// recovers π and R when given the true tree.
+
+data {
+  K = 4;
+  N = 400;
+}
+
+model {
+  // --- Simulation truth (fixed, not sampled) ---
+  π = [0.4, 0.3, 0.2, 0.1];
+  R = [0.25, 0.15, 0.10, 0.20, 0.10, 0.20];  // dim = K(K-1)/2 = 6
+  Q = generalTimeReversible(freq=π, rates=R);
+
+  // Yule tree: λ=1 → total tree length ≈ N-1 ≈ 399, root height ≈ log(N) ≈ 6
+  ψ ~ Yule(lambda=1.0, n=N);
+
+  // μ=0.2 → ~1.2 per root-to-tip, ~80 total events; better state mixing
+  // without saturation (first run at μ=0.1 gave only 2/400 tips in state 3)
+  μ = 0.2;
+
+  D ~ PhyloCTMC(L=1, Q=Q, mu=μ, tree=ψ, dataType=standard(K));
+}
