@@ -6,3 +6,5 @@ Command line interfaces
 
    cli.treeflow_vi
    cli.treeflow_ml
+   cli.treeflow_hmc
+   cli.treeflow_dta_hmc

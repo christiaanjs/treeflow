@@ -46,3 +46,48 @@ For parameters, see the corresponding TensorFlow Probability distribution.
 * `exponential`
 * `beta`
 * `dirichlet`
+
+## Discrete-trait substitution model
+
+For fixed-tree discrete-trait analyses (e.g. Bayesian phylogeography and
+migration-rate estimation), TreeFlow provides a K-state time-reversible
+substitution model following [Lemey et al. (2009)](https://doi.org/10.1371/journal.pcbi.1000520).
+Use the `discrete_trait` substitution block together with the
+[`treeflow_dta_hmc`](cli.treeflow_dta_hmc) CLI.
+
+The block requires:
+
+* `n_states`: the integer number of discrete states K.
+* `frequencies`: a `K`-vector of equilibrium state frequencies (typically a
+  Dirichlet prior on the `K`-simplex).
+* `rates`: the `K*(K-1)/2` symmetric exchangeability rates in row-major
+  upper-triangular order: `(0,1), (0,2), ..., (0,K-1), (1,2), ...`. For
+  reversible models the rate matrix is normalised so that its trace equals
+  one, so only the *relative* rates are identifiable; the overall migration
+  rate scale is absorbed into `clock.strict.clock_rate`.
+
+Example for K = 5 states:
+
+```yaml
+tree: fixed
+clock:
+  strict:
+    clock_rate:
+      lognormal:
+        loc: 0.0
+        scale: 1.0
+substitution:
+  discrete_trait:
+    n_states: 5
+    frequencies:
+      dirichlet:
+        concentration: [1.0, 1.0, 1.0, 1.0, 1.0]
+    rates:
+      dirichlet:
+        concentration: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+site: none
+```
+
+The tip data format for this model is a two-column CSV of `(taxon, trait)`
+labels rather than a sequence alignment; see
+[`treeflow_dta_hmc`](cli.treeflow_dta_hmc) for the CLI that consumes it.
