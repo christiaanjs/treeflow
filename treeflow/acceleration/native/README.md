@@ -71,6 +71,15 @@ the compile/link flags reported by the installed TensorFlow (so the C++ ABI
 matches the running runtime). The `.so` is intentionally git-ignored — it is
 environment-specific and must be built against the local TensorFlow.
 
+### Docker
+
+The `Dockerfile` builds the op as part of the image: it installs a C++ compiler
+in a single layer, runs `build.sh`, then removes the compiler again, and
+`pip install .` copies the resulting `.so` into site-packages via
+`package_data`. The runtime image therefore ships the native op with no build
+toolchain. The GitHub Actions `pytest` workflow builds the `test` image and runs
+the suite, so the native op (and its tests) are exercised in CI.
+
 ## Usage
 
 ```python
@@ -85,13 +94,24 @@ site_likelihoods = native_phylogenetic_likelihood(
 )
 ```
 
-Or via the distribution:
+Or via the distribution. By default `LeafCTMC` **auto-detects** the native op
+and enables **adaptive** rescaling, so you get the fast native path with safe
+fallbacks out of the box:
 
 ```python
 from treeflow.distributions.leaf_ctmc import LeafCTMC
-# use_native: native C++ op; rescaling: False | True | "auto" | "adaptive"
+# Defaults: use_native="auto" (native if built, else TensorFlow),
+#           rescaling="adaptive" (rescale only if the unscaled value underflows).
+dist = LeafCTMC(transition_probs_tree, frequencies)
+
+# Override explicitly if desired:
+#   use_native: "auto" | True | False
+#   rescaling:  False | True | "auto" | "adaptive"
 dist = LeafCTMC(transition_probs_tree, frequencies, use_native=True, rescaling="auto")
 ```
+
+`treeflow.distributions.leaf_ctmc.native_acceleration_available()` reports
+whether the native op can be loaded.
 
 ## Tests
 

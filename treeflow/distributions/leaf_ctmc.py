@@ -12,6 +12,16 @@ from treeflow.traversal.phylo_likelihood import phylogenetic_likelihood
 from treeflow.traversal.sample_ctmc import sample_ctmc_preorder
 
 
+def native_acceleration_available() -> bool:
+    """Return True if the native phylogenetic-likelihood op can be loaded."""
+    try:
+        from treeflow.acceleration.native import is_available
+
+        return is_available()
+    except Exception:
+        return False
+
+
 class LeafCTMC(Distribution):
     def __init__(
         self,
@@ -19,8 +29,8 @@ class LeafCTMC(Distribution):
         frequencies: tf.Tensor,
         validate_args=False,
         allow_nan_stats=True,
-        use_native=False,
-        rescaling=False,
+        use_native="auto",
+        rescaling="adaptive",
         name="LeafCTMC",
     ):
         parameters = dict(locals())
@@ -35,7 +45,14 @@ class LeafCTMC(Distribution):
         self.leaf_count = transition_probs_tree.taxon_count
         self.transition_probs_tree = transition_probs_tree
         self.frequencies = frequencies
+        # Keep the raw value (e.g. "auto") for serialization/parameters, and a
+        # resolved boolean for dispatch. "auto" uses the native op when it is
+        # available, otherwise falls back to the pure-TensorFlow implementation.
         self.use_native = use_native
+        if use_native == "auto":
+            self._use_native = native_acceleration_available()
+        else:
+            self._use_native = bool(use_native)
         self.rescaling = rescaling
 
     @classmethod
@@ -115,7 +132,7 @@ class LeafCTMC(Distribution):
             x
         )
         likelihood_fn = phylogenetic_likelihood
-        if self.use_native:
+        if self._use_native:
             from treeflow.acceleration.native import native_phylogenetic_likelihood
 
             likelihood_fn = native_phylogenetic_likelihood
@@ -146,9 +163,9 @@ class LeafCTMC(Distribution):
             self.transition_probs_tree.topology.postorder_node_indices,
             self.transition_probs_tree.topology.node_child_indices,
             batch_shape=sample_and_batch_shape,
-            use_native=self.use_native,
+            use_native=self._use_native,
             rescaling=self.rescaling,
         )
 
 
-__all__ = ["LeafCTMC"]
+__all__ = ["LeafCTMC", "native_acceleration_available"]

@@ -356,3 +356,59 @@ def test_leaf_ctmc_rescaling(
     sequences = hello_alignment.get_encoded_sequence_tensor(hello_tensor_tree.taxon_set)
     res = dist.log_prob(sequences)
     assert_allclose(res.numpy(), hello_hky_log_likelihood)
+
+
+# ---------------------------------------------------------------------------
+# Auto-detection of the native acceleration in LeafCTMC
+# ---------------------------------------------------------------------------
+
+
+def test_native_acceleration_available_true_when_built():
+    from treeflow.distributions.leaf_ctmc import native_acceleration_available
+
+    # This module only runs when the native op is built (see conftest), so
+    # auto-detection must report it as available.
+    assert native_acceleration_available() is True
+
+
+def test_leaf_ctmc_auto_uses_native_when_available(
+    hello_tensor_tree, hky_params
+):
+    from treeflow.distributions.leaf_ctmc import LeafCTMC
+    from treeflow.evolution.substitution.probabilities import (
+        get_transition_probabilities_tree,
+    )
+
+    transition_prob_tree = get_transition_probabilities_tree(
+        hello_tensor_tree.get_unrooted_tree(), HKY(), **hky_params
+    )
+    # Defaults: use_native="auto", rescaling="adaptive".
+    dist = LeafCTMC(transition_prob_tree, hky_params["frequencies"])
+    assert dist._use_native is True
+    assert dist.rescaling == "adaptive"
+
+    forced_off = LeafCTMC(
+        transition_prob_tree, hky_params["frequencies"], use_native=False
+    )
+    assert forced_off._use_native is False
+
+
+def test_leaf_ctmc_default_matches_reference(
+    hello_tensor_tree, hello_alignment, hky_params, hello_hky_log_likelihood
+):
+    """The auto/adaptive defaults give the correct log-likelihood."""
+    from tensorflow_probability.python.distributions import Sample
+    from treeflow.distributions.leaf_ctmc import LeafCTMC
+    from treeflow.evolution.substitution.probabilities import (
+        get_transition_probabilities_tree,
+    )
+
+    transition_prob_tree = get_transition_probabilities_tree(
+        hello_tensor_tree.get_unrooted_tree(), HKY(), **hky_params
+    )
+    dist = Sample(
+        LeafCTMC(transition_prob_tree, hky_params["frequencies"]),
+        sample_shape=hello_alignment.site_count,
+    )
+    sequences = hello_alignment.get_encoded_sequence_tensor(hello_tensor_tree.taxon_set)
+    assert_allclose(dist.log_prob(sequences).numpy(), hello_hky_log_likelihood)

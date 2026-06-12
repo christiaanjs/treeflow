@@ -39,6 +39,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install -r requirements.txt
 
 COPY . .
+
+# Build the native phylogenetic-likelihood acceleration op. The C++ toolchain
+# is only needed at build time, so it is installed and removed within a single
+# layer to keep the runtime image lean. The compiled .so is then picked up by
+# `pip install .` via package_data and copied into site-packages.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends g++ \
+    && bash treeflow/acceleration/native/build.sh \
+    && apt-get purge -y g++ \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN python -m pip install .
 RUN chown -R appuser:appuser /app
 
