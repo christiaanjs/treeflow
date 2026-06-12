@@ -19,6 +19,7 @@ class LeafCTMC(Distribution):
         frequencies: tf.Tensor,
         validate_args=False,
         allow_nan_stats=True,
+        use_native=False,
         name="LeafCTMC",
     ):
         parameters = dict(locals())
@@ -33,6 +34,7 @@ class LeafCTMC(Distribution):
         self.leaf_count = transition_probs_tree.taxon_count
         self.transition_probs_tree = transition_probs_tree
         self.frequencies = frequencies
+        self.use_native = use_native
 
     @classmethod
     def _parameter_properties(
@@ -105,7 +107,14 @@ class LeafCTMC(Distribution):
         if self.transition_probs_tree.topology.has_batch_dimensions():
             raise NotImplementedError("Topology batching not yet supported")
         else:
-            return phylogenetic_likelihood(
+            likelihood_fn = phylogenetic_likelihood
+            if self.use_native:
+                from treeflow.acceleration.native import (
+                    native_phylogenetic_likelihood,
+                )
+
+                likelihood_fn = native_phylogenetic_likelihood
+            return likelihood_fn(
                 x_b,
                 transition_probs,
                 self.frequencies,
