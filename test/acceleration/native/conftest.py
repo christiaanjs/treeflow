@@ -16,8 +16,21 @@ def pytest_collection_modifyitems(items):
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_native_built():
-    """Build the native op once per session; skip the module if it can't build."""
+    """Ensure the native op is loadable for this session.
+
+    Normally the op is built on demand and these tests are skipped if it cannot
+    be built (e.g. no C++ compiler). Set ``TREEFLOW_REQUIRE_NATIVE=1`` to turn
+    that skip into a hard failure -- used in CI to assert the op really is
+    present and working in the built image, rather than silently skipping.
+    """
     import os
+
+    require = os.environ.get("TREEFLOW_REQUIRE_NATIVE") not in (None, "", "0")
+
+    def unavailable(message):
+        if require:
+            pytest.fail(message, pytrace=False)
+        pytest.skip(message, allow_module_level=True)
 
     if not os.path.exists(native.library_path()):
         try:
@@ -25,11 +38,11 @@ def _ensure_native_built():
 
             build()
         except Exception as e:  # pragma: no cover - environment dependent
-            pytest.skip(f"Could not build native op: {e}", allow_module_level=True)
+            unavailable(f"Could not build native op: {e}")
     try:
         native.load_op_library()
     except Exception as e:  # pragma: no cover
-        pytest.skip(f"Could not load native op: {e}", allow_module_level=True)
+        unavailable(f"Could not load native op: {e}")
 
 
 def _random_parent_indices(leaf_count: int, rng: np.random.Generator) -> np.ndarray:
