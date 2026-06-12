@@ -92,3 +92,8 @@ def make_problem(leaf_count, state_count, site_count, seed=0, dtype=tf.float64):
 @pytest.fixture
 def small_problem():
     return make_problem(leaf_count=6, state_count=4, site_count=12, seed=1)
+
+
+@pytest.fixture
+def make_large_problem():
+    return make_problem

@@ -82,6 +82,28 @@ def _register_gradient():
         # postorder_indices, child_indices.
         return [None, grad_probs, grad_freqs, None, None]
 
+    @tf_ops.RegisterGradient("PhyloLikelihoodRescaled")
+    def _phylo_likelihood_rescaled_grad(
+        op, grad_site_log_likelihood, grad_node_partials, grad_node_scales
+    ):
+        del grad_node_partials, grad_node_scales  # internal carries
+        transition_probs = op.inputs[1]
+        frequencies = op.inputs[2]
+        postorder_indices = op.inputs[3]
+        child_indices = op.inputs[4]
+        node_partials = op.outputs[1]
+        node_scales = op.outputs[2]
+        grad_probs, grad_freqs = _module.phylo_likelihood_rescaled_grad(
+            grad_site_log_likelihood,
+            transition_probs,
+            frequencies,
+            node_partials,
+            node_scales,
+            postorder_indices,
+            child_indices,
+        )
+        return [None, grad_probs, grad_freqs, None, None]
+
 
 def _canonicalize_batch(sequences_onehot, transition_probs, frequencies):
     """Broadcast the leading batch dims of all three tensors to a common shape.
@@ -179,13 +201,9 @@ def native_phylogenetic_likelihood(
     sequences_b, probs_b, freqs_b, full_batch = _canonicalize_batch(
         sequences_onehot, transition_probs, frequencies
     )
-
-    index_dtype = postorder_node_indices.dtype
-    if index_dtype not in (tf.int32, tf.int64):
-        postorder_node_indices = tf.cast(postorder_node_indices, tf.int32)
-        child_indices = tf.cast(child_indices, tf.int32)
-    else:
-        child_indices = tf.cast(child_indices, index_dtype)
+    postorder_node_indices, child_indices = _prepare_indices(
+        postorder_node_indices, child_indices
+    )
 
     site_likelihood, _ = module.phylo_likelihood(
         sequences_b,
@@ -197,8 +215,55 @@ def native_phylogenetic_likelihood(
     return tf.reshape(site_likelihood, full_batch)
 
 
+def _prepare_indices(postorder_node_indices, child_indices):
+    index_dtype = postorder_node_indices.dtype
+    if index_dtype not in (tf.int32, tf.int64):
+        postorder_node_indices = tf.cast(postorder_node_indices, tf.int32)
+        child_indices = tf.cast(child_indices, tf.int32)
+    else:
+        child_indices = tf.cast(child_indices, index_dtype)
+    return postorder_node_indices, child_indices
+
+
+def native_phylogenetic_log_likelihood_rescaled(
+    sequences_onehot: tf.Tensor,
+    transition_probs: tf.Tensor,
+    frequencies: tf.Tensor,
+    postorder_node_indices: tf.Tensor,
+    child_indices: tf.Tensor,
+    batch_shape=(),
+) -> tf.Tensor:
+    """Numerically stable per-site phylogenetic LOG likelihood (native op).
+
+    Same inputs as :func:`native_phylogenetic_likelihood`, but rescales the
+    partial likelihoods at every internal node (dividing by their per-site
+    maximum and accumulating the log scale factors) so deep/large trees do not
+    underflow. Returns the per-site ``log`` likelihood (shape = batch shape),
+    not the linear likelihood.
+    """
+    del batch_shape  # inferred from inputs
+    module = load_op_library()
+
+    sequences_b, probs_b, freqs_b, full_batch = _canonicalize_batch(
+        sequences_onehot, transition_probs, frequencies
+    )
+    postorder_node_indices, child_indices = _prepare_indices(
+        postorder_node_indices, child_indices
+    )
+
+    site_log_likelihood, _, _ = module.phylo_likelihood_rescaled(
+        sequences_b,
+        probs_b,
+        freqs_b,
+        postorder_node_indices,
+        child_indices,
+    )
+    return tf.reshape(site_log_likelihood, full_batch)
+
+
 __all__ = [
     "native_phylogenetic_likelihood",
+    "native_phylogenetic_log_likelihood_rescaled",
     "load_op_library",
     "is_available",
     "library_path",

@@ -266,3 +266,93 @@ def test_leaf_ctmc_use_native(
         log_prob_fn = tf.function(log_prob_fn)
     res = log_prob_fn(hello_tensor_tree, sequences)
     assert_allclose(res.numpy(), hello_hky_log_likelihood)
+
+
+# ---------------------------------------------------------------------------
+# Rescaled (numerically stable) native op
+# ---------------------------------------------------------------------------
+
+
+from treeflow.acceleration.native import (  # noqa: E402
+    native_phylogenetic_log_likelihood_rescaled,
+)
+
+
+@pytest.mark.parametrize("function_mode", [False, True])
+def test_native_rescaled_matches_unrescaled_log(small_problem, function_mode):
+    p = small_problem
+    fn = (
+        tf.function(native_phylogenetic_log_likelihood_rescaled)
+        if function_mode
+        else native_phylogenetic_log_likelihood_rescaled
+    )
+    rescaled_log = fn(
+        p["sequences"], p["transition_probs"], p["frequencies"],
+        p["postorder_node_indices"], p["node_child_indices"],
+    )
+    unrescaled = native_phylogenetic_likelihood(
+        p["sequences"], p["transition_probs"], p["frequencies"],
+        p["postorder_node_indices"], p["node_child_indices"],
+    )
+    assert_allclose(rescaled_log.numpy(), tf.math.log(unrescaled).numpy(),
+                    rtol=1e-11, atol=1e-11)
+
+
+def test_native_rescaled_gradient_matches(small_problem):
+    p = small_problem
+
+    def log_loss(fn, log_output):
+        probs = tf.Variable(p["transition_probs"])
+        freqs = tf.Variable(p["frequencies"])
+        with tf.GradientTape() as tape:
+            out = fn(p["sequences"], probs, freqs,
+                     p["postorder_node_indices"], p["node_child_indices"])
+            ll = out if log_output else tf.math.log(out)
+            loss = tf.reduce_sum(ll)
+        return tape.gradient(loss, [probs, freqs])
+
+    ref_g = log_loss(native_phylogenetic_likelihood, log_output=False)
+    nat_g = log_loss(native_phylogenetic_log_likelihood_rescaled, log_output=True)
+    for r, n in zip(ref_g, nat_g):
+        assert_allclose(n.numpy(), r.numpy(), rtol=1e-8, atol=1e-9)
+
+
+def test_native_rescaled_avoids_underflow(make_large_problem):
+    """On a large tree the unrescaled likelihood underflows but rescaled does not."""
+    p = make_large_problem(leaf_count=600, state_count=4, site_count=4)
+    unrescaled = native_phylogenetic_likelihood(
+        p["sequences"], p["transition_probs"], p["frequencies"],
+        p["postorder_node_indices"], p["node_child_indices"],
+    )
+    rescaled_log = native_phylogenetic_log_likelihood_rescaled(
+        p["sequences"], p["transition_probs"], p["frequencies"],
+        p["postorder_node_indices"], p["node_child_indices"],
+    )
+    # Unrescaled underflows to zero (log -> -inf); rescaled stays finite.
+    assert np.all(unrescaled.numpy() == 0.0)
+    assert np.all(np.isfinite(rescaled_log.numpy()))
+
+
+@pytest.mark.parametrize("use_native", [False, True])
+@pytest.mark.parametrize("rescaling", [True, "auto", "adaptive"])
+def test_leaf_ctmc_rescaling(
+    hello_tensor_tree, hello_alignment, hky_params, hello_hky_log_likelihood,
+    use_native, rescaling,
+):
+    from tensorflow_probability.python.distributions import Sample
+    from treeflow.distributions.leaf_ctmc import LeafCTMC
+    from treeflow.evolution.substitution.probabilities import (
+        get_transition_probabilities_tree,
+    )
+
+    transition_prob_tree = get_transition_probabilities_tree(
+        hello_tensor_tree.get_unrooted_tree(), HKY(), **hky_params
+    )
+    dist = Sample(
+        LeafCTMC(transition_prob_tree, hky_params["frequencies"],
+                 use_native=use_native, rescaling=rescaling),
+        sample_shape=hello_alignment.site_count,
+    )
+    sequences = hello_alignment.get_encoded_sequence_tensor(hello_tensor_tree.taxon_set)
+    res = dist.log_prob(sequences)
+    assert_allclose(res.numpy(), hello_hky_log_likelihood)

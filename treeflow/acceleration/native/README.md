@@ -29,6 +29,35 @@ notebook, [`examples/native_likelihood_benchmark.ipynb`](../../../examples/nativ
 
 It is exact in `float64` (the project default) and also supports `float32`.
 
+## Rescaling (numerical stability on large trees)
+
+On large/deep trees the partial likelihoods underflow to zero (around ~300
+taxa for `float64`, ~36 for `float32`), so the linear likelihood becomes `0`
+and its log `-inf`. The **rescaled** variant (`PhyloLikelihoodRescaled` /
+`native_phylogenetic_log_likelihood_rescaled`) divides the partials at every
+internal node by their per-site maximum, accumulates the log of the scale
+factors, and returns the per-site **log** likelihood, which stays finite. Its
+analytic gradient reuses the saved scaled partials and scale factors exactly
+like the unrescaled one.
+
+There is a matching pure-TensorFlow rescaled implementation,
+`treeflow.traversal.phylo_likelihood.phylogenetic_log_likelihood_rescaled`.
+
+### Choosing rescaled vs. unrescaled
+
+Rescaling costs a little extra per node, so it is wasteful on small trees.
+`treeflow.traversal.phylo_likelihood_dispatch.phylogenetic_log_likelihood`
+returns the per-site log likelihood and chooses for you via `rescaling=`:
+
+* `False` — never rescale (fastest; may underflow);
+* `True` — always rescale (most stable);
+* `"auto"` (default) — pick statically from the leaf count and dtype
+  (`default_rescaling_threshold`), with no runtime overhead;
+* `"adaptive"` — compute the unscaled likelihood and fall back to the rescaled
+  one (via `tf.cond`) only if it is not finite.
+
+Pass `use_native=True` to route through the native ops.
+
 ## Building
 
 ```bash
@@ -60,7 +89,8 @@ Or via the distribution:
 
 ```python
 from treeflow.distributions.leaf_ctmc import LeafCTMC
-dist = LeafCTMC(transition_probs_tree, frequencies, use_native=True)
+# use_native: native C++ op; rescaling: False | True | "auto" | "adaptive"
+dist = LeafCTMC(transition_probs_tree, frequencies, use_native=True, rescaling="auto")
 ```
 
 ## Tests

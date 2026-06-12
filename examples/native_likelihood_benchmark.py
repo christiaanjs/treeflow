@@ -266,6 +266,97 @@ plt.show()'''
 
 cells.append(
     md(
+        """## Rescaling: numerical stability on large trees
+
+On large/deep trees the partial likelihoods underflow to zero, so the linear
+likelihood is `0` and its log is `-inf`. The **rescaled** variants divide the
+partials at each internal node by their per-site maximum and accumulate the log
+scale factors, returning a finite per-site **log** likelihood. There is a
+rescaled version of both the native op
+(`native_phylogenetic_log_likelihood_rescaled`) and the TensorFlow
+implementation
+(`treeflow.traversal.phylo_likelihood.phylogenetic_log_likelihood_rescaled`)."""
+    )
+)
+
+cells.append(
+    code(
+        '''from treeflow.acceleration.native import native_phylogenetic_log_likelihood_rescaled
+
+big = make_problem(leaf_count=600, state_count=4, site_count=5, seed=11)
+
+unrescaled = native(big["sequences"], big["transition_probs"], big["frequencies"],
+                    big["postorder"], big["child_indices"])
+rescaled = native_phylogenetic_log_likelihood_rescaled(
+    big["sequences"], big["transition_probs"], big["frequencies"],
+    big["postorder"], big["child_indices"])
+
+print("600 taxa, unrescaled linear likelihood :", unrescaled.numpy())
+print("600 taxa, log(unrescaled)  [underflow] :", tf.math.log(unrescaled).numpy())
+print("600 taxa, rescaled log-likelihood      :", rescaled.numpy())'''
+    )
+)
+
+cells.append(
+    md(
+        """### Letting the library choose: the dispatcher
+
+`phylogenetic_log_likelihood(..., rescaling=...)` returns the per-site log
+likelihood and trades off performance vs. stability:
+
+* `False` — never rescale (fastest, may underflow),
+* `True` — always rescale (most stable),
+* `"auto"` (default) — decide statically from the leaf count and dtype,
+* `"adaptive"` — compute unscaled and fall back to rescaled only if it
+  underflows.
+
+Pass `use_native=True` to use the native ops."""
+    )
+)
+
+cells.append(
+    code(
+        '''from treeflow.traversal.phylo_likelihood_dispatch import (
+    phylogenetic_log_likelihood, default_rescaling_threshold)
+
+print("auto threshold (float64):", default_rescaling_threshold(tf.float64), "taxa")
+print("auto threshold (float32):", default_rescaling_threshold(tf.float32), "taxa")
+
+for mode in [False, True, "auto", "adaptive"]:
+    ll = phylogenetic_log_likelihood(
+        big["sequences"], big["transition_probs"], big["frequencies"],
+        big["postorder"], big["child_indices"], use_native=True, rescaling=mode)
+    finite = bool(tf.reduce_all(tf.math.is_finite(ll)))
+    print(f"rescaling={mode!r:>10}: total log-lik = {float(tf.reduce_sum(ll)):>14.4f}  finite={finite}")'''
+    )
+)
+
+cells.append(
+    md(
+        """### Cost of rescaling on a tree that does not need it
+
+Rescaling adds a per-node max + divide + log, so on small trees it is pure
+overhead — which is exactly why `"auto"` skips it below the threshold."""
+    )
+)
+
+cells.append(
+    code(
+        '''small = make_problem(leaf_count=32, state_count=4, site_count=1000, seed=4)
+args = (small["sequences"], small["transition_probs"], small["frequencies"],
+        small["postorder"], small["child_indices"])
+
+unscaled_fn = tf.function(lambda *a: tf.math.log(native(*a)))
+rescaled_fn = tf.function(native_phylogenetic_log_likelihood_rescaled)
+t_unscaled = timeit(unscaled_fn, *args)
+t_rescaled = timeit(rescaled_fn, *args)
+print(f"32 taxa x 1000 sites: unrescaled {t_unscaled:.2f} ms | "
+      f"rescaled {t_rescaled:.2f} ms | overhead {t_rescaled / t_unscaled:.2f}x")'''
+    )
+)
+
+cells.append(
+    md(
         """## Notes
 
 * The native op is exact: it computes the same Felsenstein recursion in double
@@ -274,7 +365,9 @@ cells.append(
 * It also accepts per-batch (non-broadcast) transition matrices, e.g. for
   discrete rate-category mixtures, and exposes a gradient w.r.t. the root
   frequencies.
-* To use it inside a model, pass `use_native=True` to
+* The rescaled variant keeps the likelihood finite on large/deep trees; its
+  analytic gradient matches the unrescaled one to floating-point precision.
+* To use it inside a model, pass `use_native=True` and `rescaling=...` to
   `treeflow.distributions.leaf_ctmc.LeafCTMC`."""
     )
 )

@@ -20,6 +20,7 @@ class LeafCTMC(Distribution):
         validate_args=False,
         allow_nan_stats=True,
         use_native=False,
+        rescaling=False,
         name="LeafCTMC",
     ):
         parameters = dict(locals())
@@ -35,6 +36,7 @@ class LeafCTMC(Distribution):
         self.transition_probs_tree = transition_probs_tree
         self.frequencies = frequencies
         self.use_native = use_native
+        self.rescaling = rescaling
 
     @classmethod
     def _parameter_properties(
@@ -91,7 +93,7 @@ class LeafCTMC(Distribution):
         )
         return tf.reshape(self.transition_probs_tree.branch_lengths, new_shape)
 
-    def _prob(self, x, seed=None):
+    def _broadcast_for_likelihood(self, x):
         # TODO: Handle topology batch dims
         batch_shape = self.batch_shape_tensor()
         batch_and_event_shape = tf.concat(
@@ -106,22 +108,47 @@ class LeafCTMC(Distribution):
         )
         if self.transition_probs_tree.topology.has_batch_dimensions():
             raise NotImplementedError("Topology batching not yet supported")
-        else:
-            likelihood_fn = phylogenetic_likelihood
-            if self.use_native:
-                from treeflow.acceleration.native import (
-                    native_phylogenetic_likelihood,
-                )
+        return x_b, transition_probs, sample_and_batch_shape
 
-                likelihood_fn = native_phylogenetic_likelihood
-            return likelihood_fn(
-                x_b,
-                transition_probs,
-                self.frequencies,
-                self.transition_probs_tree.topology.postorder_node_indices,
-                self.transition_probs_tree.topology.node_child_indices,
-                batch_shape=sample_and_batch_shape,
-            )
+    def _prob(self, x, seed=None):
+        x_b, transition_probs, sample_and_batch_shape = self._broadcast_for_likelihood(
+            x
+        )
+        likelihood_fn = phylogenetic_likelihood
+        if self.use_native:
+            from treeflow.acceleration.native import native_phylogenetic_likelihood
+
+            likelihood_fn = native_phylogenetic_likelihood
+        return likelihood_fn(
+            x_b,
+            transition_probs,
+            self.frequencies,
+            self.transition_probs_tree.topology.postorder_node_indices,
+            self.transition_probs_tree.topology.node_child_indices,
+            batch_shape=sample_and_batch_shape,
+        )
+
+    def _log_prob(self, x, seed=None):
+        if self.rescaling is False:
+            # Preserve the default behaviour (log of the linear likelihood).
+            return tf.math.log(self._prob(x))
+        from treeflow.traversal.phylo_likelihood_dispatch import (
+            phylogenetic_log_likelihood,
+        )
+
+        x_b, transition_probs, sample_and_batch_shape = self._broadcast_for_likelihood(
+            x
+        )
+        return phylogenetic_log_likelihood(
+            x_b,
+            transition_probs,
+            self.frequencies,
+            self.transition_probs_tree.topology.postorder_node_indices,
+            self.transition_probs_tree.topology.node_child_indices,
+            batch_shape=sample_and_batch_shape,
+            use_native=self.use_native,
+            rescaling=self.rescaling,
+        )
 
 
 __all__ = ["LeafCTMC"]
