@@ -5,9 +5,11 @@ from treeflow.cli.ml import treeflow_ml
 
 pytestmark = pytest.mark.cli
 
+# CLI plumbing coverage is dataset-independent, so the ML matrix runs on the
+# tiny hello dataset only (the VI suite carries the large-wnv smoke). Pairwise
+# over model file and init values.
 _DATASETS = [
     ("hello.nwk", "hello.fasta", False),
-    ("wnv.nwk", "wnv.fasta", True),
 ]
 _MODEL_FILES = [None, "model.yaml"]
 _INIT = [True, False]

@@ -5,13 +5,10 @@ from click.testing import CliRunner
 
 pytestmark = pytest.mark.cli
 
-_DATASETS = [
-    ("hello.nwk", "hello.fasta", False),
-    ("wnv.nwk", "wnv.fasta", True),
-]
+_HELLO = ("hello.nwk", "hello.fasta", False)
+_WNV = ("wnv.nwk", "wnv.fasta", True)
 _MODEL_FILES = [None, "model.yaml", "yule-model.yaml"]
 _APPROX = list(approximation_builders.keys())
-_PROGRESS = [True, False]
 _INIT = [True, False]
 _CONVERGENCE = [None, "nonfinite"]
 
@@ -21,7 +18,17 @@ _INIT_VALUES = {
     "yule-model.yaml": "birth_rate=2,frequencies=0.24|0.23|0.26|0.27",
 }
 
-_CASES = list(AllPairs([_DATASETS, _MODEL_FILES, _APPROX, _PROGRESS, _INIT, _CONVERGENCE]))
+# VI is dominated by TF graph tracing and is dataset-insensitive in practice
+# (a wnv run costs about the same as hello), so we pairwise-cover the option
+# surface -- model file, approximation, init values, convergence criterion -- on
+# the tiny hello dataset, exercise the progress bar in a single case, and add one
+# wnv smoke to cover the large-alignment / many-branch path end to end.
+_CASES = []
+for _i, (_model, _approx, _init, _conv) in enumerate(
+    AllPairs([_MODEL_FILES, _APPROX, _INIT, _CONVERGENCE])
+):
+    _CASES.append((_HELLO, _model, _approx, _i == 0, _init, _conv))
+_CASES.append((_WNV, None, "mean_field", False, False, None))
 
 
 def _case_id(case):

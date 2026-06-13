@@ -1,30 +1,39 @@
 import pytest
-from allpairspy import AllPairs
 from treeflow.cli.hmc import treeflow_hmc, KERNEL_CHOICES
 from click.testing import CliRunner
 
 pytestmark = pytest.mark.cli
 
-_DATASETS = [
-    ("hello.nwk", "hello.fasta"),
-    ("wnv.nwk", "wnv.fasta"),
+# CLI plumbing coverage is dataset-independent and runtime is dominated by TF
+# graph tracing, so we exercise the option surface on the tiny ``hello`` dataset
+# only. NUTS is the expensive kernel here -- it auto-tunes trajectory length, so
+# its cost is highly nonlinear in the sample count and explodes on the relaxed
+# clock ``model.yaml`` (minutes per run). We therefore (a) keep a small
+# ``num_results``, (b) run NUTS only on the cheap default (strict-clock) model,
+# and (c) leave the large ``wnv`` dataset out of the HMC matrix (the VI suite
+# carries the large-alignment smoke). Between them these cases still cover both
+# kernels, the default and model-file paths, and init values on/off.
+_NUM_RESULTS = 4
+
+# (newick, fasta, model_file, kernel, include_init_values)
+_HELLO = ("hello.nwk", "hello.fasta")
+_CASES = [
+    (*_HELLO, None, "hmc", True),
+    (*_HELLO, "model.yaml", "hmc", False),
+    (*_HELLO, None, "nuts", False),
 ]
-_MODEL_FILES = [None, "model.yaml"]
-_KERNELS = KERNEL_CHOICES
-_INIT = [True, False]
+assert set(KERNEL_CHOICES) <= {c[3] for c in _CASES}, "a kernel is uncovered"
 
 _INIT_VALUES = {
     None: "clock_rate=0.01",
     "model.yaml": "pop_size=10",
 }
 
-_CASES = list(AllPairs([_DATASETS, _MODEL_FILES, _KERNELS, _INIT]))
-
 
 def _case_id(case):
-    dataset, model_filename, kernel, include_init_values = case
+    _, _, model_filename, kernel, include_init_values = case
     return "-".join([
-        dataset[0].removesuffix(".nwk"),
+        "hello",
         model_filename.removesuffix(".yaml") if model_filename else "no-model",
         kernel,
         "init" if include_init_values else "no-init",
@@ -32,7 +41,7 @@ def _case_id(case):
 
 
 @pytest.mark.parametrize(
-    "dataset,model_filename,kernel,include_init_values",
+    "newick_filename,fasta_filename,model_filename,kernel,include_init_values",
     _CASES,
     ids=[_case_id(c) for c in _CASES],
 )
@@ -40,7 +49,8 @@ def test_hmc(
     test_data_dir,
     samples_output_path,
     tree_samples_output_path,
-    dataset,
+    newick_filename,
+    fasta_filename,
     model_filename,
     kernel,
     include_init_values,
@@ -48,13 +58,12 @@ def test_hmc(
     import pandas as pd
     import dendropy
 
-    newick_filename, fasta_filename = dataset
     newick_file = str(test_data_dir / newick_filename)
     fasta_file = str(test_data_dir / fasta_filename)
     model_file = str(test_data_dir / model_filename) if model_filename is not None else None
 
     runner = CliRunner()
-    num_results = 10
+    num_results = _NUM_RESULTS
     args = [
         "-i", fasta_file,
         "-t", newick_file,
