@@ -171,6 +171,45 @@ def test_native_gradient_function_mode(small_problem, function_mode):
 
 
 # ---------------------------------------------------------------------------
+# Site-blocking (SIMD) is purely a performance option: results must not change
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("block_size", [2, 8, 32])
+def test_native_block_size_matches_unblocked(small_problem, block_size):
+    p = small_problem
+    args = (
+        p["sequences"],
+        p["transition_probs"],
+        p["frequencies"],
+        p["postorder_node_indices"],
+        p["node_child_indices"],
+    )
+    base = native_phylogenetic_likelihood(*args, block_size=1)
+    blocked = native_phylogenetic_likelihood(*args, block_size=block_size)
+    # Forward is bit-identical (per-site summation order is preserved).
+    assert_allclose(blocked.numpy(), base.numpy(), rtol=0, atol=0)
+
+    def grads(block):
+        probs = tf.Variable(p["transition_probs"])
+        freqs = tf.Variable(p["frequencies"])
+        with tf.GradientTape() as tape:
+            loss = tf.reduce_sum(
+                tf.math.log(
+                    native_phylogenetic_likelihood(
+                        p["sequences"], probs, freqs,
+                        p["postorder_node_indices"], p["node_child_indices"],
+                        block_size=block,
+                    )
+                )
+            )
+        return tape.gradient(loss, [probs, freqs])
+
+    for g0, gb in zip(grads(1), grads(block_size)):
+        assert_allclose(gb.numpy(), g0.numpy(), rtol=1e-12, atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
 # Batched transition probabilities (e.g. rate categories) -- Bt == B path
 # ---------------------------------------------------------------------------
 

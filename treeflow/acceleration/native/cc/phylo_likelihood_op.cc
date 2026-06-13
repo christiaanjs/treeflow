@@ -8,6 +8,30 @@
 // traversal from scratch -- it reuses the forward partials exactly as a
 // hand-written BEAGLE-style implementation would.
 //
+// Performance: the per-node transition-matrix products are the hot loops, and
+// the arithmetic per node is tiny (S*S multiply-adds).  To make them efficient
+// at large site counts we process sites in blocks of `kBlock`.  Each block is
+// transposed into a contiguous, site-innermost scratch layout ([node, state,
+// block]) so the inner products become AXPY loops over the (contiguous) site
+// dimension that the compiler vectorises with SIMD, and so each transition
+// matrix is loaded once per node per block rather than once per node per site.
+// The scratch block is L2-resident; the large [B, Nn, S] partials buffer is
+// streamed contiguously (one site at a time) at the block boundaries, so its
+// layout -- and the op's public contract -- is unchanged.
+//
+// Performance: the per-node transition-matrix products are the hot loops.  By
+// default sites are processed one at a time (block_size = 1), reproducing the
+// original per-site traversal.  Setting the `block_size` op attribute > 1
+// processes that many sites together: each block is transposed into a
+// contiguous, site-innermost scratch layout ([node, state, block]) so the inner
+// products become AXPY loops over the (contiguous) site dimension that the
+// compiler can vectorise with SIMD, and so each transition matrix is loaded
+// once per node per block rather than once per node per site.  The scratch
+// block is L2-resident; the large [B, Nn, S] partials buffer is streamed
+// contiguously at the block boundaries, so its layout -- and the op's public
+// contract -- is unchanged.  The forward result is bit-identical for any
+// block_size (the per-site summation order is preserved).
+//
 // Layout conventions (row-major):
 //   sequences          [B,  L, S]      leaf partials (one-hot or ambiguity)
 //   transition_probs   [Bt, M, S, S]   per-node transition matrices P[s, j]
@@ -44,6 +68,7 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("PhyloLikelihood")
     .Attr("T: {float, double}")
     .Attr("Tindex: {int32, int64} = DT_INT32")
+    .Attr("block_size: int = 1")
     .Input("sequences: T")
     .Input("transition_probs: T")
     .Input("frequencies: T")
@@ -72,6 +97,7 @@ REGISTER_OP("PhyloLikelihood")
 REGISTER_OP("PhyloLikelihoodGrad")
     .Attr("T: {float, double}")
     .Attr("Tindex: {int32, int64} = DT_INT32")
+    .Attr("block_size: int = 1")
     .Input("grad_site_likelihood: T")
     .Input("transition_probs: T")
     .Input("frequencies: T")
@@ -93,6 +119,7 @@ REGISTER_OP("PhyloLikelihoodGrad")
 REGISTER_OP("PhyloLikelihoodRescaled")
     .Attr("T: {float, double}")
     .Attr("Tindex: {int32, int64} = DT_INT32")
+    .Attr("block_size: int = 1")
     .Input("sequences: T")
     .Input("transition_probs: T")
     .Input("frequencies: T")
@@ -121,6 +148,7 @@ REGISTER_OP("PhyloLikelihoodRescaled")
 REGISTER_OP("PhyloLikelihoodRescaledGrad")
     .Attr("T: {float, double}")
     .Attr("Tindex: {int32, int64} = DT_INT32")
+    .Attr("block_size: int = 1")
     .Input("grad_site_log_likelihood: T")
     .Input("transition_probs: T")
     .Input("frequencies: T")
@@ -151,9 +179,13 @@ inline void ReadIndices(const Tensor& t, std::vector<int64_t>* out) {
 template <typename T, typename Tindex>
 class PhyloLikelihoodOp : public OpKernel {
  public:
-  explicit PhyloLikelihoodOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit PhyloLikelihoodOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
+    if (block_size_ < 1) block_size_ = 1;
+  }
 
   void Compute(OpKernelContext* ctx) override {
+    const int64_t kBlock = block_size_;
     const Tensor& sequences = ctx->input(0);
     const Tensor& probs = ctx->input(1);
     const Tensor& freqs = ctx->input(2);
@@ -212,41 +244,76 @@ class PhyloLikelihoodOp : public OpKernel {
     const int64_t root = postorder[I - 1];
 
     auto work = [&](int64_t begin, int64_t end) {
-      for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
-        const T* seq_b = seq + b * L * S;
-        const T* P_b = P + bt * M * S * S;
-        const T* fr_b = fr + bf * S;
-        T* part_b = part + b * Nn * S;
+      // Partials for the current site block in [node, state, block] layout.
+      std::vector<T> sc(Nn * S * kBlock);
+      std::vector<T> grow(kBlock);  // scratch for one product row g[block]
 
-        // Leaves: copy one-hot / ambiguity partials directly.
-        for (int64_t k = 0; k < L * S; ++k) part_b[k] = seq_b[k];
+      for (int64_t b0 = begin; b0 < end; b0 += kBlock) {
+        const int64_t bw = std::min<int64_t>(kBlock, end - b0);
+
+        // Transpose this block's leaf partials into the scratch layout.
+        for (int64_t leaf = 0; leaf < L; ++leaf) {
+          for (int64_t s = 0; s < S; ++s) {
+            T* __restrict__ dst = &sc[(leaf * S + s) * kBlock];
+            const T* col = seq + b0 * L * S + leaf * S + s;
+            for (int64_t w = 0; w < bw; ++w) dst[w] = col[w * L * S];
+          }
+        }
 
         // Internal nodes in postorder (children always precomputed).
         for (int64_t i = 0; i < I; ++i) {
           const int64_t v = postorder[i];
-          T* pv = part_b + v * S;
-          for (int64_t s = 0; s < S; ++s) pv[s] = T(1);
+          T* pv = &sc[v * S * kBlock];
+          for (int64_t k = 0; k < S * kBlock; ++k) pv[k] = T(1);
           for (int64_t ci = 0; ci < C; ++ci) {
             const int64_t cnode = child[i * C + ci];
             if (cnode < 0) continue;  // padded child slot
-            const T* Pc = P_b + cnode * S * S;
-            const T* pc = part_b + cnode * S;
-            for (int64_t s = 0; s < S; ++s) {
-              T g = T(0);
-              const T* Prow = Pc + s * S;
-              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
-              pv[s] *= g;
+            const T* pc = &sc[cnode * S * kBlock];
+            if (Bt == 1) {
+              const T* Pc = P + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                T* __restrict__ g = grow.data();
+                for (int64_t w = 0; w < bw; ++w) g[w] = T(0);
+                const T* Prow = Pc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T p = Prow[j];
+                  const T* __restrict__ pcj = pc + j * kBlock;
+                  for (int64_t w = 0; w < bw; ++w) g[w] += p * pcj[w];
+                }
+                T* __restrict__ pvs = pv + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) pvs[w] *= g[w];
+              }
+            } else {  // Bt == B: per-site transition matrix.
+              for (int64_t s = 0; s < S; ++s) {
+                T* pvs = pv + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) {
+                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  T g = T(0);
+                  for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
+                  pvs[w] *= g;
+                }
+              }
             }
           }
         }
 
-        // Root likelihood.
-        const T* pr = part_b + root * S;
-        T acc = T(0);
-        for (int64_t s = 0; s < S; ++s) acc += fr_b[s] * pr[s];
-        ll[b] = acc;
+        // Root likelihood per site in the block.
+        for (int64_t w = 0; w < bw; ++w) {
+          const int64_t b = b0 + w;
+          const int64_t bf = (Bf == 1) ? 0 : b;
+          const T* fr_b = fr + bf * S;
+          T acc = T(0);
+          for (int64_t s = 0; s < S; ++s)
+            acc += fr_b[s] * sc[(root * S + s) * kBlock + w];
+          ll[b] = acc;
+        }
+
+        // Stream the block's partials back to the [B, Nn, S] buffer (one
+        // contiguous per-site row at a time).
+        for (int64_t w = 0; w < bw; ++w) {
+          T* __restrict__ dst = part + (b0 + w) * Nn * S;
+          for (int64_t vs = 0; vs < Nn * S; ++vs) dst[vs] = sc[vs * kBlock + w];
+        }
       }
     };
 
@@ -254,14 +321,21 @@ class PhyloLikelihoodOp : public OpKernel {
     const int64_t cost = M * S * S;  // rough per-batch cost
     Shard(workers->num_threads, workers->workers, B, cost, work);
   }
+
+ private:
+  int block_size_ = 1;
 };
 
 template <typename T, typename Tindex>
 class PhyloLikelihoodGradOp : public OpKernel {
  public:
-  explicit PhyloLikelihoodGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit PhyloLikelihoodGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
+    if (block_size_ < 1) block_size_ = 1;
+  }
 
   void Compute(OpKernelContext* ctx) override {
+    const int64_t kBlock = block_size_;
     const Tensor& grad_ll_t = ctx->input(0);
     const Tensor& probs = ctx->input(1);
     const Tensor& freqs = ctx->input(2);
@@ -306,91 +380,155 @@ class PhyloLikelihoodGradOp : public OpKernel {
     mutex mu;  // guards reductions into the shared gP / gF
 
     auto work = [&](int64_t begin, int64_t end) {
-      // Per-shard scratch.
-      std::vector<T> bar(Nn * S);
-      std::vector<T> gmat(C * S);
-      std::vector<T> sib(C * S);
-      std::vector<T> w(S);
+      // Per-shard scratch in [node/child, state, block] layout.
+      std::vector<T> partsc(Nn * S * kBlock);
+      std::vector<T> bar(Nn * S * kBlock);
+      std::vector<T> gmat(C * S * kBlock);
+      std::vector<T> sib(C * S * kBlock);
+      std::vector<T> wrow(S * kBlock);
       // Thread-local accumulators only when reducing a broadcast batch.
       std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
       std::vector<T> localF(reduceF ? S : 0, T(0));
 
-      for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
-        const T* P_b = P + bt * M * S * S;
-        const T* fr_b = fr + bf * S;
-        const T* part_b = part + b * Nn * S;
-        const T dll = grad_ll[b];
+      for (int64_t b0 = begin; b0 < end; b0 += kBlock) {
+        const int64_t bw = std::min<int64_t>(kBlock, end - b0);
 
-        T* gP_b = reduceP ? localP.data() : (gP + bt * M * S * S);
-        T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+        // Transpose the block's saved partials into scratch.
+        for (int64_t w = 0; w < bw; ++w) {
+          const T* __restrict__ src = part + (b0 + w) * Nn * S;
+          for (int64_t vs = 0; vs < Nn * S; ++vs) partsc[vs * kBlock + w] = src[vs];
+        }
 
         std::fill(bar.begin(), bar.end(), T(0));
 
         // Seed: L = sum_s fr[s] * part[root, s].
-        const T* pr = part_b + root * S;
-        for (int64_t s = 0; s < S; ++s) {
-          bar[root * S + s] = dll * fr_b[s];
-          gF_b[s] += dll * pr[s];
+        for (int64_t w = 0; w < bw; ++w) {
+          const int64_t b = b0 + w;
+          const int64_t bf = (Bf == 1) ? 0 : b;
+          const T* fr_b = fr + bf * S;
+          const T dll = grad_ll[b];
+          T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+          for (int64_t s = 0; s < S; ++s) {
+            const T prs = partsc[(root * S + s) * kBlock + w];
+            bar[(root * S + s) * kBlock + w] = dll * fr_b[s];
+            gF_b[s] += dll * prs;
+          }
         }
 
         // Reverse postorder (parents before children).
         for (int64_t i = I - 1; i >= 0; --i) {
           const int64_t v = postorder[i];
-          const T* barv = &bar[v * S];
+          const T* barv = &bar[v * S * kBlock];
 
-          // g_c[s] = sum_j P_c[s,j] * part_c[j]; identity for padded slots.
+          // g_c[s, w] = sum_j P_c[s,j] * part_c[j, w]; identity for padded.
           for (int64_t ci = 0; ci < C; ++ci) {
             const int64_t cnode = child[i * C + ci];
+            T* gm = &gmat[ci * S * kBlock];
             if (cnode < 0) {
-              for (int64_t s = 0; s < S; ++s) gmat[ci * S + s] = T(1);
+              for (int64_t k = 0; k < S * kBlock; ++k) gm[k] = T(1);
               continue;
             }
-            const T* Pc = P_b + cnode * S * S;
-            const T* pc = part_b + cnode * S;
-            for (int64_t s = 0; s < S; ++s) {
-              T g = T(0);
-              const T* Prow = Pc + s * S;
-              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
-              gmat[ci * S + s] = g;
+            const T* pc = &partsc[cnode * S * kBlock];
+            if (Bt == 1) {
+              const T* Pc = P + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                T* __restrict__ gms = gm + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) gms[w] = T(0);
+                const T* Prow = Pc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T p = Prow[j];
+                  const T* __restrict__ pcj = pc + j * kBlock;
+                  for (int64_t w = 0; w < bw; ++w) gms[w] += p * pcj[w];
+                }
+              }
+            } else {
+              for (int64_t s = 0; s < S; ++s) {
+                T* gms = gm + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) {
+                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  T g = T(0);
+                  for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
+                  gms[w] = g;
+                }
+              }
             }
           }
 
           // Exclusive products across siblings via prefix/suffix (no division,
           // robust to zeros).
           for (int64_t s = 0; s < S; ++s) {
-            T pre = T(1);
-            for (int64_t ci = 0; ci < C; ++ci) {
-              sib[ci * S + s] = pre;
-              pre *= gmat[ci * S + s];
-            }
-            T suf = T(1);
-            for (int64_t ci = C - 1; ci >= 0; --ci) {
-              sib[ci * S + s] *= suf;
-              suf *= gmat[ci * S + s];
+            for (int64_t w = 0; w < bw; ++w) {
+              T pre = T(1);
+              for (int64_t ci = 0; ci < C; ++ci) {
+                sib[(ci * S + s) * kBlock + w] = pre;
+                pre *= gmat[(ci * S + s) * kBlock + w];
+              }
+              T suf = T(1);
+              for (int64_t ci = C - 1; ci >= 0; --ci) {
+                sib[(ci * S + s) * kBlock + w] *= suf;
+                suf *= gmat[(ci * S + s) * kBlock + w];
+              }
             }
           }
 
           for (int64_t ci = 0; ci < C; ++ci) {
             const int64_t cnode = child[i * C + ci];
             if (cnode < 0) continue;
-            for (int64_t s = 0; s < S; ++s) w[s] = barv[s] * sib[ci * S + s];
-            const T* Pc = P_b + cnode * S * S;
-            const T* pc = part_b + cnode * S;
-            T* gPc = gP_b + cnode * S * S;
-            // dL/dP_c[s,j] = w[s] * part_c[j]
+            // w[s, .] = barv[s, .] * sib[ci, s, .]
             for (int64_t s = 0; s < S; ++s) {
-              const T ws = w[s];
-              T* gRow = gPc + s * S;
-              for (int64_t j = 0; j < S; ++j) gRow[j] += ws * pc[j];
+              const T* __restrict__ barvs = barv + s * kBlock;
+              const T* __restrict__ sibs = &sib[(ci * S + s) * kBlock];
+              T* __restrict__ ws = &wrow[s * kBlock];
+              for (int64_t w = 0; w < bw; ++w) ws[w] = barvs[w] * sibs[w];
             }
-            // Propagate adjoint to child partials.
-            T* barc = &bar[cnode * S];
-            for (int64_t j = 0; j < S; ++j) {
-              T acc = T(0);
-              for (int64_t s = 0; s < S; ++s) acc += w[s] * Pc[s * S + j];
-              barc[j] += acc;
+            const T* pc = &partsc[cnode * S * kBlock];
+
+            // dL/dP_c[s,j] = sum_w w[s, w] * part_c[j, w]  (or per-site).
+            if (Bt == 1) {
+              T* gPc = (reduceP ? localP.data() : gP) + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                const T* ws = &wrow[s * kBlock];
+                T* gRow = gPc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T* pcj = pc + j * kBlock;
+                  T acc = T(0);
+                  for (int64_t w = 0; w < bw; ++w) acc += ws[w] * pcj[w];
+                  gRow[j] += acc;
+                }
+              }
+            } else {
+              for (int64_t w = 0; w < bw; ++w) {
+                T* gPc = gP + (b0 + w) * M * S * S + cnode * S * S;
+                for (int64_t s = 0; s < S; ++s) {
+                  const T wsw = wrow[s * kBlock + w];
+                  T* gRow = gPc + s * S;
+                  for (int64_t j = 0; j < S; ++j) gRow[j] += wsw * pc[j * kBlock + w];
+                }
+              }
+            }
+
+            // Propagate adjoint to child partials: barc[j] += sum_s w[s]*P[s,j].
+            T* barc = &bar[cnode * S * kBlock];
+            if (Bt == 1) {
+              const T* Pc = P + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                const T* __restrict__ ws = &wrow[s * kBlock];
+                const T* Prow = Pc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T pj = Prow[j];
+                  T* __restrict__ bcj = barc + j * kBlock;
+                  for (int64_t w = 0; w < bw; ++w) bcj[w] += ws[w] * pj;
+                }
+              }
+            } else {
+              for (int64_t w = 0; w < bw; ++w) {
+                const T* Pc = P + (b0 + w) * M * S * S + cnode * S * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  T acc = T(0);
+                  for (int64_t s = 0; s < S; ++s) acc += wrow[s * kBlock + w] * Pc[s * S + j];
+                  barc[j * kBlock + w] += acc;
+                }
+              }
             }
           }
         }
@@ -409,6 +547,9 @@ class PhyloLikelihoodGradOp : public OpKernel {
     const int64_t cost = 2 * M * S * S;
     Shard(workers->num_threads, workers->workers, B, cost, work);
   }
+
+ private:
+  int block_size_ = 1;
 };
 
 // ===========================================================================
@@ -419,9 +560,13 @@ template <typename T, typename Tindex>
 class PhyloLikelihoodRescaledOp : public OpKernel {
  public:
   explicit PhyloLikelihoodRescaledOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
+    if (block_size_ < 1) block_size_ = 1;
+  }
 
   void Compute(OpKernelContext* ctx) override {
+    const int64_t kBlock = block_size_;
     const Tensor& sequences = ctx->input(0);
     const Tensor& probs = ctx->input(1);
     const Tensor& freqs = ctx->input(2);
@@ -474,65 +619,112 @@ class PhyloLikelihoodRescaledOp : public OpKernel {
     const int64_t root = postorder[I - 1];
 
     auto work = [&](int64_t begin, int64_t end) {
-      for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
-        const T* seq_b = seq + b * L * S;
-        const T* P_b = P + bt * M * S * S;
-        const T* fr_b = fr + bf * S;
-        T* part_b = part + b * Nn * S;
-        T* scales_b = scales + b * Nn;
+      std::vector<T> sc(Nn * S * kBlock);       // partials [node, state, block]
+      std::vector<T> scsc(Nn * kBlock);         // scale factors [node, block]
+      std::vector<T> logsum(kBlock);            // running log-scale sum
+      std::vector<T> grow(kBlock);
 
-        for (int64_t k = 0; k < L * S; ++k) part_b[k] = seq_b[k];
-        for (int64_t v = 0; v < Nn; ++v) scales_b[v] = T(1);
+      for (int64_t b0 = begin; b0 < end; b0 += kBlock) {
+        const int64_t bw = std::min<int64_t>(kBlock, end - b0);
 
-        T log_scale_sum = T(0);
+        for (int64_t leaf = 0; leaf < L; ++leaf) {
+          for (int64_t s = 0; s < S; ++s) {
+            T* __restrict__ dst = &sc[(leaf * S + s) * kBlock];
+            const T* col = seq + b0 * L * S + leaf * S + s;
+            for (int64_t w = 0; w < bw; ++w) dst[w] = col[w * L * S];
+          }
+        }
+        for (int64_t k = 0; k < Nn * kBlock; ++k) scsc[k] = T(1);
+        for (int64_t w = 0; w < bw; ++w) logsum[w] = T(0);
+
         for (int64_t i = 0; i < I; ++i) {
           const int64_t v = postorder[i];
-          T* pv = part_b + v * S;
-          for (int64_t s = 0; s < S; ++s) pv[s] = T(1);
+          T* pv = &sc[v * S * kBlock];
+          for (int64_t k = 0; k < S * kBlock; ++k) pv[k] = T(1);
           for (int64_t ci = 0; ci < C; ++ci) {
             const int64_t cnode = child[i * C + ci];
             if (cnode < 0) continue;
-            const T* Pc = P_b + cnode * S * S;
-            const T* pc = part_b + cnode * S;
-            for (int64_t s = 0; s < S; ++s) {
-              T g = T(0);
-              const T* Prow = Pc + s * S;
-              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
-              pv[s] *= g;
+            const T* pc = &sc[cnode * S * kBlock];
+            if (Bt == 1) {
+              const T* Pc = P + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                T* __restrict__ g = grow.data();
+                for (int64_t w = 0; w < bw; ++w) g[w] = T(0);
+                const T* Prow = Pc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T p = Prow[j];
+                  const T* __restrict__ pcj = pc + j * kBlock;
+                  for (int64_t w = 0; w < bw; ++w) g[w] += p * pcj[w];
+                }
+                T* __restrict__ pvs = pv + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) pvs[w] *= g[w];
+              }
+            } else {
+              for (int64_t s = 0; s < S; ++s) {
+                T* pvs = pv + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) {
+                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  T g = T(0);
+                  for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
+                  pvs[w] *= g;
+                }
+              }
             }
           }
           // Rescale by the per-site maximum partial.
-          T cmax = T(0);
-          for (int64_t s = 0; s < S; ++s) cmax = std::max(cmax, pv[s]);
-          if (cmax > T(0)) {
-            const T inv = T(1) / cmax;
-            for (int64_t s = 0; s < S; ++s) pv[s] *= inv;
-            scales_b[v] = cmax;
-            log_scale_sum += std::log(cmax);
+          T* scv = &scsc[v * kBlock];
+          for (int64_t w = 0; w < bw; ++w) {
+            T cmax = T(0);
+            for (int64_t s = 0; s < S; ++s)
+              cmax = std::max(cmax, pv[s * kBlock + w]);
+            if (cmax > T(0)) {
+              const T inv = T(1) / cmax;
+              for (int64_t s = 0; s < S; ++s) pv[s * kBlock + w] *= inv;
+              scv[w] = cmax;
+              logsum[w] += std::log(cmax);
+            }
           }
         }
 
-        const T* pr = part_b + root * S;
-        T acc = T(0);
-        for (int64_t s = 0; s < S; ++s) acc += fr_b[s] * pr[s];
-        ll[b] = std::log(acc) + log_scale_sum;
+        for (int64_t w = 0; w < bw; ++w) {
+          const int64_t b = b0 + w;
+          const int64_t bf = (Bf == 1) ? 0 : b;
+          const T* fr_b = fr + bf * S;
+          T acc = T(0);
+          for (int64_t s = 0; s < S; ++s)
+            acc += fr_b[s] * sc[(root * S + s) * kBlock + w];
+          ll[b] = std::log(acc) + logsum[w];
+        }
+
+        // Stream partials and scales back to the [B, Nn, S] / [B, Nn] buffers.
+        for (int64_t w = 0; w < bw; ++w) {
+          T* __restrict__ dst = part + (b0 + w) * Nn * S;
+          for (int64_t vs = 0; vs < Nn * S; ++vs) dst[vs] = sc[vs * kBlock + w];
+          T* __restrict__ dsc = scales + (b0 + w) * Nn;
+          for (int64_t v = 0; v < Nn; ++v) dsc[v] = scsc[v * kBlock + w];
+        }
       }
     };
 
     auto* workers = ctx->device()->tensorflow_cpu_worker_threads();
     Shard(workers->num_threads, workers->workers, B, M * S * S, work);
   }
+
+ private:
+  int block_size_ = 1;
 };
 
 template <typename T, typename Tindex>
 class PhyloLikelihoodRescaledGradOp : public OpKernel {
  public:
   explicit PhyloLikelihoodRescaledGradOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
+    if (block_size_ < 1) block_size_ = 1;
+  }
 
   void Compute(OpKernelContext* ctx) override {
+    const int64_t kBlock = block_size_;
     const Tensor& grad_ll_t = ctx->input(0);
     const Tensor& probs = ctx->input(1);
     const Tensor& freqs = ctx->input(2);
@@ -577,68 +769,95 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
     mutex mu;
 
     auto work = [&](int64_t begin, int64_t end) {
-      std::vector<T> bar(Nn * S);
-      std::vector<T> gmat(C * S);
-      std::vector<T> sib(C * S);
-      std::vector<T> w(S);
+      std::vector<T> partsc(Nn * S * kBlock);
+      std::vector<T> scalesc(Nn * kBlock);
+      std::vector<T> bar(Nn * S * kBlock);
+      std::vector<T> gmat(C * S * kBlock);
+      std::vector<T> sib(C * S * kBlock);
+      std::vector<T> wrow(S * kBlock);
       std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
       std::vector<T> localF(reduceF ? S : 0, T(0));
 
-      for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
-        const T* P_b = P + bt * M * S * S;
-        const T* fr_b = fr + bf * S;
-        const T* part_b = part + b * Nn * S;
-        const T* scales_b = scales + b * Nn;
-        const T dll = grad_ll[b];
+      for (int64_t b0 = begin; b0 < end; b0 += kBlock) {
+        const int64_t bw = std::min<int64_t>(kBlock, end - b0);
 
-        T* gP_b = reduceP ? localP.data() : (gP + bt * M * S * S);
-        T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+        for (int64_t w = 0; w < bw; ++w) {
+          const T* __restrict__ src = part + (b0 + w) * Nn * S;
+          for (int64_t vs = 0; vs < Nn * S; ++vs) partsc[vs * kBlock + w] = src[vs];
+          const T* __restrict__ ssrc = scales + (b0 + w) * Nn;
+          for (int64_t v = 0; v < Nn; ++v) scalesc[v * kBlock + w] = ssrc[v];
+        }
 
         std::fill(bar.begin(), bar.end(), T(0));
 
         // logL = log(Lhat) + sum log scale. Seed with d logL / d phat_root.
-        const T* pr = part_b + root * S;
-        T Lhat = T(0);
-        for (int64_t s = 0; s < S; ++s) Lhat += fr_b[s] * pr[s];
-        const T invLhat = T(1) / Lhat;
-        for (int64_t s = 0; s < S; ++s) {
-          bar[root * S + s] = dll * fr_b[s] * invLhat;
-          gF_b[s] += dll * pr[s] * invLhat;
+        for (int64_t w = 0; w < bw; ++w) {
+          const int64_t b = b0 + w;
+          const int64_t bf = (Bf == 1) ? 0 : b;
+          const T* fr_b = fr + bf * S;
+          const T dll = grad_ll[b];
+          T Lhat = T(0);
+          for (int64_t s = 0; s < S; ++s)
+            Lhat += fr_b[s] * partsc[(root * S + s) * kBlock + w];
+          const T invLhat = T(1) / Lhat;
+          T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+          for (int64_t s = 0; s < S; ++s) {
+            const T prs = partsc[(root * S + s) * kBlock + w];
+            bar[(root * S + s) * kBlock + w] = dll * fr_b[s] * invLhat;
+            gF_b[s] += dll * prs * invLhat;
+          }
         }
 
         for (int64_t i = I - 1; i >= 0; --i) {
           const int64_t v = postorder[i];
-          const T* barv = &bar[v * S];
-          const T inv_cv = T(1) / scales_b[v];
+          const T* barv = &bar[v * S * kBlock];
+          const T* scv = &scalesc[v * kBlock];  // scale c_v (divide adjoint by it)
 
           for (int64_t ci = 0; ci < C; ++ci) {
             const int64_t cnode = child[i * C + ci];
+            T* gm = &gmat[ci * S * kBlock];
             if (cnode < 0) {
-              for (int64_t s = 0; s < S; ++s) gmat[ci * S + s] = T(1);
+              for (int64_t k = 0; k < S * kBlock; ++k) gm[k] = T(1);
               continue;
             }
-            const T* Pc = P_b + cnode * S * S;
-            const T* pc = part_b + cnode * S;
-            for (int64_t s = 0; s < S; ++s) {
-              T g = T(0);
-              const T* Prow = Pc + s * S;
-              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
-              gmat[ci * S + s] = g;
+            const T* pc = &partsc[cnode * S * kBlock];
+            if (Bt == 1) {
+              const T* Pc = P + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                T* __restrict__ gms = gm + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) gms[w] = T(0);
+                const T* Prow = Pc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T p = Prow[j];
+                  const T* __restrict__ pcj = pc + j * kBlock;
+                  for (int64_t w = 0; w < bw; ++w) gms[w] += p * pcj[w];
+                }
+              }
+            } else {
+              for (int64_t s = 0; s < S; ++s) {
+                T* gms = gm + s * kBlock;
+                for (int64_t w = 0; w < bw; ++w) {
+                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  T g = T(0);
+                  for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
+                  gms[w] = g;
+                }
+              }
             }
           }
 
           for (int64_t s = 0; s < S; ++s) {
-            T pre = T(1);
-            for (int64_t ci = 0; ci < C; ++ci) {
-              sib[ci * S + s] = pre;
-              pre *= gmat[ci * S + s];
-            }
-            T suf = T(1);
-            for (int64_t ci = C - 1; ci >= 0; --ci) {
-              sib[ci * S + s] *= suf;
-              suf *= gmat[ci * S + s];
+            for (int64_t w = 0; w < bw; ++w) {
+              T pre = T(1);
+              for (int64_t ci = 0; ci < C; ++ci) {
+                sib[(ci * S + s) * kBlock + w] = pre;
+                pre *= gmat[(ci * S + s) * kBlock + w];
+              }
+              T suf = T(1);
+              for (int64_t ci = C - 1; ci >= 0; --ci) {
+                sib[(ci * S + s) * kBlock + w] *= suf;
+                suf *= gmat[(ci * S + s) * kBlock + w];
+              }
             }
           }
 
@@ -646,21 +865,59 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
             const int64_t cnode = child[i * C + ci];
             if (cnode < 0) continue;
             // The 1/c_v factor from phat_v = raw_v / c_v.
-            for (int64_t s = 0; s < S; ++s)
-              w[s] = barv[s] * sib[ci * S + s] * inv_cv;
-            const T* Pc = P_b + cnode * S * S;
-            const T* pc = part_b + cnode * S;
-            T* gPc = gP_b + cnode * S * S;
             for (int64_t s = 0; s < S; ++s) {
-              const T ws = w[s];
-              T* gRow = gPc + s * S;
-              for (int64_t j = 0; j < S; ++j) gRow[j] += ws * pc[j];
+              const T* __restrict__ barvs = barv + s * kBlock;
+              const T* __restrict__ sibs = &sib[(ci * S + s) * kBlock];
+              T* __restrict__ ws = &wrow[s * kBlock];
+              for (int64_t w = 0; w < bw; ++w)
+                ws[w] = barvs[w] * sibs[w] / scv[w];
             }
-            T* barc = &bar[cnode * S];
-            for (int64_t j = 0; j < S; ++j) {
-              T acc = T(0);
-              for (int64_t s = 0; s < S; ++s) acc += w[s] * Pc[s * S + j];
-              barc[j] += acc;
+            const T* pc = &partsc[cnode * S * kBlock];
+
+            if (Bt == 1) {
+              T* gPc = (reduceP ? localP.data() : gP) + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                const T* ws = &wrow[s * kBlock];
+                T* gRow = gPc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T* pcj = pc + j * kBlock;
+                  T acc = T(0);
+                  for (int64_t w = 0; w < bw; ++w) acc += ws[w] * pcj[w];
+                  gRow[j] += acc;
+                }
+              }
+            } else {
+              for (int64_t w = 0; w < bw; ++w) {
+                T* gPc = gP + (b0 + w) * M * S * S + cnode * S * S;
+                for (int64_t s = 0; s < S; ++s) {
+                  const T wsw = wrow[s * kBlock + w];
+                  T* gRow = gPc + s * S;
+                  for (int64_t j = 0; j < S; ++j) gRow[j] += wsw * pc[j * kBlock + w];
+                }
+              }
+            }
+
+            T* barc = &bar[cnode * S * kBlock];
+            if (Bt == 1) {
+              const T* Pc = P + cnode * S * S;
+              for (int64_t s = 0; s < S; ++s) {
+                const T* __restrict__ ws = &wrow[s * kBlock];
+                const T* Prow = Pc + s * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  const T pj = Prow[j];
+                  T* __restrict__ bcj = barc + j * kBlock;
+                  for (int64_t w = 0; w < bw; ++w) bcj[w] += ws[w] * pj;
+                }
+              }
+            } else {
+              for (int64_t w = 0; w < bw; ++w) {
+                const T* Pc = P + (b0 + w) * M * S * S + cnode * S * S;
+                for (int64_t j = 0; j < S; ++j) {
+                  T acc = T(0);
+                  for (int64_t s = 0; s < S; ++s) acc += wrow[s * kBlock + w] * Pc[s * S + j];
+                  barc[j * kBlock + w] += acc;
+                }
+              }
             }
           }
         }
@@ -678,6 +935,9 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
     auto* workers = ctx->device()->tensorflow_cpu_worker_threads();
     Shard(workers->num_threads, workers->workers, B, 2 * M * S * S, work);
   }
+
+ private:
+  int block_size_ = 1;
 };
 
 #define REGISTER_CPU(T, Tindex)                                          \

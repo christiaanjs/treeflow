@@ -77,6 +77,7 @@ def _register_gradient():
             node_partials,
             postorder_indices,
             child_indices,
+            block_size=op.get_attr("block_size"),
         )
         # Order matches op.inputs: sequences, transition_probs, frequencies,
         # postorder_indices, child_indices.
@@ -101,6 +102,7 @@ def _register_gradient():
             node_scales,
             postorder_indices,
             child_indices,
+            block_size=op.get_attr("block_size"),
         )
         return [None, grad_probs, grad_freqs, None, None]
 
@@ -172,6 +174,7 @@ def native_phylogenetic_likelihood(
     postorder_node_indices: tf.Tensor,
     child_indices: tf.Tensor,
     batch_shape=(),
+    block_size: int = 1,
 ) -> tf.Tensor:
     """Per-site phylogenetic likelihood, computed by the native op.
 
@@ -194,6 +197,13 @@ def native_phylogenetic_likelihood(
     batch_shape
         Unused; accepted for signature compatibility with the reference
         implementation (the batch shape is inferred from the inputs).
+    block_size
+        Number of alignment sites processed together so the per-node
+        transition-matrix products vectorise over the site dimension (SIMD).
+        ``1`` (default) processes sites individually, reproducing the original
+        traversal. Larger values (e.g. 8/16/32) enable site-blocking. The
+        result is bit-identical regardless of ``block_size``; this only affects
+        performance.
     """
     del batch_shape  # inferred from inputs
     module = load_op_library()
@@ -211,6 +221,7 @@ def native_phylogenetic_likelihood(
         freqs_b,
         postorder_node_indices,
         child_indices,
+        block_size=block_size,
     )
     return tf.reshape(site_likelihood, full_batch)
 
@@ -232,6 +243,7 @@ def native_phylogenetic_log_likelihood_rescaled(
     postorder_node_indices: tf.Tensor,
     child_indices: tf.Tensor,
     batch_shape=(),
+    block_size: int = 1,
 ) -> tf.Tensor:
     """Numerically stable per-site phylogenetic LOG likelihood (native op).
 
@@ -240,6 +252,9 @@ def native_phylogenetic_log_likelihood_rescaled(
     maximum and accumulating the log scale factors) so deep/large trees do not
     underflow. Returns the per-site ``log`` likelihood (shape = batch shape),
     not the linear likelihood.
+
+    ``block_size`` controls site-blocking exactly as in
+    :func:`native_phylogenetic_likelihood`.
     """
     del batch_shape  # inferred from inputs
     module = load_op_library()
@@ -257,6 +272,7 @@ def native_phylogenetic_log_likelihood_rescaled(
         freqs_b,
         postorder_node_indices,
         child_indices,
+        block_size=block_size,
     )
     return tf.reshape(site_log_likelihood, full_batch)
 

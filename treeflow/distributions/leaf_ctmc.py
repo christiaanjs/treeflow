@@ -31,6 +31,7 @@ class LeafCTMC(Distribution):
         allow_nan_stats=True,
         use_native="auto",
         rescaling="adaptive",
+        block_size=1,
         name="LeafCTMC",
     ):
         parameters = dict(locals())
@@ -54,6 +55,8 @@ class LeafCTMC(Distribution):
         else:
             self._use_native = bool(use_native)
         self.rescaling = rescaling
+        # Site-blocking width for the native ops (SIMD); 1 = per-site (default).
+        self.block_size = block_size
 
     @classmethod
     def _parameter_properties(
@@ -131,12 +134,19 @@ class LeafCTMC(Distribution):
         x_b, transition_probs, sample_and_batch_shape = self._broadcast_for_likelihood(
             x
         )
-        likelihood_fn = phylogenetic_likelihood
         if self._use_native:
             from treeflow.acceleration.native import native_phylogenetic_likelihood
 
-            likelihood_fn = native_phylogenetic_likelihood
-        return likelihood_fn(
+            return native_phylogenetic_likelihood(
+                x_b,
+                transition_probs,
+                self.frequencies,
+                self.transition_probs_tree.topology.postorder_node_indices,
+                self.transition_probs_tree.topology.node_child_indices,
+                batch_shape=sample_and_batch_shape,
+                block_size=self.block_size,
+            )
+        return phylogenetic_likelihood(
             x_b,
             transition_probs,
             self.frequencies,
@@ -165,6 +175,7 @@ class LeafCTMC(Distribution):
             batch_shape=sample_and_batch_shape,
             use_native=self._use_native,
             rescaling=self.rescaling,
+            block_size=self.block_size,
         )
 
 

@@ -68,6 +68,7 @@ def phylogenetic_log_likelihood(
     use_native: bool = False,
     rescaling="auto",
     rescaling_threshold: int = None,
+    block_size: int = 1,
 ) -> tf.Tensor:
     """Per-site phylogenetic LOG likelihood, dispatching rescaled/unrescaled.
 
@@ -81,6 +82,10 @@ def phylogenetic_log_likelihood(
         module docstring.
     rescaling_threshold
         Override the leaf-count threshold used by ``"auto"``.
+    block_size
+        Site-blocking width for the native ops (SIMD); ignored when
+        ``use_native`` is False. See
+        :func:`treeflow.acceleration.native.native_phylogenetic_likelihood`.
     """
     args = (
         sequences_onehot,
@@ -98,12 +103,14 @@ def phylogenetic_log_likelihood(
 
         def unscaled_log():
             return tf.math.log(
-                native_phylogenetic_likelihood(*args, batch_shape=batch_shape)
+                native_phylogenetic_likelihood(
+                    *args, batch_shape=batch_shape, block_size=block_size
+                )
             )
 
         def rescaled_log():
             return native_phylogenetic_log_likelihood_rescaled(
-                *args, batch_shape=batch_shape
+                *args, batch_shape=batch_shape, block_size=block_size
             )
 
     else:
