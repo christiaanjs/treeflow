@@ -8,29 +8,19 @@
 // traversal from scratch -- it reuses the forward partials exactly as a
 // hand-written BEAGLE-style implementation would.
 //
-// Performance: the per-node transition-matrix products are the hot loops, and
-// the arithmetic per node is tiny (S*S multiply-adds).  To make them efficient
-// at large site counts we process sites in blocks of `kBlock`.  Each block is
-// transposed into a contiguous, site-innermost scratch layout ([node, state,
-// block]) so the inner products become AXPY loops over the (contiguous) site
-// dimension that the compiler vectorises with SIMD, and so each transition
-// matrix is loaded once per node per block rather than once per node per site.
-// The scratch block is L2-resident; the large [B, Nn, S] partials buffer is
-// streamed contiguously (one site at a time) at the block boundaries, so its
-// layout -- and the op's public contract -- is unchanged.
-//
 // Performance: the per-node transition-matrix products are the hot loops.  By
-// default sites are processed one at a time (block_size = 1), reproducing the
-// original per-site traversal.  Setting the `block_size` op attribute > 1
-// processes that many sites together: each block is transposed into a
+// default (block_size = 1) sites are processed one at a time, writing partials
+// directly into the output buffer -- the original, and on the hardware tested
+// the fastest, per-site traversal.  Setting the `block_size` op attribute > 1
+// instead processes that many sites together: each block is transposed into a
 // contiguous, site-innermost scratch layout ([node, state, block]) so the inner
 // products become AXPY loops over the (contiguous) site dimension that the
 // compiler can vectorise with SIMD, and so each transition matrix is loaded
-// once per node per block rather than once per node per site.  The scratch
-// block is L2-resident; the large [B, Nn, S] partials buffer is streamed
-// contiguously at the block boundaries, so its layout -- and the op's public
-// contract -- is unchanged.  The forward result is bit-identical for any
-// block_size (the per-site summation order is preserved).
+// once per node per block rather than once per node per site.  This is opt-in
+// because it was performance-neutral-to-negative on a 4-core / nucleotide
+// (S=4) benchmark (the kernel is memory-movement bound there), but may help on
+// other hardware or larger state counts.  The forward result is bit-identical
+// for any block_size (the per-site summation order is preserved).
 //
 // Layout conventions (row-major):
 //   sequences          [B,  L, S]      leaf partials (one-hot or ambiguity)
@@ -317,9 +307,49 @@ class PhyloLikelihoodOp : public OpKernel {
       }
     };
 
+    // Per-site path (default): write partials directly into the output buffer.
+    auto work_scalar = [&](int64_t begin, int64_t end) {
+      for (int64_t b = begin; b < end; ++b) {
+        const int64_t bt = (Bt == 1) ? 0 : b;
+        const int64_t bf = (Bf == 1) ? 0 : b;
+        const T* seq_b = seq + b * L * S;
+        const T* P_b = P + bt * M * S * S;
+        const T* fr_b = fr + bf * S;
+        T* part_b = part + b * Nn * S;
+
+        for (int64_t k = 0; k < L * S; ++k) part_b[k] = seq_b[k];
+
+        for (int64_t i = 0; i < I; ++i) {
+          const int64_t v = postorder[i];
+          T* pv = part_b + v * S;
+          for (int64_t s = 0; s < S; ++s) pv[s] = T(1);
+          for (int64_t ci = 0; ci < C; ++ci) {
+            const int64_t cnode = child[i * C + ci];
+            if (cnode < 0) continue;
+            const T* Pc = P_b + cnode * S * S;
+            const T* pc = part_b + cnode * S;
+            for (int64_t s = 0; s < S; ++s) {
+              T g = T(0);
+              const T* Prow = Pc + s * S;
+              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
+              pv[s] *= g;
+            }
+          }
+        }
+
+        const T* pr = part_b + root * S;
+        T acc = T(0);
+        for (int64_t s = 0; s < S; ++s) acc += fr_b[s] * pr[s];
+        ll[b] = acc;
+      }
+    };
+
     auto* workers = ctx->device()->tensorflow_cpu_worker_threads();
     const int64_t cost = M * S * S;  // rough per-batch cost
-    Shard(workers->num_threads, workers->workers, B, cost, work);
+    if (kBlock <= 1)
+      Shard(workers->num_threads, workers->workers, B, cost, work_scalar);
+    else
+      Shard(workers->num_threads, workers->workers, B, cost, work);
   }
 
  private:
@@ -543,9 +573,104 @@ class PhyloLikelihoodGradOp : public OpKernel {
       }
     };
 
+    // Per-site path (default).
+    auto work_scalar = [&](int64_t begin, int64_t end) {
+      std::vector<T> bar(Nn * S);
+      std::vector<T> gmat(C * S);
+      std::vector<T> sib(C * S);
+      std::vector<T> w(S);
+      std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
+      std::vector<T> localF(reduceF ? S : 0, T(0));
+
+      for (int64_t b = begin; b < end; ++b) {
+        const int64_t bt = (Bt == 1) ? 0 : b;
+        const int64_t bf = (Bf == 1) ? 0 : b;
+        const T* P_b = P + bt * M * S * S;
+        const T* fr_b = fr + bf * S;
+        const T* part_b = part + b * Nn * S;
+        const T dll = grad_ll[b];
+
+        T* gP_b = reduceP ? localP.data() : (gP + bt * M * S * S);
+        T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+
+        std::fill(bar.begin(), bar.end(), T(0));
+
+        const T* pr = part_b + root * S;
+        for (int64_t s = 0; s < S; ++s) {
+          bar[root * S + s] = dll * fr_b[s];
+          gF_b[s] += dll * pr[s];
+        }
+
+        for (int64_t i = I - 1; i >= 0; --i) {
+          const int64_t v = postorder[i];
+          const T* barv = &bar[v * S];
+
+          for (int64_t ci = 0; ci < C; ++ci) {
+            const int64_t cnode = child[i * C + ci];
+            if (cnode < 0) {
+              for (int64_t s = 0; s < S; ++s) gmat[ci * S + s] = T(1);
+              continue;
+            }
+            const T* Pc = P_b + cnode * S * S;
+            const T* pc = part_b + cnode * S;
+            for (int64_t s = 0; s < S; ++s) {
+              T g = T(0);
+              const T* Prow = Pc + s * S;
+              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
+              gmat[ci * S + s] = g;
+            }
+          }
+
+          for (int64_t s = 0; s < S; ++s) {
+            T pre = T(1);
+            for (int64_t ci = 0; ci < C; ++ci) {
+              sib[ci * S + s] = pre;
+              pre *= gmat[ci * S + s];
+            }
+            T suf = T(1);
+            for (int64_t ci = C - 1; ci >= 0; --ci) {
+              sib[ci * S + s] *= suf;
+              suf *= gmat[ci * S + s];
+            }
+          }
+
+          for (int64_t ci = 0; ci < C; ++ci) {
+            const int64_t cnode = child[i * C + ci];
+            if (cnode < 0) continue;
+            for (int64_t s = 0; s < S; ++s) w[s] = barv[s] * sib[ci * S + s];
+            const T* Pc = P_b + cnode * S * S;
+            const T* pc = part_b + cnode * S;
+            T* gPc = gP_b + cnode * S * S;
+            for (int64_t s = 0; s < S; ++s) {
+              const T ws = w[s];
+              T* gRow = gPc + s * S;
+              for (int64_t j = 0; j < S; ++j) gRow[j] += ws * pc[j];
+            }
+            T* barc = &bar[cnode * S];
+            for (int64_t j = 0; j < S; ++j) {
+              T acc = T(0);
+              for (int64_t s = 0; s < S; ++s) acc += w[s] * Pc[s * S + j];
+              barc[j] += acc;
+            }
+          }
+        }
+      }
+
+      if (reduceP || reduceF) {
+        mutex_lock l(mu);
+        if (reduceP)
+          for (int64_t k = 0; k < M * S * S; ++k) gP[k] += localP[k];
+        if (reduceF)
+          for (int64_t k = 0; k < S; ++k) gF[k] += localF[k];
+      }
+    };
+
     auto* workers = ctx->device()->tensorflow_cpu_worker_threads();
     const int64_t cost = 2 * M * S * S;
-    Shard(workers->num_threads, workers->workers, B, cost, work);
+    if (kBlock <= 1)
+      Shard(workers->num_threads, workers->workers, B, cost, work_scalar);
+    else
+      Shard(workers->num_threads, workers->workers, B, cost, work);
   }
 
  private:
@@ -706,8 +831,59 @@ class PhyloLikelihoodRescaledOp : public OpKernel {
       }
     };
 
+    // Per-site path (default).
+    auto work_scalar = [&](int64_t begin, int64_t end) {
+      for (int64_t b = begin; b < end; ++b) {
+        const int64_t bt = (Bt == 1) ? 0 : b;
+        const int64_t bf = (Bf == 1) ? 0 : b;
+        const T* seq_b = seq + b * L * S;
+        const T* P_b = P + bt * M * S * S;
+        const T* fr_b = fr + bf * S;
+        T* part_b = part + b * Nn * S;
+        T* scales_b = scales + b * Nn;
+
+        for (int64_t k = 0; k < L * S; ++k) part_b[k] = seq_b[k];
+        for (int64_t v = 0; v < Nn; ++v) scales_b[v] = T(1);
+
+        T log_scale_sum = T(0);
+        for (int64_t i = 0; i < I; ++i) {
+          const int64_t v = postorder[i];
+          T* pv = part_b + v * S;
+          for (int64_t s = 0; s < S; ++s) pv[s] = T(1);
+          for (int64_t ci = 0; ci < C; ++ci) {
+            const int64_t cnode = child[i * C + ci];
+            if (cnode < 0) continue;
+            const T* Pc = P_b + cnode * S * S;
+            const T* pc = part_b + cnode * S;
+            for (int64_t s = 0; s < S; ++s) {
+              T g = T(0);
+              const T* Prow = Pc + s * S;
+              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
+              pv[s] *= g;
+            }
+          }
+          T cmax = T(0);
+          for (int64_t s = 0; s < S; ++s) cmax = std::max(cmax, pv[s]);
+          if (cmax > T(0)) {
+            const T inv = T(1) / cmax;
+            for (int64_t s = 0; s < S; ++s) pv[s] *= inv;
+            scales_b[v] = cmax;
+            log_scale_sum += std::log(cmax);
+          }
+        }
+
+        const T* pr = part_b + root * S;
+        T acc = T(0);
+        for (int64_t s = 0; s < S; ++s) acc += fr_b[s] * pr[s];
+        ll[b] = std::log(acc) + log_scale_sum;
+      }
+    };
+
     auto* workers = ctx->device()->tensorflow_cpu_worker_threads();
-    Shard(workers->num_threads, workers->workers, B, M * S * S, work);
+    if (kBlock <= 1)
+      Shard(workers->num_threads, workers->workers, B, M * S * S, work_scalar);
+    else
+      Shard(workers->num_threads, workers->workers, B, M * S * S, work);
   }
 
  private:
@@ -932,8 +1108,110 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
       }
     };
 
+    // Per-site path (default).
+    auto work_scalar = [&](int64_t begin, int64_t end) {
+      std::vector<T> bar(Nn * S);
+      std::vector<T> gmat(C * S);
+      std::vector<T> sib(C * S);
+      std::vector<T> w(S);
+      std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
+      std::vector<T> localF(reduceF ? S : 0, T(0));
+
+      for (int64_t b = begin; b < end; ++b) {
+        const int64_t bt = (Bt == 1) ? 0 : b;
+        const int64_t bf = (Bf == 1) ? 0 : b;
+        const T* P_b = P + bt * M * S * S;
+        const T* fr_b = fr + bf * S;
+        const T* part_b = part + b * Nn * S;
+        const T* scales_b = scales + b * Nn;
+        const T dll = grad_ll[b];
+
+        T* gP_b = reduceP ? localP.data() : (gP + bt * M * S * S);
+        T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+
+        std::fill(bar.begin(), bar.end(), T(0));
+
+        const T* pr = part_b + root * S;
+        T Lhat = T(0);
+        for (int64_t s = 0; s < S; ++s) Lhat += fr_b[s] * pr[s];
+        const T invLhat = T(1) / Lhat;
+        for (int64_t s = 0; s < S; ++s) {
+          bar[root * S + s] = dll * fr_b[s] * invLhat;
+          gF_b[s] += dll * pr[s] * invLhat;
+        }
+
+        for (int64_t i = I - 1; i >= 0; --i) {
+          const int64_t v = postorder[i];
+          const T* barv = &bar[v * S];
+          const T inv_cv = T(1) / scales_b[v];
+
+          for (int64_t ci = 0; ci < C; ++ci) {
+            const int64_t cnode = child[i * C + ci];
+            if (cnode < 0) {
+              for (int64_t s = 0; s < S; ++s) gmat[ci * S + s] = T(1);
+              continue;
+            }
+            const T* Pc = P_b + cnode * S * S;
+            const T* pc = part_b + cnode * S;
+            for (int64_t s = 0; s < S; ++s) {
+              T g = T(0);
+              const T* Prow = Pc + s * S;
+              for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j];
+              gmat[ci * S + s] = g;
+            }
+          }
+
+          for (int64_t s = 0; s < S; ++s) {
+            T pre = T(1);
+            for (int64_t ci = 0; ci < C; ++ci) {
+              sib[ci * S + s] = pre;
+              pre *= gmat[ci * S + s];
+            }
+            T suf = T(1);
+            for (int64_t ci = C - 1; ci >= 0; --ci) {
+              sib[ci * S + s] *= suf;
+              suf *= gmat[ci * S + s];
+            }
+          }
+
+          for (int64_t ci = 0; ci < C; ++ci) {
+            const int64_t cnode = child[i * C + ci];
+            if (cnode < 0) continue;
+            for (int64_t s = 0; s < S; ++s)
+              w[s] = barv[s] * sib[ci * S + s] * inv_cv;
+            const T* Pc = P_b + cnode * S * S;
+            const T* pc = part_b + cnode * S;
+            T* gPc = gP_b + cnode * S * S;
+            for (int64_t s = 0; s < S; ++s) {
+              const T ws = w[s];
+              T* gRow = gPc + s * S;
+              for (int64_t j = 0; j < S; ++j) gRow[j] += ws * pc[j];
+            }
+            T* barc = &bar[cnode * S];
+            for (int64_t j = 0; j < S; ++j) {
+              T acc = T(0);
+              for (int64_t s = 0; s < S; ++s) acc += w[s] * Pc[s * S + j];
+              barc[j] += acc;
+            }
+          }
+        }
+      }
+
+      if (reduceP || reduceF) {
+        mutex_lock l(mu);
+        if (reduceP)
+          for (int64_t k = 0; k < M * S * S; ++k) gP[k] += localP[k];
+        if (reduceF)
+          for (int64_t k = 0; k < S; ++k) gF[k] += localF[k];
+      }
+    };
+
     auto* workers = ctx->device()->tensorflow_cpu_worker_threads();
-    Shard(workers->num_threads, workers->workers, B, 2 * M * S * S, work);
+    if (kBlock <= 1)
+      Shard(workers->num_threads, workers->workers, B, 2 * M * S * S,
+            work_scalar);
+    else
+      Shard(workers->num_threads, workers->workers, B, 2 * M * S * S, work);
   }
 
  private:
