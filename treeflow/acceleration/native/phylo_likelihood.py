@@ -69,6 +69,8 @@ def _register_gradient():
         frequencies = op.inputs[2]
         postorder_indices = op.inputs[3]
         child_indices = op.inputs[4]
+        probs_index = op.inputs[5]
+        freqs_index = op.inputs[6]
         node_partials = op.outputs[1]
         grad_probs, grad_freqs = _module.phylo_likelihood_grad(
             grad_site_likelihood,
@@ -77,11 +79,13 @@ def _register_gradient():
             node_partials,
             postorder_indices,
             child_indices,
+            probs_index,
+            freqs_index,
             block_size=op.get_attr("block_size"),
         )
         # Order matches op.inputs: sequences, transition_probs, frequencies,
-        # postorder_indices, child_indices.
-        return [None, grad_probs, grad_freqs, None, None]
+        # postorder_indices, child_indices, probs_index, freqs_index.
+        return [None, grad_probs, grad_freqs, None, None, None, None]
 
     @tf_ops.RegisterGradient("PhyloLikelihoodRescaled")
     def _phylo_likelihood_rescaled_grad(
@@ -92,6 +96,8 @@ def _register_gradient():
         frequencies = op.inputs[2]
         postorder_indices = op.inputs[3]
         child_indices = op.inputs[4]
+        probs_index = op.inputs[5]
+        freqs_index = op.inputs[6]
         node_partials = op.outputs[1]
         node_scales = op.outputs[2]
         grad_probs, grad_freqs = _module.phylo_likelihood_rescaled_grad(
@@ -102,21 +108,47 @@ def _register_gradient():
             node_scales,
             postorder_indices,
             child_indices,
+            probs_index,
+            freqs_index,
             block_size=op.get_attr("block_size"),
         )
-        return [None, grad_probs, grad_freqs, None, None]
+        return [None, grad_probs, grad_freqs, None, None, None, None]
+
+
+def _broadcast_gather_index(batch_shape, batch_size, full_batch, full_size):
+    """Per-(flattened) batch-element index into a tensor's own flattened batch.
+
+    Maps each position of the broadcast ``full_batch`` to the flattened index of
+    the element it reads from a tensor whose batch shape is ``batch_shape`` (which
+    must be broadcastable to ``full_batch``). This lets the native op *gather* the
+    transition matrices / frequencies for each batch element instead of
+    materialising a broadcast (tiled) copy -- e.g. for a discrete rate-category
+    mixture the transition matrices only vary across the ``M`` categories, so we
+    keep ``[M, node, state, state]`` and index it, rather than tiling to
+    ``[sites * M, node, state, state]``.
+
+    Works for any broadcasting pattern (leading sample dims, interleaved
+    category/parameter-sample dims, etc.): ``reshape(range(n), batch_shape)``
+    labels each batch element with its flattened index, and broadcasting that
+    label tensor to ``full_batch`` reads off the gather index per position.
+    """
+    labels = tf.reshape(tf.range(batch_size), batch_shape)
+    return tf.reshape(tf.broadcast_to(labels, full_batch), tf.stack([full_size]))
 
 
 def _canonicalize_batch(sequences_onehot, transition_probs, frequencies):
-    """Broadcast the leading batch dims of all three tensors to a common shape.
+    """Flatten the batch dims and build per-element gather indices for the op.
 
-    Returns the flattened-batch tensors expected by the op plus the original
-    (un-flattened) broadcast batch shape so the output can be reshaped back.
+    Returns the flattened-batch tensors expected by the op, the gather indices
+    that locate each batch element's transition matrices / frequencies, and the
+    original (un-flattened) broadcast batch shape so the output can be reshaped
+    back.
 
-    The op accepts a transition_probs / frequencies leading dim of either 1
-    (broadcast over the batch) or the full batch size. We keep the broadcast
-    fast-path (avoid materialising one transition matrix set per site) whenever
-    those inputs have no genuine batch dimensions.
+    The transition matrices and frequencies keep their *own* (un-tiled) batch
+    size ``Bt`` / ``Bf``; the op reads ``transition_probs[probs_index[b]]`` and
+    ``frequencies[freqs_index[b]]`` for batch element ``b``. ``Bt`` / ``Bf`` may
+    be 1 (broadcast over the whole batch), the full batch size (a distinct matrix
+    set per element), or anything in between (e.g. one set per rate category).
     """
     seq_batch = tf.shape(sequences_onehot)[:-2]
     probs_batch = tf.shape(transition_probs)[:-3]
@@ -139,32 +171,23 @@ def _canonicalize_batch(sequences_onehot, transition_probs, frequencies):
         tf.stack([batch_size, leaves, state]),
     )
 
+    # Transition matrices and frequencies are kept at their own batch size (no
+    # tiling); the op gathers per batch element via the index tensors below.
     probs_batch_size = tf.reduce_prod(probs_batch)
-    if_probs_broadcast = tf.equal(probs_batch_size, 1)
-    probs_b = tf.cond(
-        if_probs_broadcast,
-        lambda: tf.reshape(transition_probs, tf.stack([1, nodes, state, state])),
-        lambda: tf.reshape(
-            tf.broadcast_to(
-                transition_probs,
-                tf.concat([full_batch, [nodes, state, state]], axis=0),
-            ),
-            tf.stack([batch_size, nodes, state, state]),
-        ),
+    probs_b = tf.reshape(
+        transition_probs, tf.stack([probs_batch_size, nodes, state, state])
+    )
+    probs_index = _broadcast_gather_index(
+        probs_batch, probs_batch_size, full_batch, batch_size
     )
 
     freqs_batch_size = tf.reduce_prod(freqs_batch)
-    if_freqs_broadcast = tf.equal(freqs_batch_size, 1)
-    freqs_b = tf.cond(
-        if_freqs_broadcast,
-        lambda: tf.reshape(frequencies, tf.stack([1, state])),
-        lambda: tf.reshape(
-            tf.broadcast_to(frequencies, tf.concat([full_batch, [state]], axis=0)),
-            tf.stack([batch_size, state]),
-        ),
+    freqs_b = tf.reshape(frequencies, tf.stack([freqs_batch_size, state]))
+    freqs_index = _broadcast_gather_index(
+        freqs_batch, freqs_batch_size, full_batch, batch_size
     )
 
-    return sequences_b, probs_b, freqs_b, full_batch
+    return sequences_b, probs_b, freqs_b, probs_index, freqs_index, full_batch
 
 
 def native_phylogenetic_likelihood(
@@ -208,11 +231,11 @@ def native_phylogenetic_likelihood(
     del batch_shape  # inferred from inputs
     module = load_op_library()
 
-    sequences_b, probs_b, freqs_b, full_batch = _canonicalize_batch(
-        sequences_onehot, transition_probs, frequencies
+    sequences_b, probs_b, freqs_b, probs_index, freqs_index, full_batch = (
+        _canonicalize_batch(sequences_onehot, transition_probs, frequencies)
     )
-    postorder_node_indices, child_indices = _prepare_indices(
-        postorder_node_indices, child_indices
+    postorder_node_indices, child_indices, probs_index, freqs_index = _prepare_indices(
+        postorder_node_indices, child_indices, probs_index, freqs_index
     )
 
     site_likelihood, _ = module.phylo_likelihood(
@@ -221,19 +244,23 @@ def native_phylogenetic_likelihood(
         freqs_b,
         postorder_node_indices,
         child_indices,
+        probs_index,
+        freqs_index,
         block_size=block_size,
     )
     return tf.reshape(site_likelihood, full_batch)
 
 
-def _prepare_indices(postorder_node_indices, child_indices):
+def _prepare_indices(postorder_node_indices, child_indices, probs_index, freqs_index):
     index_dtype = postorder_node_indices.dtype
     if index_dtype not in (tf.int32, tf.int64):
-        postorder_node_indices = tf.cast(postorder_node_indices, tf.int32)
-        child_indices = tf.cast(child_indices, tf.int32)
-    else:
-        child_indices = tf.cast(child_indices, index_dtype)
-    return postorder_node_indices, child_indices
+        index_dtype = tf.int32
+        postorder_node_indices = tf.cast(postorder_node_indices, index_dtype)
+    child_indices = tf.cast(child_indices, index_dtype)
+    # The batch gather indices must share the op's Tindex type.
+    probs_index = tf.cast(probs_index, index_dtype)
+    freqs_index = tf.cast(freqs_index, index_dtype)
+    return postorder_node_indices, child_indices, probs_index, freqs_index
 
 
 def native_phylogenetic_log_likelihood_rescaled(
@@ -259,11 +286,11 @@ def native_phylogenetic_log_likelihood_rescaled(
     del batch_shape  # inferred from inputs
     module = load_op_library()
 
-    sequences_b, probs_b, freqs_b, full_batch = _canonicalize_batch(
-        sequences_onehot, transition_probs, frequencies
+    sequences_b, probs_b, freqs_b, probs_index, freqs_index, full_batch = (
+        _canonicalize_batch(sequences_onehot, transition_probs, frequencies)
     )
-    postorder_node_indices, child_indices = _prepare_indices(
-        postorder_node_indices, child_indices
+    postorder_node_indices, child_indices, probs_index, freqs_index = _prepare_indices(
+        postorder_node_indices, child_indices, probs_index, freqs_index
     )
 
     site_log_likelihood, _, _ = module.phylo_likelihood_rescaled(
@@ -272,6 +299,8 @@ def native_phylogenetic_log_likelihood_rescaled(
         freqs_b,
         postorder_node_indices,
         child_indices,
+        probs_index,
+        freqs_index,
         block_size=block_size,
     )
     return tf.reshape(site_log_likelihood, full_batch)

@@ -28,11 +28,22 @@
 //   frequencies        [Bf, S]         root state frequencies
 //   postorder_indices  [I]             internal node ids in postorder
 //   child_indices      [I, C]          child node ids per internal node
+//   probs_index        [B]             probs set used by each batch element
+//   freqs_index        [B]             freqs row used by each batch element
 // where
 //   B  = batch size (e.g. alignment sites)
 //   L  = leaf count, M = 2L-1 total nodes, I = L-1 internal nodes
 //   S  = state count, C = max children per internal node
-//   Bt, Bf are either 1 (broadcast over B) or equal to B.
+//   Bt, Bf are the number of (distinct) transition-matrix / frequency sets.
+//
+// Rather than tiling the transition matrices / frequencies up to the full batch
+// B, the caller keeps them at their own size Bt / Bf and supplies a gather index
+// per batch element: element b reads transition set probs_index[b] and frequency
+// row freqs_index[b]. This handles any broadcast pattern (Bt == 1 broadcast,
+// Bt == B per-element, or e.g. Bt == M shared across sites for a discrete
+// rate-category mixture) without materialising redundant copies. The backward op
+// accumulates the gradient back into the Bt / Bf sets (scattering by the same
+// index, reducing across the elements that share a set).
 //
 // Outputs:
 //   site_likelihood [B]        per-batch likelihood (not log)
@@ -64,6 +75,8 @@ REGISTER_OP("PhyloLikelihood")
     .Input("frequencies: T")
     .Input("postorder_indices: Tindex")
     .Input("child_indices: Tindex")
+    .Input("probs_index: Tindex")
+    .Input("freqs_index: Tindex")
     .Output("site_likelihood: T")
     .Output("node_partials: T")
     .SetShapeFn([](InferenceContext* c) {
@@ -94,6 +107,8 @@ REGISTER_OP("PhyloLikelihoodGrad")
     .Input("node_partials: T")
     .Input("postorder_indices: Tindex")
     .Input("child_indices: Tindex")
+    .Input("probs_index: Tindex")
+    .Input("freqs_index: Tindex")
     .Output("grad_transition_probs: T")
     .Output("grad_frequencies: T")
     .SetShapeFn([](InferenceContext* c) {
@@ -115,6 +130,8 @@ REGISTER_OP("PhyloLikelihoodRescaled")
     .Input("frequencies: T")
     .Input("postorder_indices: Tindex")
     .Input("child_indices: Tindex")
+    .Input("probs_index: Tindex")
+    .Input("freqs_index: Tindex")
     .Output("site_log_likelihood: T")
     .Output("node_partials: T")
     .Output("node_scales: T")
@@ -146,6 +163,8 @@ REGISTER_OP("PhyloLikelihoodRescaledGrad")
     .Input("node_scales: T")
     .Input("postorder_indices: Tindex")
     .Input("child_indices: Tindex")
+    .Input("probs_index: Tindex")
+    .Input("freqs_index: Tindex")
     .Output("grad_transition_probs: T")
     .Output("grad_frequencies: T")
     .SetShapeFn([](InferenceContext* c) {
@@ -181,6 +200,8 @@ class PhyloLikelihoodOp : public OpKernel {
     const Tensor& freqs = ctx->input(2);
     const Tensor& postorder_t = ctx->input(3);
     const Tensor& child_t = ctx->input(4);
+    const Tensor& probs_index_t = ctx->input(5);
+    const Tensor& freqs_index_t = ctx->input(6);
 
     OP_REQUIRES(ctx, sequences.dims() == 3,
                 errors::InvalidArgument("sequences must be rank 3 [B,L,S]"));
@@ -206,19 +227,21 @@ class PhyloLikelihoodOp : public OpKernel {
                 errors::InvalidArgument("transition_probs state mismatch"));
     OP_REQUIRES(ctx, freqs.dim_size(1) == S,
                 errors::InvalidArgument("frequencies state mismatch"));
-    OP_REQUIRES(ctx, Bt == 1 || Bt == B,
-                errors::InvalidArgument("transition_probs batch must be 1 or B"));
-    OP_REQUIRES(ctx, Bf == 1 || Bf == B,
-                errors::InvalidArgument("frequencies batch must be 1 or B"));
+    OP_REQUIRES(ctx, probs_index_t.NumElements() == B,
+                errors::InvalidArgument("probs_index must have B elements"));
+    OP_REQUIRES(ctx, freqs_index_t.NumElements() == B,
+                errors::InvalidArgument("freqs_index must have B elements"));
     OP_REQUIRES(ctx, I == L - 1,
                 errors::InvalidArgument("postorder length must be L-1"));
     OP_REQUIRES(ctx, M >= Nn - 1,
                 errors::InvalidArgument(
                     "transition_probs must have at least 2L-2 nodes"));
 
-    std::vector<int64_t> postorder, child;
+    std::vector<int64_t> postorder, child, pidx, fidx;
     ReadIndices<Tindex>(postorder_t, &postorder);
     ReadIndices<Tindex>(child_t, &child);
+    ReadIndices<Tindex>(probs_index_t, &pidx);
+    ReadIndices<Tindex>(freqs_index_t, &fidx);
 
     Tensor* site_ll = nullptr;
     Tensor* node_partials = nullptr;
@@ -273,11 +296,12 @@ class PhyloLikelihoodOp : public OpKernel {
                 T* __restrict__ pvs = pv + s * kBlock;
                 for (int64_t w = 0; w < bw; ++w) pvs[w] *= g[w];
               }
-            } else {  // Bt == B: per-site transition matrix.
+            } else {  // gather a per-element transition matrix set via pidx.
               for (int64_t s = 0; s < S; ++s) {
                 T* pvs = pv + s * kBlock;
                 for (int64_t w = 0; w < bw; ++w) {
-                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  const T* Prow =
+                      P + pidx[b0 + w] * M * S * S + cnode * S * S + s * S;
                   T g = T(0);
                   for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
                   pvs[w] *= g;
@@ -290,7 +314,7 @@ class PhyloLikelihoodOp : public OpKernel {
         // Root likelihood per site in the block.
         for (int64_t w = 0; w < bw; ++w) {
           const int64_t b = b0 + w;
-          const int64_t bf = (Bf == 1) ? 0 : b;
+          const int64_t bf = fidx[b];
           const T* fr_b = fr + bf * S;
           T acc = T(0);
           for (int64_t s = 0; s < S; ++s)
@@ -310,8 +334,8 @@ class PhyloLikelihoodOp : public OpKernel {
     // Per-site path (default): write partials directly into the output buffer.
     auto work_scalar = [&](int64_t begin, int64_t end) {
       for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
+        const int64_t bt = pidx[b];
+        const int64_t bf = fidx[b];
         const T* seq_b = seq + b * L * S;
         const T* P_b = P + bt * M * S * S;
         const T* fr_b = fr + bf * S;
@@ -372,6 +396,8 @@ class PhyloLikelihoodGradOp : public OpKernel {
     const Tensor& node_partials = ctx->input(3);
     const Tensor& postorder_t = ctx->input(4);
     const Tensor& child_t = ctx->input(5);
+    const Tensor& probs_index_t = ctx->input(6);
+    const Tensor& freqs_index_t = ctx->input(7);
 
     const int64_t B = grad_ll_t.dim_size(0);
     const int64_t Bt = probs.dim_size(0);
@@ -382,9 +408,11 @@ class PhyloLikelihoodGradOp : public OpKernel {
     const int64_t I = postorder_t.dim_size(0);
     const int64_t C = child_t.dim_size(1);
 
-    std::vector<int64_t> postorder, child;
+    std::vector<int64_t> postorder, child, pidx, fidx;
     ReadIndices<Tindex>(postorder_t, &postorder);
     ReadIndices<Tindex>(child_t, &child);
+    ReadIndices<Tindex>(probs_index_t, &pidx);
+    ReadIndices<Tindex>(freqs_index_t, &fidx);
 
     Tensor* grad_P_t = nullptr;
     Tensor* grad_F_t = nullptr;
@@ -404,8 +432,14 @@ class PhyloLikelihoodGradOp : public OpKernel {
     for (int64_t k = 0; k < gF_size; ++k) gF[k] = T(0);
 
     const int64_t root = postorder[I - 1];
-    const bool reduceP = (Bt == 1) && (B > 1);
-    const bool reduceF = (Bf == 1) && (B > 1);
+    // When the transition probs / frequencies are shared across more than one
+    // batch element (Bt < B / Bf < B, e.g. broadcast or one set per rate
+    // category), several elements scatter into the same gradient slot, so each
+    // thread accumulates into a private copy and reduces under a lock. When
+    // every batch element has its own set (Bt == B) the gather indices are a
+    // bijection, so threads write disjoint slots directly.
+    const bool reduceP = (Bt < B);
+    const bool reduceF = (Bf < B);
 
     mutex mu;  // guards reductions into the shared gP / gF
 
@@ -416,9 +450,9 @@ class PhyloLikelihoodGradOp : public OpKernel {
       std::vector<T> gmat(C * S * kBlock);
       std::vector<T> sib(C * S * kBlock);
       std::vector<T> wrow(S * kBlock);
-      // Thread-local accumulators only when reducing a broadcast batch.
-      std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
-      std::vector<T> localF(reduceF ? S : 0, T(0));
+      // Thread-local accumulators only when reducing shared batch slots.
+      std::vector<T> localP(reduceP ? Bt * M * S * S : 0, T(0));
+      std::vector<T> localF(reduceF ? Bf * S : 0, T(0));
 
       for (int64_t b0 = begin; b0 < end; b0 += kBlock) {
         const int64_t bw = std::min<int64_t>(kBlock, end - b0);
@@ -434,10 +468,10 @@ class PhyloLikelihoodGradOp : public OpKernel {
         // Seed: L = sum_s fr[s] * part[root, s].
         for (int64_t w = 0; w < bw; ++w) {
           const int64_t b = b0 + w;
-          const int64_t bf = (Bf == 1) ? 0 : b;
+          const int64_t bf = fidx[b];
           const T* fr_b = fr + bf * S;
           const T dll = grad_ll[b];
-          T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+          T* gF_b = (reduceF ? localF.data() : gF) + bf * S;
           for (int64_t s = 0; s < S; ++s) {
             const T prs = partsc[(root * S + s) * kBlock + w];
             bar[(root * S + s) * kBlock + w] = dll * fr_b[s];
@@ -475,7 +509,8 @@ class PhyloLikelihoodGradOp : public OpKernel {
               for (int64_t s = 0; s < S; ++s) {
                 T* gms = gm + s * kBlock;
                 for (int64_t w = 0; w < bw; ++w) {
-                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  const T* Prow =
+                      P + pidx[b0 + w] * M * S * S + cnode * S * S + s * S;
                   T g = T(0);
                   for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
                   gms[w] = g;
@@ -528,7 +563,8 @@ class PhyloLikelihoodGradOp : public OpKernel {
               }
             } else {
               for (int64_t w = 0; w < bw; ++w) {
-                T* gPc = gP + (b0 + w) * M * S * S + cnode * S * S;
+                T* gPc = (reduceP ? localP.data() : gP) +
+                         pidx[b0 + w] * M * S * S + cnode * S * S;
                 for (int64_t s = 0; s < S; ++s) {
                   const T wsw = wrow[s * kBlock + w];
                   T* gRow = gPc + s * S;
@@ -552,7 +588,7 @@ class PhyloLikelihoodGradOp : public OpKernel {
               }
             } else {
               for (int64_t w = 0; w < bw; ++w) {
-                const T* Pc = P + (b0 + w) * M * S * S + cnode * S * S;
+                const T* Pc = P + pidx[b0 + w] * M * S * S + cnode * S * S;
                 for (int64_t j = 0; j < S; ++j) {
                   T acc = T(0);
                   for (int64_t s = 0; s < S; ++s) acc += wrow[s * kBlock + w] * Pc[s * S + j];
@@ -567,9 +603,9 @@ class PhyloLikelihoodGradOp : public OpKernel {
       if (reduceP || reduceF) {
         mutex_lock l(mu);
         if (reduceP)
-          for (int64_t k = 0; k < M * S * S; ++k) gP[k] += localP[k];
+          for (int64_t k = 0; k < Bt * M * S * S; ++k) gP[k] += localP[k];
         if (reduceF)
-          for (int64_t k = 0; k < S; ++k) gF[k] += localF[k];
+          for (int64_t k = 0; k < Bf * S; ++k) gF[k] += localF[k];
       }
     };
 
@@ -579,19 +615,19 @@ class PhyloLikelihoodGradOp : public OpKernel {
       std::vector<T> gmat(C * S);
       std::vector<T> sib(C * S);
       std::vector<T> w(S);
-      std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
-      std::vector<T> localF(reduceF ? S : 0, T(0));
+      std::vector<T> localP(reduceP ? Bt * M * S * S : 0, T(0));
+      std::vector<T> localF(reduceF ? Bf * S : 0, T(0));
 
       for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
+        const int64_t bt = pidx[b];
+        const int64_t bf = fidx[b];
         const T* P_b = P + bt * M * S * S;
         const T* fr_b = fr + bf * S;
         const T* part_b = part + b * Nn * S;
         const T dll = grad_ll[b];
 
-        T* gP_b = reduceP ? localP.data() : (gP + bt * M * S * S);
-        T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+        T* gP_b = (reduceP ? localP.data() : gP) + bt * M * S * S;
+        T* gF_b = (reduceF ? localF.data() : gF) + bf * S;
 
         std::fill(bar.begin(), bar.end(), T(0));
 
@@ -659,9 +695,9 @@ class PhyloLikelihoodGradOp : public OpKernel {
       if (reduceP || reduceF) {
         mutex_lock l(mu);
         if (reduceP)
-          for (int64_t k = 0; k < M * S * S; ++k) gP[k] += localP[k];
+          for (int64_t k = 0; k < Bt * M * S * S; ++k) gP[k] += localP[k];
         if (reduceF)
-          for (int64_t k = 0; k < S; ++k) gF[k] += localF[k];
+          for (int64_t k = 0; k < Bf * S; ++k) gF[k] += localF[k];
       }
     };
 
@@ -697,6 +733,8 @@ class PhyloLikelihoodRescaledOp : public OpKernel {
     const Tensor& freqs = ctx->input(2);
     const Tensor& postorder_t = ctx->input(3);
     const Tensor& child_t = ctx->input(4);
+    const Tensor& probs_index_t = ctx->input(5);
+    const Tensor& freqs_index_t = ctx->input(6);
 
     OP_REQUIRES(ctx, sequences.dims() == 3,
                 errors::InvalidArgument("sequences must be rank 3 [B,L,S]"));
@@ -716,16 +754,18 @@ class PhyloLikelihoodRescaledOp : public OpKernel {
     const int64_t I = postorder_t.dim_size(0);
     const int64_t C = child_t.dim_size(1);
 
-    OP_REQUIRES(ctx, Bt == 1 || Bt == B,
-                errors::InvalidArgument("transition_probs batch must be 1 or B"));
-    OP_REQUIRES(ctx, Bf == 1 || Bf == B,
-                errors::InvalidArgument("frequencies batch must be 1 or B"));
+    OP_REQUIRES(ctx, probs_index_t.NumElements() == B,
+                errors::InvalidArgument("probs_index must have B elements"));
+    OP_REQUIRES(ctx, freqs_index_t.NumElements() == B,
+                errors::InvalidArgument("freqs_index must have B elements"));
     OP_REQUIRES(ctx, I == L - 1,
                 errors::InvalidArgument("postorder length must be L-1"));
 
-    std::vector<int64_t> postorder, child;
+    std::vector<int64_t> postorder, child, pidx, fidx;
     ReadIndices<Tindex>(postorder_t, &postorder);
     ReadIndices<Tindex>(child_t, &child);
+    ReadIndices<Tindex>(probs_index_t, &pidx);
+    ReadIndices<Tindex>(freqs_index_t, &fidx);
 
     Tensor* site_ll = nullptr;
     Tensor* node_partials = nullptr;
@@ -788,7 +828,8 @@ class PhyloLikelihoodRescaledOp : public OpKernel {
               for (int64_t s = 0; s < S; ++s) {
                 T* pvs = pv + s * kBlock;
                 for (int64_t w = 0; w < bw; ++w) {
-                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  const T* Prow =
+                      P + pidx[b0 + w] * M * S * S + cnode * S * S + s * S;
                   T g = T(0);
                   for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
                   pvs[w] *= g;
@@ -813,7 +854,7 @@ class PhyloLikelihoodRescaledOp : public OpKernel {
 
         for (int64_t w = 0; w < bw; ++w) {
           const int64_t b = b0 + w;
-          const int64_t bf = (Bf == 1) ? 0 : b;
+          const int64_t bf = fidx[b];
           const T* fr_b = fr + bf * S;
           T acc = T(0);
           for (int64_t s = 0; s < S; ++s)
@@ -834,8 +875,8 @@ class PhyloLikelihoodRescaledOp : public OpKernel {
     // Per-site path (default).
     auto work_scalar = [&](int64_t begin, int64_t end) {
       for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
+        const int64_t bt = pidx[b];
+        const int64_t bf = fidx[b];
         const T* seq_b = seq + b * L * S;
         const T* P_b = P + bt * M * S * S;
         const T* fr_b = fr + bf * S;
@@ -908,6 +949,8 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
     const Tensor& node_scales = ctx->input(4);
     const Tensor& postorder_t = ctx->input(5);
     const Tensor& child_t = ctx->input(6);
+    const Tensor& probs_index_t = ctx->input(7);
+    const Tensor& freqs_index_t = ctx->input(8);
 
     const int64_t B = grad_ll_t.dim_size(0);
     const int64_t Bt = probs.dim_size(0);
@@ -918,9 +961,11 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
     const int64_t I = postorder_t.dim_size(0);
     const int64_t C = child_t.dim_size(1);
 
-    std::vector<int64_t> postorder, child;
+    std::vector<int64_t> postorder, child, pidx, fidx;
     ReadIndices<Tindex>(postorder_t, &postorder);
     ReadIndices<Tindex>(child_t, &child);
+    ReadIndices<Tindex>(probs_index_t, &pidx);
+    ReadIndices<Tindex>(freqs_index_t, &fidx);
 
     Tensor* grad_P_t = nullptr;
     Tensor* grad_F_t = nullptr;
@@ -939,8 +984,10 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
     for (int64_t k = 0; k < Bf * S; ++k) gF[k] = T(0);
 
     const int64_t root = postorder[I - 1];
-    const bool reduceP = (Bt == 1) && (B > 1);
-    const bool reduceF = (Bf == 1) && (B > 1);
+    // See PhyloLikelihoodGradOp: reduce when a probs/freqs set is shared by more
+    // than one batch element (Bt < B / Bf < B).
+    const bool reduceP = (Bt < B);
+    const bool reduceF = (Bf < B);
 
     mutex mu;
 
@@ -951,8 +998,8 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
       std::vector<T> gmat(C * S * kBlock);
       std::vector<T> sib(C * S * kBlock);
       std::vector<T> wrow(S * kBlock);
-      std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
-      std::vector<T> localF(reduceF ? S : 0, T(0));
+      std::vector<T> localP(reduceP ? Bt * M * S * S : 0, T(0));
+      std::vector<T> localF(reduceF ? Bf * S : 0, T(0));
 
       for (int64_t b0 = begin; b0 < end; b0 += kBlock) {
         const int64_t bw = std::min<int64_t>(kBlock, end - b0);
@@ -969,14 +1016,14 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
         // logL = log(Lhat) + sum log scale. Seed with d logL / d phat_root.
         for (int64_t w = 0; w < bw; ++w) {
           const int64_t b = b0 + w;
-          const int64_t bf = (Bf == 1) ? 0 : b;
+          const int64_t bf = fidx[b];
           const T* fr_b = fr + bf * S;
           const T dll = grad_ll[b];
           T Lhat = T(0);
           for (int64_t s = 0; s < S; ++s)
             Lhat += fr_b[s] * partsc[(root * S + s) * kBlock + w];
           const T invLhat = T(1) / Lhat;
-          T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+          T* gF_b = (reduceF ? localF.data() : gF) + bf * S;
           for (int64_t s = 0; s < S; ++s) {
             const T prs = partsc[(root * S + s) * kBlock + w];
             bar[(root * S + s) * kBlock + w] = dll * fr_b[s] * invLhat;
@@ -1013,7 +1060,8 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
               for (int64_t s = 0; s < S; ++s) {
                 T* gms = gm + s * kBlock;
                 for (int64_t w = 0; w < bw; ++w) {
-                  const T* Prow = P + (b0 + w) * M * S * S + cnode * S * S + s * S;
+                  const T* Prow =
+                      P + pidx[b0 + w] * M * S * S + cnode * S * S + s * S;
                   T g = T(0);
                   for (int64_t j = 0; j < S; ++j) g += Prow[j] * pc[j * kBlock + w];
                   gms[w] = g;
@@ -1064,7 +1112,8 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
               }
             } else {
               for (int64_t w = 0; w < bw; ++w) {
-                T* gPc = gP + (b0 + w) * M * S * S + cnode * S * S;
+                T* gPc = (reduceP ? localP.data() : gP) +
+                         pidx[b0 + w] * M * S * S + cnode * S * S;
                 for (int64_t s = 0; s < S; ++s) {
                   const T wsw = wrow[s * kBlock + w];
                   T* gRow = gPc + s * S;
@@ -1087,7 +1136,7 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
               }
             } else {
               for (int64_t w = 0; w < bw; ++w) {
-                const T* Pc = P + (b0 + w) * M * S * S + cnode * S * S;
+                const T* Pc = P + pidx[b0 + w] * M * S * S + cnode * S * S;
                 for (int64_t j = 0; j < S; ++j) {
                   T acc = T(0);
                   for (int64_t s = 0; s < S; ++s) acc += wrow[s * kBlock + w] * Pc[s * S + j];
@@ -1102,9 +1151,9 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
       if (reduceP || reduceF) {
         mutex_lock l(mu);
         if (reduceP)
-          for (int64_t k = 0; k < M * S * S; ++k) gP[k] += localP[k];
+          for (int64_t k = 0; k < Bt * M * S * S; ++k) gP[k] += localP[k];
         if (reduceF)
-          for (int64_t k = 0; k < S; ++k) gF[k] += localF[k];
+          for (int64_t k = 0; k < Bf * S; ++k) gF[k] += localF[k];
       }
     };
 
@@ -1114,20 +1163,20 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
       std::vector<T> gmat(C * S);
       std::vector<T> sib(C * S);
       std::vector<T> w(S);
-      std::vector<T> localP(reduceP ? M * S * S : 0, T(0));
-      std::vector<T> localF(reduceF ? S : 0, T(0));
+      std::vector<T> localP(reduceP ? Bt * M * S * S : 0, T(0));
+      std::vector<T> localF(reduceF ? Bf * S : 0, T(0));
 
       for (int64_t b = begin; b < end; ++b) {
-        const int64_t bt = (Bt == 1) ? 0 : b;
-        const int64_t bf = (Bf == 1) ? 0 : b;
+        const int64_t bt = pidx[b];
+        const int64_t bf = fidx[b];
         const T* P_b = P + bt * M * S * S;
         const T* fr_b = fr + bf * S;
         const T* part_b = part + b * Nn * S;
         const T* scales_b = scales + b * Nn;
         const T dll = grad_ll[b];
 
-        T* gP_b = reduceP ? localP.data() : (gP + bt * M * S * S);
-        T* gF_b = reduceF ? localF.data() : (gF + bf * S);
+        T* gP_b = (reduceP ? localP.data() : gP) + bt * M * S * S;
+        T* gF_b = (reduceF ? localF.data() : gF) + bf * S;
 
         std::fill(bar.begin(), bar.end(), T(0));
 
@@ -1200,9 +1249,9 @@ class PhyloLikelihoodRescaledGradOp : public OpKernel {
       if (reduceP || reduceF) {
         mutex_lock l(mu);
         if (reduceP)
-          for (int64_t k = 0; k < M * S * S; ++k) gP[k] += localP[k];
+          for (int64_t k = 0; k < Bt * M * S * S; ++k) gP[k] += localP[k];
         if (reduceF)
-          for (int64_t k = 0; k < S; ++k) gF[k] += localF[k];
+          for (int64_t k = 0; k < Bf * S; ++k) gF[k] += localF[k];
       }
     };
 

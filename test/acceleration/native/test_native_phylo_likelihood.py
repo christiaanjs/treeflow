@@ -276,8 +276,198 @@ def test_native_batched_transition_probs(small_problem):
 
 
 # ---------------------------------------------------------------------------
+# Shared sub-batch transition probabilities (e.g. discrete rate categories):
+# Bt = M < B, so the op gathers M matrix sets instead of tiling to sites * M.
+# ---------------------------------------------------------------------------
+
+
+def _rate_category_problem(small_problem, n_categories, seed=11):
+    """Mimic a rate-category mixture: probs vary only across the categories.
+
+    Returns broadcast-shaped tensors with batch ``[sites, M]`` where the
+    transition matrices have batch ``[1, M]`` (one set per category, shared
+    across sites) -- the pattern produced by ``DiscreteParameterMixture`` over
+    ``LeafCTMC``.
+    """
+    p = small_problem
+    sites = p["site_count"]
+    node_count = 2 * p["leaf_count"] - 1
+    state = p["state_count"]
+    dtype = p["sequences"].dtype
+    rng = np.random.default_rng(seed)
+
+    raw = rng.uniform(0.1, 1.0, size=(1, n_categories, node_count, state, state))
+    raw = raw / raw.sum(axis=-1, keepdims=True)
+    probs = tf.constant(raw, dtype=dtype)
+
+    # Leaf data is identical across categories; full batch is [sites, M].
+    seq = tf.broadcast_to(
+        tf.expand_dims(p["sequences"], -3),
+        tf.concat([[sites, n_categories], tf.shape(p["sequences"])[-2:]], axis=0),
+    )
+    full_batch = tf.constant([sites, n_categories])
+    return p, seq, probs, p["frequencies"], full_batch
+
+
+def test_native_shared_batch_matches_reference(small_problem):
+    p, seq, probs, freqs, full_batch = _rate_category_problem(small_problem, 3)
+    args = (seq, probs, freqs, p["postorder_node_indices"], p["node_child_indices"])
+
+    nat = native_phylogenetic_likelihood(*args)
+    ref = reference(*args, batch_shape=full_batch)
+    assert tuple(nat.shape) == tuple(full_batch.numpy())
+    assert_allclose(nat.numpy(), ref.numpy(), rtol=1e-11, atol=1e-11)
+
+
+def test_native_shared_batch_gradient_matches_reference(small_problem):
+    p, seq, probs, freqs, full_batch = _rate_category_problem(small_problem, 3)
+
+    def grads(fn, use_batch_shape):
+        probs_v = tf.Variable(probs)
+        freqs_v = tf.Variable(freqs)
+        with tf.GradientTape() as tape:
+            kwargs = dict(batch_shape=full_batch) if use_batch_shape else {}
+            out = fn(
+                seq, probs_v, freqs_v,
+                p["postorder_node_indices"], p["node_child_indices"], **kwargs,
+            )
+            loss = tf.reduce_sum(tf.math.log(out))
+        return tape.gradient(loss, [probs_v, freqs_v])
+
+    ref_g = grads(reference, use_batch_shape=True)
+    nat_g = grads(native_phylogenetic_likelihood, use_batch_shape=False)
+    for r, n in zip(ref_g, nat_g):
+        assert n is not None
+        assert n.shape == r.shape
+        assert_allclose(n.numpy(), r.numpy(), rtol=1e-9, atol=1e-9)
+
+
+def test_native_shared_batch_equals_tiled(small_problem):
+    """Gathering Bt = M sets gives the same result as explicitly tiling to B."""
+    p, seq, probs, freqs, full_batch = _rate_category_problem(small_problem, 4)
+    sites, M = int(full_batch[0]), int(full_batch[1])
+
+    shared = native_phylogenetic_likelihood(
+        seq, probs, freqs, p["postorder_node_indices"], p["node_child_indices"]
+    )
+    # Explicitly tile to a distinct matrix set per (site, category) -> Bt == B.
+    tiled_probs = tf.broadcast_to(
+        probs, tf.concat([[sites, M], tf.shape(probs)[-3:]], axis=0)
+    )
+    tiled = native_phylogenetic_likelihood(
+        seq, tiled_probs, freqs,
+        p["postorder_node_indices"], p["node_child_indices"],
+    )
+    assert_allclose(shared.numpy(), tiled.numpy(), rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("block_size", [2, 8])
+def test_native_shared_batch_block_size_matches(small_problem, block_size):
+    """Site-blocking is performance-only for the shared-batch path too."""
+    p, seq, probs, freqs, _ = _rate_category_problem(small_problem, 3)
+    idx = (p["postorder_node_indices"], p["node_child_indices"])
+
+    base = native_phylogenetic_likelihood(seq, probs, freqs, *idx, block_size=1)
+    blocked = native_phylogenetic_likelihood(
+        seq, probs, freqs, *idx, block_size=block_size
+    )
+    assert_allclose(blocked.numpy(), base.numpy(), rtol=0, atol=0)
+
+    def grad(block):
+        probs_v = tf.Variable(probs)
+        with tf.GradientTape() as tape:
+            loss = tf.reduce_sum(
+                tf.math.log(
+                    native_phylogenetic_likelihood(
+                        seq, probs_v, freqs, *idx, block_size=block
+                    )
+                )
+            )
+        return tape.gradient(loss, probs_v)
+
+    assert_allclose(grad(block_size).numpy(), grad(1).numpy(), rtol=1e-12, atol=1e-12)
+
+
+def test_native_shared_batch_rescaled_gradient_matches(small_problem):
+    p, seq, probs, freqs, full_batch = _rate_category_problem(small_problem, 3)
+
+    def grads(fn, log_output, use_batch_shape):
+        probs_v = tf.Variable(probs)
+        freqs_v = tf.Variable(freqs)
+        with tf.GradientTape() as tape:
+            kwargs = dict(batch_shape=full_batch) if use_batch_shape else {}
+            out = fn(
+                seq, probs_v, freqs_v,
+                p["postorder_node_indices"], p["node_child_indices"], **kwargs,
+            )
+            ll = out if log_output else tf.math.log(out)
+            loss = tf.reduce_sum(ll)
+        return tape.gradient(loss, [probs_v, freqs_v])
+
+    ref_g = grads(native_phylogenetic_likelihood, log_output=False, use_batch_shape=False)
+    nat_g = grads(
+        native_phylogenetic_log_likelihood_rescaled, log_output=True, use_batch_shape=False
+    )
+    for r, n in zip(ref_g, nat_g):
+        assert_allclose(n.numpy(), r.numpy(), rtol=1e-8, atol=1e-9)
+
+
+# ---------------------------------------------------------------------------
 # Integration through the LeafCTMC distribution
 # ---------------------------------------------------------------------------
+
+
+def test_leaf_ctmc_rate_category_mixture_native_matches_reference(
+    hello_tensor_tree, hello_alignment, hky_params
+):
+    """Native vs reference for a discrete-Gamma rate-category mixture.
+
+    Exercises the full path where ``DiscreteParameterMixture`` introduces a
+    category batch dimension, so the transition matrices are shared across
+    sites (gathered as Bt = M sets) rather than tiled to sites * M.
+    """
+    from tensorflow_probability.python.distributions import Sample
+    from treeflow.distributions.leaf_ctmc import LeafCTMC
+    from treeflow.distributions.discrete_parameter_mixture import (
+        DiscreteParameterMixture,
+    )
+    from treeflow.evolution.substitution.probabilities import (
+        get_transition_probabilities_tree,
+    )
+    from treeflow.model.phylo_model import (
+        get_discrete_gamma_site_rate_distribution,
+    )
+
+    dtype = hky_params["frequencies"].dtype
+    site_rates = get_discrete_gamma_site_rate_distribution(
+        category_count=4, site_gamma_shape=tf.constant(0.7, dtype=dtype)
+    )
+
+    def make_dist(use_native):
+        transition_probs_tree = get_transition_probabilities_tree(
+            hello_tensor_tree.get_unrooted_tree(),
+            HKY(),
+            rate_categories=site_rates.normalised_support,
+            **hky_params,
+        )
+        return Sample(
+            DiscreteParameterMixture(
+                site_rates,
+                LeafCTMC(
+                    transition_probs_tree,
+                    tf.expand_dims(hky_params["frequencies"], -2),
+                    use_native=use_native,
+                ),
+            ),
+            sample_shape=hello_alignment.site_count,
+        )
+
+    sequences = hello_alignment.get_encoded_sequence_tensor(
+        hello_tensor_tree.taxon_set
+    )
+    native_val = make_dist(use_native=True).log_prob(sequences)
+    ref_val = make_dist(use_native=False).log_prob(sequences)
+    assert_allclose(native_val.numpy(), ref_val.numpy(), rtol=1e-10, atol=1e-10)
 
 
 @pytest.mark.parametrize("function_mode", [False, True])

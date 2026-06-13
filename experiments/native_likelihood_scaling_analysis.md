@@ -203,3 +203,92 @@ plausibly on machines with much higher core counts and memory bandwidth (where
 the partials round-trip is a larger share of the time), or for large state
 spaces / float32 (which change the compute-vs-bandwidth balance). Re-running
 `native_block_size_benchmark.ipynb` on the target hardware is the way to decide.
+
+## Follow-up 2: the rate-category mixture tiling (fixed)
+
+The biggest *practical* inefficiency turned out not to be the inner kernel at all,
+but how the batch was being assembled upstream for a **discrete rate-category
+mixture** (discrete-Gamma / Weibull site rates — the common case in real
+analyses).
+
+### The problem
+
+With `M` rate categories, `get_sequence_distribution` wraps `LeafCTMC` in a
+`DiscreteParameterMixture`, which adds a category batch dimension. The transition
+matrices then have batch shape `[…, M]` — they vary only across categories, *not*
+across sites. But `_canonicalize_batch` flattened the full batch to `B = sites · M`
+and **tiled the transition matrices to `[sites · M, node, S, S]`**, replicating
+each category's matrices once per site. For 128 taxa × 2000 sites × 4 categories
+that is a **261 MB** transition tensor (and the gradient then had to reduce a
+261 MB `grad_probs` back down via an autodiff broadcast-sum). The op was forced
+onto its slowest path (`Bt == B`: a distinct per-element matrix set, no broadcast
+reuse).
+
+### The fix: gather indices instead of tiling
+
+The op now takes, per (flattened) batch element `b`, a **gather index** into the
+transition-probs / frequencies batch (`probs_index[b]`, `freqs_index[b]`), and
+reads `transition_probs[probs_index[b]]` directly. The transition matrices stay
+at their own size `Bt` (= `M` for a rate mixture, `1` for the common broadcast
+case, `B` for genuinely per-element), and `_canonicalize_batch` builds the index
+with a cheap broadcast of `arange(Bt)` — `B` ints (tens of KB) instead of a
+multi-hundred-MB tile. The backward op scatters the gradient back into the `Bt`
+sets, reducing across the elements that share a set (thread-local accumulators +
+a final locked reduction, exactly as the old `Bt == 1` broadcast path did, now
+generalised to any `Bt < B`).
+
+This is deliberately a **general** mechanism, not a rate-mixture special case: the
+gather index expresses *any* broadcasting pattern (leading sample dims,
+interleaved VI parameter-sample / category / site dims, …), so it also covers the
+VI case where parameter draws and categories are both batch dims. `Bt == 1`
+(broadcast) and `Bt == B` (per-site) remain fast special paths in the kernel; the
+new middle ground (`1 < Bt < B`) is what the rate mixture needs.
+
+### Result
+
+Value + gradient, double precision, 4 states, 4-core container (medians):
+
+| taxa × sites × cats | before (tiled, `Bt = B`) | after (gather, `Bt = M`) | speedup | probs tile removed |
+|---|---:|---:|---:|---:|
+| 64 × 1000 × 4  | 35.8 ms | 14.6 ms | 2.5× | 65 MB |
+| 128 × 2000 × 4 | 125.8 ms | 44.3 ms | 2.8× | 261 MB |
+| 64 × 1000 × 8  | 76.9 ms | 25.1 ms | 3.1× | 130 MB |
+
+Correctness is covered by `test_native_shared_batch_*` (value, gradient, and
+rescaled gradient vs. the reference; plus a bit-identical check against the
+explicitly tiled `Bt == B` path) and an end-to-end discrete-Gamma mixture test
+through `LeafCTMC` / `DiscreteParameterMixture`.
+
+### Should we instead specialise a kernel?
+
+Two specialised kernels were considered; the gather-index fix above makes the
+first unnecessary and clarifies when the second is worth it.
+
+1. **A dedicated rate-mixture kernel** (an explicit category axis, looping
+   categories while reusing each site's transposed leaf partials). This would
+   additionally avoid replicating the *leaf data* across categories (the
+   remaining `[sites · M, L, S]` broadcast that happens one layer up, in
+   `LeafCTMC._broadcast_for_likelihood`). But leaf data is `O(sites · M · L · S)`
+   — far smaller than the transition tile we just eliminated, and read
+   sequentially — so the payoff is small and it bakes the mixture structure into
+   the op. **Not pursued:** the general gather index already removes the dominant
+   cost with no special-casing.
+
+2. **An eigendecomposition kernel that never materialises `P`.** This is the
+   genuinely different axis and the recommended next step if more is needed. For
+   an `EigendecompositionSubstitutionModel` the transition matrices are
+   `P(t) = U · diag(exp(λ·t)) · U⁻¹`. Today we materialise every `P` (shape
+   `[…, node, S, S]`, for a rate mixture `[M, node, S, S]`) and differentiate
+   w.r.t. those entries. A kernel taking `U, U⁻¹, λ` and the (rate-scaled) branch
+   lengths could form each `P` on the fly per node/category, so:
+   - the `[…, node, S, S]` transition tensor is never built or stored (a real
+     bandwidth win at large `node · M`), and
+   - the gradient flows directly to **branch lengths and the rate matrix**, which
+     is what callers actually optimise — removing the separate
+     `get_transition_probabilities` matrix-exp + its backward graph.
+
+   The trade-off is a larger, substitution-model-aware kernel and recomputing
+   `exp(λ·t)` (cheap: `S` exponentials per branch) inside both the forward and
+   backward passes. This is worth doing when the transition-matrix construction
+   /storage — not the pruning traversal — is the bottleneck (large `S`, many
+   categories), and is left as future work.
