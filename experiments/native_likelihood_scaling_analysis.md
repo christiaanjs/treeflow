@@ -133,3 +133,73 @@ SIMD-vectorised and compute-bound, so the native op's per-site throughput
 advantage is preserved as the site count grows. The speedup should stay roughly
 flat (or keep climbing) with sites instead of eroding — while the taxa-scaling
 advantage is untouched.
+
+## Follow-up: what we actually tried, and the results
+
+All timings below are medians on a 4-core Xeon container, double precision,
+nucleotide data (S=4) — the regime where the original speedup eroded with sites.
+
+### 1. Site-blocked SIMD (shipped, opt-in via `block_size`)
+
+Implemented exactly as proposed: process `block_size` sites at a time in a
+transposed `[node, state, block]` scratch so the per-node matrix products become
+AXPY loops over the contiguous site dimension. Forward stays bit-identical.
+
+Result: **performance-neutral, occasionally a slight gradient win, never a clear
+forward win.** Representative value+grad medians (256 taxa × 4000 sites):
+`block_size` 1 → 41.5 ms, 8 → 31.7, 16 → 31.1, 32 → 30.4, 64 → 36.6; the forward
+alone was ~flat (≈10 ms) across block sizes and if anything slightly *worse* than
+the direct-to-buffer per-site path. Even at codon-scale state counts (S=60),
+where the S² matrix work should dominate, blocking moved nothing measurable.
+
+Conclusion: at these sizes the kernel is **memory-movement bound**, not compute
+bound, so vectorising the arithmetic doesn't change throughput — the compiler
+was already vectorising the scalar `sum_j` reduction well enough, and the extra
+transpose traffic offsets any gain. It is therefore shipped **off by default**
+(`block_size=1` = the original per-site traversal) and available to opt into on
+hardware/state-counts where compute dominates. See
+`native_block_size_benchmark.ipynb`.
+
+### 2. Forward-mode (JVP) for the gradient — not applicable
+
+A JVP (forward-mode AD) computes one directional derivative `(∂L/∂P)·v` per
+pass. To assemble the full gradient over all `Bt·M·S·S` entries of the
+transition matrices you would need that many JVP passes. Reverse-mode (VJP) gets
+the entire gradient of the scalar log-likelihood in **one** backward sweep, which
+is why it is used. Forward-mode wins only when outputs ≫ inputs — the opposite of
+our case (one scalar loss, many parameters). So JVP does not reduce gradient cost
+here; it would be orders of magnitude worse.
+
+### 3. Recompute / checkpointing the partials (prototyped, neutral)
+
+The partials buffer exists only because reverse-mode needs the forward
+intermediates. The classic lever is to **not store `[B, Nn, S]`** at all:
+recompute the forward partials block-by-block in cache inside the backward pass
+(plus a forward-only value op that skips the partials write). That removes the
+~262 MB write + read round-trip of the partials tensor, at the cost of one extra
+in-cache forward traversal.
+
+Prototyped as two ops (`PhyloLikelihoodValue` + `PhyloLikelihoodValueGrad`) wired
+with `tf.custom_gradient`. Correctness was exact (gradient matched the
+save-partials path to ~1e-14). Performance:
+
+| taxa × sites | save-partials v+grad | recompute v+grad | speedup |
+|---|---|---|---|
+| 128 × 2000  (block=16) |   7.2 ms |   7.3 ms | 0.99× |
+| 256 × 4000  (block=16) |  27.4 ms |  27.5 ms | 1.00× |
+| 512 × 8000  (block=16) | 109.8 ms | 108.2 ms | 1.01× |
+
+i.e. **neutral**: the extra forward recompute costs about as much as the partials
+I/O it eliminates on this memory subsystem (and at `block_size=1` it was a net
+loss, ~0.75×). The prototype was therefore not merged.
+
+### Where this leaves us
+
+On the tested hardware the original scalar kernel is already close to optimal for
+the memory-bound, low-state regime, and none of the three levers moved the needle
+there. The remaining ideas most likely to help are the ones that genuinely cut
+DRAM traffic *and* whose recompute/overhead is cheap relative to it — most
+plausibly on machines with much higher core counts and memory bandwidth (where
+the partials round-trip is a larger share of the time), or for large state
+spaces / float32 (which change the compute-vs-bandwidth balance). Re-running
+`native_block_size_benchmark.ipynb` on the target hardware is the way to decide.
