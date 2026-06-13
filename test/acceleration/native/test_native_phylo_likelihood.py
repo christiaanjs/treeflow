@@ -388,6 +388,59 @@ def test_native_shared_batch_block_size_matches(small_problem, block_size):
     assert_allclose(grad(block_size).numpy(), grad(1).numpy(), rtol=1e-12, atol=1e-12)
 
 
+def test_native_leading_batch_before_sites(small_problem):
+    """Broadcast (site) axis in the *middle* of the batch, e.g. VI over a rate
+    mixture: params drawn per-sample and per-category but shared across sites.
+
+    Full batch is [n_samples, sites, M] while the transition matrices have batch
+    [n_samples, 1, M] -- so the op must gather Bt = n_samples * M sets (not tile
+    to n_samples * sites * M). A trailing-stride (b % Bt) shortcut would read the
+    wrong matrices here; the dimension-aware gather index must get it right.
+    """
+    p = small_problem
+    sites = p["site_count"]
+    node_count = 2 * p["leaf_count"] - 1
+    state = p["state_count"]
+    leaf = p["leaf_count"]
+    dtype = p["sequences"].dtype
+    rng = np.random.default_rng(5)
+    n_samples, M = 5, 3
+
+    # Transition matrices vary per sample and per category, broadcast over sites.
+    raw = rng.uniform(0.1, 1.0, size=(n_samples, 1, M, node_count, state, state))
+    raw = raw / raw.sum(axis=-1, keepdims=True)
+    probs = tf.constant(raw, dtype=dtype)
+
+    # Leaf data varies per site only; broadcast to the full [n_samples, sites, M].
+    seq = tf.broadcast_to(
+        p["sequences"][None, :, None],  # [1, sites, 1, leaf, state]
+        [n_samples, sites, M, leaf, state],
+    )
+    freqs = p["frequencies"]
+    full_batch = tf.constant([n_samples, sites, M])
+    idx = (p["postorder_node_indices"], p["node_child_indices"])
+
+    nat = native_phylogenetic_likelihood(seq, probs, freqs, *idx)
+    ref = reference(seq, probs, freqs, *idx, batch_shape=full_batch)
+    assert tuple(nat.shape) == (n_samples, sites, M)
+    assert_allclose(nat.numpy(), ref.numpy(), rtol=1e-11, atol=1e-11)
+
+    def grad(fn, use_batch_shape):
+        probs_v = tf.Variable(probs)
+        with tf.GradientTape() as tape:
+            kwargs = dict(batch_shape=full_batch) if use_batch_shape else {}
+            loss = tf.reduce_sum(
+                tf.math.log(fn(seq, probs_v, freqs, *idx, **kwargs))
+            )
+        return tape.gradient(loss, probs_v)
+
+    nat_g = grad(native_phylogenetic_likelihood, False)
+    ref_g = grad(reference, True)
+    # Gradient reduces back to the probs' own (sites-broadcast) shape.
+    assert tuple(nat_g.shape) == tuple(probs.shape)
+    assert_allclose(nat_g.numpy(), ref_g.numpy(), rtol=1e-9, atol=1e-9)
+
+
 def test_native_shared_batch_rescaled_gradient_matches(small_problem):
     p, seq, probs, freqs, full_batch = _rate_category_problem(small_problem, 3)
 

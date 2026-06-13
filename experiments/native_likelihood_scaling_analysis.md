@@ -244,6 +244,18 @@ VI case where parameter draws and categories are both batch dims. `Bt == 1`
 (broadcast) and `Bt == B` (per-site) remain fast special paths in the kernel; the
 new middle ground (`1 < Bt < B`) is what the rate mixture needs.
 
+Crucially the index is built with a dimension-aware `broadcast_to`, **not** a
+trailing-stride `b % Bt` shortcut, so it is correct even when the broadcast
+(site) axis sits *in the middle* of the batch. This is the carnivores-notebook
+VI case: substitution parameters are drawn per variational sample and the rate
+matrices vary per sample × category but are shared across sites, giving a full
+batch `[n_samples, sites, M]` with a transition batch `[n_samples, 1, M]`. The op
+gathers `Bt = n_samples · M` sets (not `n_samples · sites · M`), and the gradient
+reduces straight back into the sites-broadcast `[n_samples, 1, M, …]` shape. A
+`b % Bt` stride would have read the wrong matrices here; the regression test
+`test_native_leading_batch_before_sites` pins value and gradient against the
+reference for exactly this layout.
+
 ### Result
 
 Value + gradient, double precision, 4 states, 4-core container (medians):
