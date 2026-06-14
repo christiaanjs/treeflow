@@ -34,7 +34,7 @@ class NodeHeightRatioBijector(Bijector):
         anchor_heights: tp.Optional[tf.Tensor] = None,
         name="NodeHeightRatioBijector",
         validate_args=False,
-        use_native=False,
+        use_native="auto",
     ):
         parameters = locals()
         self.topology = topology
@@ -43,10 +43,14 @@ class NodeHeightRatioBijector(Bijector):
             self.topology.parent_indices[self.taxon_count :] - self.taxon_count
         )
 
-        # Resolve the forward-transform engine. The default is the pure-
-        # TensorFlow traversal; the native C++ op is opt-in (``True``) or
-        # auto-detected (``"auto"``). Only the forward transform is accelerated;
-        # the inverse and log-det-Jacobian remain pure TensorFlow.
+        # Resolve the forward-transform engine. The default ``"auto"`` uses the
+        # native C++ op when it is built and falls back to the pure-TensorFlow
+        # traversal otherwise; ``True``/``False`` force the choice. Only the
+        # forward transform is accelerated; the inverse and log-det-Jacobian
+        # remain pure TensorFlow. Note the native op registers only a first-order
+        # gradient, so code that needs higher-order derivatives through the
+        # forward transform (e.g. differentiating its log-det-Jacobian) should
+        # pass ``use_native=False``.
         self.use_native = use_native
         if use_native == "auto":
             self._use_native = native_ratio_transform_available()
@@ -126,7 +130,7 @@ class NodeHeightRatioChainBijector(Chain):
         anchor_heights: tp.Optional[tf.Tensor] = None,
         name="NodeHeightRatioChainBijector",
         validate_args=False,
-        use_native=False,
+        use_native="auto",
     ):
         parameters = locals()
         height_bijector = NodeHeightRatioBijector(

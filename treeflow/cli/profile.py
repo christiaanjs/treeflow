@@ -251,7 +251,11 @@ def profile_dataset(
     # likelihood-engine independent, but it has its own native C++ op, so time
     # both the pure-TensorFlow and (when built) the native forward transform.
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
-    ratio_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
+    # Pin the pure-TensorFlow engine for the baseline (the bijector now defaults
+    # to "auto", which would otherwise pick the native op when it is built).
+    ratio_bijector = NodeHeightRatioBijector(
+        tree.topology, anchor_heights, use_native=False
+    )
     ratios = tf.identity(ratio_bijector.inverse(node_heights))
 
     def make_ratio_fn(bijector):
