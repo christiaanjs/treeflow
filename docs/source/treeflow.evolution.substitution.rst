@@ -12,6 +12,7 @@ Subpackages
 .. toctree::
    :maxdepth: 1
 
+   treeflow.evolution.substitution.discrete_trait
    treeflow.evolution.substitution.nucleotide
 
 Submodules

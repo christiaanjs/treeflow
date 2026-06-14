@@ -13,6 +13,8 @@ Submodules
    :maxdepth: 1
 
    treeflow.cli.benchmark
+   treeflow.cli.dta_hmc
+   treeflow.cli.hmc
    treeflow.cli.inference_common
    treeflow.cli.ml
    treeflow.cli.vi

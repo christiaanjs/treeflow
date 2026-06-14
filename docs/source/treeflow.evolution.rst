@@ -22,3 +22,4 @@ Submodules
    :maxdepth: 1
 
    treeflow.evolution.seqio
+   treeflow.evolution.traitio
