@@ -15,10 +15,18 @@ CXX="${CXX:-g++}"
 read -r -a TF_CFLAGS <<<"$(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))')"
 read -r -a TF_LFLAGS <<<"$(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))')"
 
+# Enable AVX2 on x86_64 only. -mavx2 is an x86 flag and g++ rejects it on
+# other architectures (e.g. aarch64/arm64), which breaks Docker builds there.
+# We deliberately avoid -march=native: enabling AVX512-FP16 trips a bug in the
+# Eigen headers bundled with TensorFlow. -O3 with -mavx2 is plenty for this
+# kernel on x86; on ARM, -O3 alone already autovectorizes with NEON.
+ARCH_FLAGS=()
+case "$(uname -m)" in
+  x86_64 | amd64) ARCH_FLAGS+=(-mavx2) ;;
+esac
+
 echo "Building ${OUT}"
-# Note: avoid -march=native; enabling AVX512-FP16 trips a bug in the Eigen
-# headers bundled with TensorFlow. -O3 with -mavx2 is plenty for this kernel.
-"${CXX}" -std=c++17 -shared -fPIC -O3 -mavx2 \
+"${CXX}" -std=c++17 -shared -fPIC -O3 "${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}" \
   "${SRC}" -o "${OUT}" \
   "${TF_CFLAGS[@]}" "${TF_LFLAGS[@]}"
 
