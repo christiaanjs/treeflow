@@ -18,7 +18,7 @@ read -r -a TF_LFLAGS <<<"$(python -c 'import tensorflow as tf; print(" ".join(tf
 echo "Building ${OUT}"
 # Note: avoid -march=native; enabling AVX512-FP16 trips a bug in the Eigen
 # headers bundled with TensorFlow. -O3 with -mavx2 is plenty for this kernel.
-"${CXX}" -std=c++17 -shared -fPIC -O3 \
+"${CXX}" -std=c++17 -shared -fPIC -O3 -mavx2 \
   "${SRC}" -o "${OUT}" \
   "${TF_CFLAGS[@]}" "${TF_LFLAGS[@]}"
 

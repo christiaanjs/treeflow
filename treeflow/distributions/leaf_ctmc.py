@@ -52,8 +52,12 @@ class LeafCTMC(Distribution):
         self.use_native = use_native
         if use_native == "auto":
             self._use_native = native_acceleration_available()
+        elif isinstance(use_native, bool):
+            self._use_native = use_native
         else:
-            self._use_native = bool(use_native)
+            raise ValueError(
+                f"use_native must be True, False, or 'auto'; got {use_native!r}"
+            )
         self.rescaling = rescaling
         # Site-blocking width for the native ops (SIMD); 1 = per-site (default).
         self.block_size = block_size
