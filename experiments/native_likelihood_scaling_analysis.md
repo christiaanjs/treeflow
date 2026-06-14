@@ -304,3 +304,90 @@ first unnecessary and clarifies when the second is worth it.
    backward passes. This is worth doing when the transition-matrix construction
    /storage — not the pruning traversal — is the bottleneck (large `S`, many
    categories), and is left as future work.
+
+---
+
+## Follow-up 3: whole-step profiling and the new bottleneck
+
+The work above accelerates the tree likelihood. To see what that buys *in an
+inference step* — and what becomes the bottleneck once the likelihood is fast —
+a profiling CLI (`treeflow_profile`, `treeflow/cli/profile.py`) was added. It
+times one value-and-gradient evaluation of the model's unnormalised log density
+(the dominant per-iteration cost of both ADVI and HMC) and decomposes it into:
+
+* `likelihood` — the Felsenstein likelihood subsystem (transition-probability
+  construction + pruning); measured for the native and pure-TF engines.
+* `prior` — the tree prior plus all parameter priors.
+* `overhead` — fixed per-step cost: rebuilding the tree from node heights,
+  structure packing, and autodiff bookkeeping.
+* `ratio_transform` — the node-height ratio bijector (forward + log-det-Jacobian)
+  that reparameterises node heights; part of the reparameterisation, reported
+  alongside the density.
+
+The three density components are obtained as nested marginal differences of
+timings (`likelihood = full − prior_only`, `prior = prior_only − overhead`), so
+they are additive (`likelihood + prior + overhead = full`) and the shared
+per-call overhead is counted once. To support this cleanly,
+`phylo_model_to_joint_distribution` gained `use_native` (forwarded to `LeafCTMC`)
+and `include_likelihood` (build the prior-only joint).
+
+### Results (float64, coalescent / strict clock / JC, value+gradient, ms)
+
+Synthetic coalescent trees, 1000 sites; `real` is the WNV dataset (104 taxa,
+727 compressed patterns):
+
+| taxa | native like | tf like | native full | tf full | prior | overhead | ratio_transform | native like speedup |
+|-----:|------------:|--------:|------------:|--------:|------:|---------:|----------------:|--------------------:|
+|   32 |   2.6 |  16.2 |   3.5 |  18.2 | 0.46 | 0.39 |  3.2 |  7.1x |
+|   64 |   2.9 |  32.2 |   3.8 |  33.0 | 0.46 | 0.39 |  4.9 | 11.0x |
+|  104 |   3.1 |  46.6 |   4.2 |  47.7 | 0.69 | 0.42 |  9.0 | 14.9x |
+|  128 |   5.3 |  72.1 |   6.2 |  73.0 | 0.54 | 0.38 |  9.3 | 13.6x |
+|  256 |  10.3 | 158.9 |  11.3 | 159.9 | 0.65 | 0.40 | 22.5 | 15.5x |
+
+(Numbers are from a single CI-class CPU run; absolute values jitter ~10–20%, but
+the ratios are stable.)
+
+### Findings
+
+1. **The native likelihood is 7–16× faster** than pure TF and the gap widens
+   with size (~15× at ≥100 taxa). For the full target this is the difference
+   between 11 ms and 160 ms per iteration at 256 taxa — i.e. native acceleration
+   is the difference between a tractable and an intractable run at scale.
+   `use_native="auto"` already selects it whenever the op is built, so no caller
+   change is needed.
+
+2. **The node-height ratio transform is now the single largest per-iteration
+   cost for trees of ≥64 taxa.** Once the likelihood is native, the reparam
+   transform dominates: 4.9 ms vs 2.9 ms (64 taxa), 9.0 ms vs 3.1 ms (WNV),
+   22.5 ms vs 10.3 ms (256 taxa) — roughly **2× the native likelihood** at the
+   large end, and it grows at least linearly in taxa. `ratios_to_node_heights`
+   (`treeflow/traversal/ratio_transform.py`) is a sequential `TensorArray` loop
+   with a parent→child dependency chain: no vectorisation, and an equally
+   sequential backward pass. This is structurally the same problem the native
+   likelihood op solved.
+
+3. **Prior (~0.5–0.7 ms) and overhead (~0.4 ms) are small and roughly constant**
+   in taxa, so they are not worth optimising for these models.
+
+### Opportunities for continued improvement
+
+1. **Native node-height transform op (recommended next).** Give
+   `ratios_to_node_heights` and its gradient the same treatment as the
+   likelihood: a C++ op (or a parallel scan over the topology) that walks the
+   preorder once without a Python/`TensorArray` loop. This targets what is now
+   the largest non-likelihood cost and would compound with the likelihood work
+   for large trees.
+
+2. **Eigendecomposition transition-probability kernel** (see Follow-up 2). For
+   models with larger state spaces or many rate categories the
+   transition-matrix construction folded into `overhead`/likelihood grows; a
+   kernel that forms `P(t)` on the fly avoids materialising it.
+
+3. **Keep pure-TF for tiny problems only.** Below ~10 taxa the engines are within
+   a few hundred microseconds and the native dispatch overhead is not worth it;
+   `"auto"` handles this implicitly, but it is worth remembering when interpreting
+   small-dataset CLI timings.
+
+The profiler runs in CI (`.github/workflows/benchmark.yaml`) on pull requests
+and pushes to `main`/`release/**`, uploading the per-component CSV as an
+artifact so regressions in any component (not just the likelihood) are visible.
