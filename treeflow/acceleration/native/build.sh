@@ -12,16 +12,20 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# op basename -> output shared library name.
-declare -A OPS=(
-  [phylo_likelihood_op]="_phylo_likelihood_op.so"
-  [node_height_ratio_op]="_node_height_ratio_op.so"
-)
+ALL_OPS=(phylo_likelihood_op node_height_ratio_op)
+
+op_output() {
+  case "$1" in
+    phylo_likelihood_op)   echo "_phylo_likelihood_op.so" ;;
+    node_height_ratio_op)  echo "_node_height_ratio_op.so" ;;
+    *) echo "" ;;
+  esac
+}
 
 if [ "$#" -gt 0 ]; then
   TARGETS=("$@")
 else
-  TARGETS=("${!OPS[@]}")
+  TARGETS=("${ALL_OPS[@]}")
 fi
 
 CXX="${CXX:-g++}"
@@ -40,9 +44,9 @@ case "$(uname -m)" in
 esac
 
 for name in "${TARGETS[@]}"; do
-  out="${OPS[$name]:-}"
+  out="$(op_output "${name}")"
   if [ -z "${out}" ]; then
-    echo "Unknown op '${name}'. Known: ${!OPS[*]}" >&2
+    echo "Unknown op '${name}'. Known: ${ALL_OPS[*]}" >&2
     exit 1
   fi
   SRC="${HERE}/cc/${name}.cc"
