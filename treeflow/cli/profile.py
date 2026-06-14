@@ -54,6 +54,9 @@ from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioBijecto
 from treeflow.traversal.anchor_heights import get_anchor_heights
 from treeflow.cli.inference_common import EXAMPLE_PHYLO_MODEL_DICT
 from treeflow.acceleration.native import is_available as native_is_available
+from treeflow.acceleration.native import (
+    ratio_transform_is_available as native_ratio_is_available,
+)
 
 
 DTYPES = {"float32": tf.float32, "float64": tf.float64}
@@ -244,17 +247,32 @@ def profile_dataset(
 
     overhead_time = time_value_and_grad(overhead_fn, grad_args, replicates)
 
-    # Node-height ratio transform (reparameterisation), engine independent.
+    # Node-height ratio transform (reparameterisation). The transform itself is
+    # likelihood-engine independent, but it has its own native C++ op, so time
+    # both the pure-TensorFlow and (when built) the native forward transform.
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
     ratio_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
     ratios = tf.identity(ratio_bijector.inverse(node_heights))
 
-    def ratio_fn(r):
-        return tf.reduce_sum(
-            ratio_bijector.forward(r)
-        ) + ratio_bijector.forward_log_det_jacobian(r, event_ndims=1)
+    def make_ratio_fn(bijector):
+        def ratio_fn(r):
+            return tf.reduce_sum(
+                bijector.forward(r)
+            ) + bijector.forward_log_det_jacobian(r, event_ndims=1)
 
-    ratio_time = time_value_and_grad(ratio_fn, [ratios], replicates)
+        return ratio_fn
+
+    ratio_time = time_value_and_grad(
+        make_ratio_fn(ratio_bijector), [ratios], replicates
+    )
+    ratio_time_native = None
+    if native_ratio_is_available():
+        native_ratio_bijector = NodeHeightRatioBijector(
+            tree.topology, anchor_heights, use_native=True
+        )
+        ratio_time_native = time_value_and_grad(
+            make_ratio_fn(native_ratio_bijector), [ratios], replicates
+        )
 
     rows: tp.List[dict] = []
     base = dict(
@@ -276,7 +294,8 @@ def profile_dataset(
             rows.append(
                 dict(base, engine=engine, component=component, time_ms=seconds * 1e3)
             )
-    # Ratio transform does not depend on the likelihood engine; record once.
+    # Ratio transform does not depend on the likelihood engine; record the
+    # pure-TensorFlow time as "shared" and the native op's time separately.
     rows.append(
         dict(
             base,
@@ -285,6 +304,15 @@ def profile_dataset(
             time_ms=ratio_time * 1e3,
         )
     )
+    if ratio_time_native is not None:
+        rows.append(
+            dict(
+                base,
+                engine="native",
+                component="ratio_transform",
+                time_ms=ratio_time_native * 1e3,
+            )
+        )
     return rows
 
 
@@ -312,10 +340,18 @@ def _print_dataset_summary(dataset: Dataset, rows: tp.List[dict], engines):
         for engine in engines:
             line += f"{lookup(engine, component):>12.3f}"
         print(line)
-    print(f"  {'ratio_transform':<16}{lookup('shared', 'ratio_transform'):>12.3f}")
+    ratio_tf = lookup("shared", "ratio_transform")
+    ratio_native = lookup("native", "ratio_transform")
+    print(f"  {'ratio_transform':<16}{ratio_tf:>12.3f}")
+    if not np.isnan(ratio_native):
+        print(f"  {'  (native)':<16}{ratio_native:>12.3f}")
     if "native" in engines and "tf" in engines:
         speedup = lookup("tf", "likelihood") / lookup("native", "likelihood")
         print(f"  -> native likelihood speedup: {speedup:.1f}x")
+    if not np.isnan(ratio_native) and ratio_native > 0:
+        print(
+            f"  -> native ratio-transform speedup: {ratio_tf / ratio_native:.1f}x"
+        )
 
 
 @click.command()

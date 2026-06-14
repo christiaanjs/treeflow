@@ -1,3 +1,18 @@
+# Native tree-traversal ops
+
+Compiled TensorFlow custom ops for treeflow's two performance-critical tree
+traversals, each a drop-in replacement for a pure-TensorFlow `tf.TensorArray`
+reference with an **analytic** reverse-mode gradient:
+
+* the **phylogenetic likelihood** (Felsenstein pruning, a *postorder*
+  traversal) — see below;
+* the **node-height ratio transform** (a *preorder* traversal) — see
+  [Node-height ratio transform op](#node-height-ratio-transform-op).
+
+Both ops describe the topology to the kernel as integer index tensors and share
+the host-side index helpers in
+[`cc/tree_traversal.h`](cc/tree_traversal.h).
+
 # Native phylogenetic likelihood op
 
 A compiled TensorFlow custom op implementing Felsenstein's pruning algorithm
@@ -58,17 +73,54 @@ returns the per-site log likelihood and chooses for you via `rescaling=`:
 
 Pass `use_native=True` to route through the native ops.
 
+## Node-height ratio transform op
+
+The node-height ratio transform maps the per-internal-node height ratios used by
+inference to the actual node heights of a time tree. It is a **preorder**
+(root-to-leaves) traversal: the root height is read directly, and every other
+node's height is placed a fraction (its ratio) of the way between its anchor
+height and its parent's height. This is the compiled counterpart of the
+reference `tf.TensorArray` loop in
+[`treeflow/traversal/ratio_transform.py`](../../traversal/ratio_transform.py).
+
+* The forward op `NodeHeightRatio` takes the preorder/parent index vectors, the
+  ratios and the anchor heights, and outputs the node heights.
+* The backward op `NodeHeightRatioGrad` reuses those saved heights and walks the
+  nodes in **reverse preorder** (children before parents) to accumulate the
+  exact gradient with respect to both the ratios and the anchor heights — no
+  recomputation of the forward traversal.
+* It is wired into autodiff with `@tf.RegisterGradient("NodeHeightRatio")` and
+  supports arbitrary leading (sample/site) batch dimensions, `float32`/`float64`.
+
+It is consumed through `NodeHeightRatioBijector(..., use_native=...)`
+(`False` by default; `True` or `"auto"` to route the forward transform through
+the native op — the inverse and log-det-Jacobian stay pure TensorFlow), and the
+`treeflow_profile` CLI reports its speedup alongside the likelihood's.
+
+```python
+from treeflow.acceleration.native import native_ratios_to_node_heights
+
+heights = native_ratios_to_node_heights(
+    topology.preorder_node_indices - topology.taxon_count,  # internal-node space
+    topology.parent_indices[topology.taxon_count:] - topology.taxon_count,
+    ratios,          # [..., internal_node]
+    anchor_heights,  # [..., internal_node]
+)
+```
+
 ## Building
 
 ```bash
-bash treeflow/acceleration/native/build.sh
+bash treeflow/acceleration/native/build.sh                  # all ops
+bash treeflow/acceleration/native/build.sh node_height_ratio_op  # just one
 # or
 python -m treeflow.acceleration.native.build
 ```
 
-This compiles `cc/phylo_likelihood_op.cc` into `_phylo_likelihood_op.so` using
-the compile/link flags reported by the installed TensorFlow (so the C++ ABI
-matches the running runtime). The `.so` is intentionally git-ignored — it is
+This compiles each `cc/<op>.cc` into the matching `_<op>.so` (e.g.
+`_phylo_likelihood_op.so`, `_node_height_ratio_op.so`) using the compile/link
+flags reported by the installed TensorFlow (so the C++ ABI matches the running
+runtime). The `.so` files are intentionally git-ignored — they are
 environment-specific and must be built against the local TensorFlow.
 
 ### Docker
