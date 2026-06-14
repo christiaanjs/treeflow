@@ -6,6 +6,8 @@
 
 **/.DS_Store
 **/__pycache__
+# Prebuilt native op libraries are rebuilt inside the image for ABI consistency
+**/*.so
 **/.venv
 **/.classpath
 **/.dockerignore

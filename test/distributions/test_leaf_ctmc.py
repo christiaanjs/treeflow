@@ -282,3 +282,26 @@ def test_LeafCTMC_sample_tf_function(transition_prob_tree, function_mode):
 
     result = sample_fn()
     assert result.shape == (3, transition_prob_tree.taxon_count, state_count)
+
+
+def test_leaf_ctmc_auto_falls_back_to_tf(
+    hello_tensor_tree, hello_alignment, hky_params, hello_hky_log_likelihood, monkeypatch
+):
+    """When native acceleration is unavailable, use_native='auto' uses TF."""
+    from tensorflow_probability.python.distributions import Sample
+    import treeflow.distributions.leaf_ctmc as leaf_ctmc_module
+
+    monkeypatch.setattr(
+        leaf_ctmc_module, "native_acceleration_available", lambda: False
+    )
+
+    transition_prob_tree = get_transition_probabilities_tree(
+        hello_tensor_tree.get_unrooted_tree(), HKY(), **hky_params
+    )
+    dist_obj = leaf_ctmc_module.LeafCTMC(
+        transition_prob_tree, hky_params["frequencies"]
+    )
+    assert dist_obj._use_native is False
+    dist = Sample(dist_obj, sample_shape=hello_alignment.site_count)
+    sequences = hello_alignment.get_encoded_sequence_tensor(hello_tensor_tree.taxon_set)
+    assert_allclose(dist.log_prob(sequences).numpy(), hello_hky_log_likelihood)

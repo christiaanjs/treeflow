@@ -80,3 +80,72 @@ def phylogenetic_likelihood(
         postorder_partials_ta = postorder_partials_ta.write(node_index, node_partials)
     root_partials = postorder_partials_ta.gather([2 * taxon_count - 2])[0]
     return tf.reduce_sum(frequencies * root_partials, axis=-1)
+
+
+@tf.function
+def phylogenetic_log_likelihood_rescaled(
+    sequences_onehot: tf.Tensor,
+    transition_probs: tf.Tensor,
+    frequencies: tf.Tensor,
+    postorder_node_indices: tf.Tensor,
+    child_indices: tf.Tensor,
+    batch_shape=(),
+):
+    """Numerically stable per-site phylogenetic LOG likelihood.
+
+    Identical recursion to :func:`phylogenetic_likelihood`, but at every
+    internal node the partial likelihood vector is divided by its per-site
+    maximum and the log of that scale factor is accumulated. This prevents the
+    partials from underflowing on large/deep trees. Returns the per-site ``log``
+    likelihood rather than the linear likelihood.
+
+    The scale factor is treated as a constant (``stop_gradient``): rescaling is
+    an exact reparametrisation, so this yields the same gradient as the
+    unrescaled likelihood while keeping the forward pass finite.
+
+    Parameters match :func:`phylogenetic_likelihood`.
+    """
+    taxon_count = tf.shape(sequences_onehot)[-2]
+    probs_shape = ps.shape(transition_probs)
+    state_shape = probs_shape[-1:]
+    partials_shape = ps.concat([batch_shape, state_shape], axis=0)
+    batch_rank = tf.shape(batch_shape)[0]
+
+    postorder_partials_ta = tf.TensorArray(
+        dtype=transition_probs.dtype,
+        size=(2 * taxon_count - 1),
+        element_shape=None if isinstance(partials_shape, tf.Tensor) else partials_shape,
+    )
+    child_transition_probs = move_indices_to_outside(
+        tf.gather(transition_probs, child_indices, axis=-3), batch_rank, 2
+    )  # [node, child, ..., state, state]
+
+    for i in tf.range(taxon_count):
+        postorder_partials_ta = postorder_partials_ta.write(
+            i, sequences_onehot[..., i, :]
+        )
+
+    log_scale_sum = tf.zeros(batch_shape, dtype=transition_probs.dtype)
+    for i in tf.range(taxon_count - 1):
+        node_index = postorder_node_indices[i]
+        node_child_transition_probs = child_transition_probs[i]
+        node_child_indices = child_indices[i]
+        child_partials = postorder_partials_ta.gather(node_child_indices)
+        parent_child_probs = node_child_transition_probs * tf.expand_dims(
+            child_partials, -2
+        )
+        node_partials = tf.reduce_prod(
+            tf.reduce_sum(parent_child_probs, axis=-1),
+            axis=0,
+        )
+        # Rescale by the per-site maximum partial (treated as constant).
+        scale = tf.reduce_max(node_partials, axis=-1, keepdims=True)
+        scale = tf.where(scale > 0, scale, tf.ones_like(scale))
+        scale = tf.stop_gradient(scale)
+        node_partials = node_partials / scale
+        log_scale_sum = log_scale_sum + tf.math.log(scale[..., 0])
+        postorder_partials_ta = postorder_partials_ta.write(node_index, node_partials)
+
+    root_partials = postorder_partials_ta.gather([2 * taxon_count - 2])[0]
+    site_likelihood = tf.reduce_sum(frequencies * root_partials, axis=-1)
+    return tf.math.log(site_likelihood) + log_scale_sum

@@ -26,8 +26,13 @@ jobs:
         include:
           - name: unit
             pytest_args: ""
+            docker_env: ""
           - name: cli
             pytest_args: --override-ini="addopts=" -m "cli and not bito"
+            docker_env: ""
+          - name: native
+            pytest_args: -m native
+            docker_env: -e TREEFLOW_REQUIRE_NATIVE=1
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -41,7 +46,7 @@ jobs:
           tags: treeflow-test:ci
           cache-from: type=gha
       - name: Run pytest (${{ matrix.name }})
-        run: docker run --rm --workdir /app treeflow-test:ci pytest ${{ matrix.pytest_args }}
+        run: docker run --rm --workdir /app ${{ matrix.docker_env }} treeflow-test:ci pytest ${{ matrix.pytest_args }}
 
   test:
     if: always()

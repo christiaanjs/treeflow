@@ -367,6 +367,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
     site_model_params: tp.Dict[str, object],
     clock_model_rates: tf.Tensor,
     pattern_counts: tp.Optional[tf.Tensor] = None,
+    use_native: tp.Union[str, bool] = "auto",
 ) -> Distribution:
     unrooted_tree = tree.get_unrooted_tree()
     scaled_tree = unrooted_tree.with_branch_lengths(
@@ -380,7 +381,9 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
             **subst_model_params,
         )
         single_site_distribution = LeafCTMC(
-            transition_probs_tree, subst_model_params["frequencies"]
+            transition_probs_tree,
+            subst_model_params["frequencies"],
+            use_native=use_native,
         )
     else:
         site_rate_distribution = get_site_rate_distribution(
@@ -397,6 +400,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
             LeafCTMC(
                 transition_probs_tree,
                 tf.expand_dims(subst_model_params["frequencies"], -2),
+                use_native=use_native,
             ),
         )
     if pattern_counts is None:
@@ -419,7 +423,24 @@ def phylo_model_to_joint_distribution(
     initial_tree: TensorflowRootedTree,
     initial_alignment: Alignment,
     pattern_counts: tp.Optional[tf.Tensor] = None,
+    use_native: tp.Union[str, bool] = "auto",
+    include_likelihood: bool = True,
 ) -> JointDistributionCoroutine:
+    """Build the joint distribution for a phylogenetic model.
+
+    Parameters
+    ----------
+    use_native
+        Forwarded to the sequence likelihood (``LeafCTMC``) to select the native
+        C++ tree-likelihood op (``True``), the pure-TensorFlow implementation
+        (``False``), or automatic selection (``"auto"``).
+    include_likelihood
+        When ``False`` the sequence (alignment) likelihood term is omitted, so
+        the resulting distribution is the prior over all latent parameters. This
+        is useful for profiling the prior and likelihood contributions to the
+        target density separately.
+    """
+
     def model_fn() -> tp.Generator[Distribution, tf.Tensor, None]:
         tree_model_params, tree_has_root_param = yield from get_params(
             model.tree_params
@@ -444,15 +465,17 @@ def phylo_model_to_joint_distribution(
         )
 
         site_model_params, _ = yield from get_params(model.site_params)
-        alignment = yield get_sequence_distribution(
-            initial_alignment,
-            tree,
-            subst_model,
-            subst_model_params,
-            model.site_model,
-            site_model_params,
-            rates,
-            pattern_counts=pattern_counts,
-        )
+        if include_likelihood:
+            alignment = yield get_sequence_distribution(
+                initial_alignment,
+                tree,
+                subst_model,
+                subst_model_params,
+                model.site_model,
+                site_model_params,
+                rates,
+                pattern_counts=pattern_counts,
+                use_native=use_native,
+            )
 
     return JointDistributionCoroutine(model_fn)
