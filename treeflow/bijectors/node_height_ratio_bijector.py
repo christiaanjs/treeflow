@@ -35,6 +35,7 @@ class NodeHeightRatioBijector(Bijector):
         name="NodeHeightRatioBijector",
         validate_args=False,
         use_native="auto",
+        unroll="auto",
     ):
         parameters = locals()
         self.topology = topology
@@ -42,6 +43,9 @@ class NodeHeightRatioBijector(Bijector):
         self.node_parent_indices = (
             self.topology.parent_indices[self.taxon_count :] - self.taxon_count
         )
+        # Unroll the (pure-TensorFlow) ratio traversal for a static topology; see
+        # treeflow.traversal.preorder.preorder_traversal.
+        self.unroll = unroll
 
         # Resolve the forward-transform engine. The default ``"auto"`` uses the
         # native C++ op when it is built and falls back to the pure-TensorFlow
@@ -92,10 +96,7 @@ class NodeHeightRatioBijector(Bijector):
                 self.anchor_heights,
             )
         return ratios_to_node_heights(
-            preorder_node_indices,
-            self.node_parent_indices,
-            ratios,
-            self.anchor_heights,
+            self.topology, ratios, self.anchor_heights, unroll=self.unroll
         )
 
     def _inverse(self, heights: tf.Tensor) -> tf.Tensor:
@@ -131,6 +132,7 @@ class NodeHeightRatioChainBijector(Chain):
         name="NodeHeightRatioChainBijector",
         validate_args=False,
         use_native="auto",
+        unroll="auto",
     ):
         parameters = locals()
         height_bijector = NodeHeightRatioBijector(
@@ -139,6 +141,7 @@ class NodeHeightRatioChainBijector(Chain):
             name=name,
             validate_args=validate_args,
             use_native=use_native,
+            unroll=unroll,
         )
         blockwise_bijector = Blockwise(
             [Sigmoid(), Exp()], block_sizes=[topology.taxon_count - 2, 1]

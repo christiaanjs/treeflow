@@ -25,6 +25,8 @@ class ApproximationBuilder(Protocol):
         model: Distribution,
         topology_pins: tp.Dict[str, TensorflowTreeTopology],
         init_loc: tp.Optional[object] = None,
+        use_native: tp.Union[str, bool] = "auto",
+        unroll: tp.Union[str, bool] = "auto",
         **kwargs,
     ) -> tp.Tuple[Distribution, tp.Dict[str, tf.Variable]]:
         ...
@@ -43,13 +45,23 @@ def fit_fixed_topology_variational_approximation(
     progress_bar_step: int = 10,
     approx_fn: ApproximationBuilder = get_fixed_topology_mean_field_approximation,
     approx_kwargs: tp.Optional[tp.Dict[str, object]] = None,
+    use_native: tp.Union[str, bool] = "auto",
+    unroll: tp.Union[str, bool] = "auto",
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
     if approx_kwargs is None:
         approx_kwargs = {}
 
+    # `use_native`/`unroll` configure the fixed-topology node-height bijector that the
+    # approximation builds: the native C++ ratio transform vs the pure-TensorFlow
+    # traversal, and whether that traversal is unrolled for the static topology.
     approximation, variables_dict = approx_fn(
-        model, init_loc=init_loc, topology_pins=topologies, **approx_kwargs
+        model,
+        init_loc=init_loc,
+        topology_pins=topologies,
+        use_native=use_native,
+        unroll=unroll,
+        **approx_kwargs,
     )
 
     if trace_fn is None:

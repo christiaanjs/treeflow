@@ -37,11 +37,10 @@ def _make_problem(leaf_count, state_count, site_count, seed=0, dtype=tf.float64)
     probs = tf.constant((probs / probs.sum(-1, keepdims=True)).astype(np_dtype))
     freqs = tf.constant(np.full(state_count, 1.0 / state_count, dtype=np_dtype))
     return dict(
+        topology=topology,
         sequences=sequences,
         transition_probs=probs,
         frequencies=freqs,
-        postorder=topology.postorder_node_indices,
-        child_indices=topology.node_child_indices,
     )
 
 
@@ -51,8 +50,7 @@ def small():
 
 
 def _args(p):
-    return (p["sequences"], p["transition_probs"], p["frequencies"],
-            p["postorder"], p["child_indices"])
+    return (p["topology"], p["sequences"], p["transition_probs"], p["frequencies"])
 
 
 @pytest.mark.parametrize("function_mode", [False, True])
@@ -77,12 +75,12 @@ def test_tf_rescaled_gradient_matches(small):
         with tf.GradientTape() as tape:
             if rescaled:
                 ll = phylogenetic_log_likelihood_rescaled(
-                    small["sequences"], probs, small["frequencies"],
-                    small["postorder"], small["child_indices"], batch_shape=batch)
+                    small["topology"], small["sequences"], probs,
+                    small["frequencies"], batch_shape=batch)
             else:
                 ll = tf.math.log(phylogenetic_likelihood(
-                    small["sequences"], probs, small["frequencies"],
-                    small["postorder"], small["child_indices"], batch_shape=batch))
+                    small["topology"], small["sequences"], probs,
+                    small["frequencies"], batch_shape=batch))
             loss = tf.reduce_sum(ll)
         return tape.gradient(loss, probs)
 

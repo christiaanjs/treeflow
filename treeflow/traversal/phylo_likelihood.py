@@ -1,5 +1,7 @@
+import typing as tp
 import tensorflow as tf
-from tensorflow_probability.python.internal import prefer_static as ps
+from treeflow.traversal.postorder import postorder_node_traversal
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 
 
 def move_indices_to_outside(x, start, size):
@@ -17,18 +19,14 @@ def _combine_child_partials(node_child_transition_probs, child_partials, use_mat
 
     For each child this is the matrix-vector product of the child's transition
     matrix with its partials (sum over the child state), followed by the product
-    over children. The two forms below are mathematically identical (and give
-    identical gradients); they only differ in performance:
+    over children. The two forms are mathematically identical (same gradients);
+    they only differ in performance.
 
     use_matvec
-        ``False`` (default): explicit broadcast-multiply + ``reduce_sum``. Slower
-        on the forward pass but its gradient is cheap, so it is faster for
-        ``value + gradient`` -- the usual inference case -- and is the recommended
-        default whenever gradients are required.
-        ``True``: ``tf.linalg.matvec``, a fused contraction that is markedly faster
-        on the *forward* pass (up to ~2x on large trees) but whose gradient is more
-        expensive, making ``value + gradient`` slightly *slower*. Use it only for
-        forward-only likelihood evaluation (no backprop).
+        ``False`` (default): explicit broadcast-multiply + ``reduce_sum`` -- cheaper
+        gradient, so faster for value+gradient (the usual inference case).
+        ``True``: ``tf.linalg.matvec`` -- faster forward pass but a more expensive
+        gradient. Use only for forward-only evaluation.
     """
     if use_matvec:
         return tf.reduce_prod(
@@ -40,141 +38,108 @@ def _combine_child_partials(node_child_transition_probs, child_partials, use_mat
     return tf.reduce_prod(tf.reduce_sum(parent_child_probs, axis=-1), axis=0)
 
 
-@tf.function
+def _likelihood_partials(
+    topology, sequences_onehot, transition_probs, batch_shape, mapping, leaf_extra,
+    unroll,
+):
+    """Shared postorder traversal for the (un)rescaled likelihoods.
+
+    ``leaf_extra`` is an optional extra leaf-init structure paired with the leaf
+    partials (used by the rescaled variant to carry a per-node log-scale). Returns
+    the stacked per-node output structure.
+    """
+    batch_rank = tf.shape(batch_shape)[0]
+    # Per-internal-node child transition matrices: [n_internal, child, ..., state, state]
+    child_transition_probs = move_indices_to_outside(
+        tf.gather(transition_probs, topology.node_child_indices, axis=-3), batch_rank, 2
+    )
+    # Leaf partials with the leaf axis first: [leaf, ..., state]
+    leaf_partials = move_indices_to_outside(
+        sequences_onehot, tf.rank(sequences_onehot) - 2, 1
+    )
+    leaf_init = leaf_partials if leaf_extra is None else (leaf_partials, leaf_extra)
+    return postorder_node_traversal(
+        topology, mapping, child_transition_probs, leaf_init, unroll=unroll
+    )
+
+
 def phylogenetic_likelihood(
+    topology: TensorflowTreeTopology,
     sequences_onehot: tf.Tensor,
     transition_probs: tf.Tensor,
     frequencies: tf.Tensor,
-    postorder_node_indices: tf.Tensor,
-    child_indices: tf.Tensor,
     batch_shape=(),
     use_matvec: bool = False,
+    unroll: tp.Union[bool, str] = "auto",
 ):
-    """
-    Per-site phylogenetic likelihood.
-    Assumes all parameters are broadcastable w.r.t. batch shape
+    """Per-site phylogenetic likelihood, on the generic ``postorder_node_traversal``.
 
+    Assumes all parameters are broadcastable w.r.t. batch shape.
+
+    topology
+        The tree topology (provides postorder/child indices; no batch dimensions).
     sequences_onehot
         Tensor with shape [..., leaf, state]
     transition_probs
-        Tensor with shape [...,  node, state, state]
-        Must be broadcasted over sites
+        Tensor with shape [..., node, state, state]; broadcast over sites.
     frequencies
         Tensor with shape [..., state]
-    postorder_node_indices
-        Tensor with shape [internal_node].
-        Cannot have batch dimensions.
-    child_indices
-        Tensor with shape [internal_node,  children]
     use_matvec
-        Combine each node's children with ``tf.linalg.matvec`` instead of the
-        default broadcast-multiply + ``reduce_sum``. The result is identical.
-        ``True`` is faster on the forward pass (up to ~2x on large trees) but has a
-        more expensive gradient, so it is **slower for value + gradient** -- leave
-        it ``False`` (the default) whenever gradients are needed; set it ``True``
-        only for forward-only likelihood evaluation. See
-        :func:`_combine_child_partials`.
+        See :func:`_combine_child_partials`. ``True`` is forward-faster but slower for
+        value+gradient; leave ``False`` when gradients are needed.
+    unroll
+        Forwarded to :func:`postorder_node_traversal`: ``"auto"`` unrolls when the
+        topology is statically known, ``True`` forces it, ``False`` keeps the dynamic
+        ``tf.while_loop``.
     """
-    taxon_count = tf.shape(sequences_onehot)[-2]
-    probs_shape = ps.shape(transition_probs)
-    state_shape = probs_shape[-1:]
-    partials_shape = ps.concat([batch_shape, state_shape], axis=0)
-    batch_rank = tf.shape(batch_shape)[0]
 
-    postorder_partials_ta = tf.TensorArray(
-        dtype=transition_probs.dtype,
-        size=(2 * taxon_count - 1),
-        element_shape=None if isinstance(partials_shape, tf.Tensor) else partials_shape,
+    def mapping(child_output, node_input, topology_data):
+        return _combine_child_partials(node_input, child_output, use_matvec)
+
+    partials = _likelihood_partials(
+        topology, sequences_onehot, transition_probs, batch_shape, mapping, None, unroll
     )
-    child_transition_probs = move_indices_to_outside(
-        tf.gather(transition_probs, child_indices, axis=-3), batch_rank, 2
-    )  # [node, child, ..., state, state]
-
-    for i in tf.range(taxon_count):
-        postorder_partials_ta = postorder_partials_ta.write(
-            i, sequences_onehot[..., i, :]
-        )
-
-    for i in tf.range(taxon_count - 1):
-        node_index = postorder_node_indices[i]
-        node_child_transition_probs = child_transition_probs[
-            i
-        ]  # child, ..., parent char, child char
-        node_child_indices = child_indices[i]
-        child_partials = postorder_partials_ta.gather(
-            node_child_indices
-        )  # child, ..., child char
-        node_partials = _combine_child_partials(
-            node_child_transition_probs, child_partials, use_matvec
-        )
-        postorder_partials_ta = postorder_partials_ta.write(node_index, node_partials)
-    root_partials = postorder_partials_ta.gather([2 * taxon_count - 2])[0]
-    return tf.reduce_sum(frequencies * root_partials, axis=-1)
+    return tf.reduce_sum(frequencies * partials[-1], axis=-1)
 
 
-@tf.function
 def phylogenetic_log_likelihood_rescaled(
+    topology: TensorflowTreeTopology,
     sequences_onehot: tf.Tensor,
     transition_probs: tf.Tensor,
     frequencies: tf.Tensor,
-    postorder_node_indices: tf.Tensor,
-    child_indices: tf.Tensor,
     batch_shape=(),
     use_matvec: bool = False,
+    unroll: tp.Union[bool, str] = "auto",
 ):
     """Numerically stable per-site phylogenetic LOG likelihood.
 
-    Identical recursion to :func:`phylogenetic_likelihood`, but at every
-    internal node the partial likelihood vector is divided by its per-site
-    maximum and the log of that scale factor is accumulated. This prevents the
-    partials from underflowing on large/deep trees. Returns the per-site ``log``
-    likelihood rather than the linear likelihood.
+    Identical recursion to :func:`phylogenetic_likelihood`, but each internal node's
+    partials are divided by their per-site maximum and the log of that scale factor is
+    accumulated, preventing underflow on large/deep trees. The scale is treated as a
+    constant (``stop_gradient``), so the gradient matches the unrescaled likelihood.
 
-    The scale factor is treated as a constant (``stop_gradient``): rescaling is
-    an exact reparametrisation, so this yields the same gradient as the
-    unrescaled likelihood while keeping the forward pass finite.
-
-    Parameters match :func:`phylogenetic_likelihood`, including ``use_matvec``
-    (faster forward, slower value+gradient -- leave ``False`` when gradients are
-    needed).
+    The running scale is carried as a second component of the per-node output structure
+    ``(partials, log_scale)`` (leaves contribute 0) and summed over nodes afterwards.
+    Parameters match :func:`phylogenetic_likelihood`.
     """
-    taxon_count = tf.shape(sequences_onehot)[-2]
-    probs_shape = ps.shape(transition_probs)
-    state_shape = probs_shape[-1:]
-    partials_shape = ps.concat([batch_shape, state_shape], axis=0)
-    batch_rank = tf.shape(batch_shape)[0]
-
-    postorder_partials_ta = tf.TensorArray(
+    leaf_log_scale = tf.zeros(
+        tf.concat([tf.shape(sequences_onehot)[-2:-1], batch_shape], 0),
         dtype=transition_probs.dtype,
-        size=(2 * taxon_count - 1),
-        element_shape=None if isinstance(partials_shape, tf.Tensor) else partials_shape,
     )
-    child_transition_probs = move_indices_to_outside(
-        tf.gather(transition_probs, child_indices, axis=-3), batch_rank, 2
-    )  # [node, child, ..., state, state]
 
-    for i in tf.range(taxon_count):
-        postorder_partials_ta = postorder_partials_ta.write(
-            i, sequences_onehot[..., i, :]
-        )
-
-    log_scale_sum = tf.zeros(batch_shape, dtype=transition_probs.dtype)
-    for i in tf.range(taxon_count - 1):
-        node_index = postorder_node_indices[i]
-        node_child_transition_probs = child_transition_probs[i]
-        node_child_indices = child_indices[i]
-        child_partials = postorder_partials_ta.gather(node_child_indices)
-        node_partials = _combine_child_partials(
-            node_child_transition_probs, child_partials, use_matvec
-        )
-        # Rescale by the per-site maximum partial (treated as constant).
+    def mapping(child_output, node_input, topology_data):
+        child_partials, _child_log_scales = child_output
+        node_partials = _combine_child_partials(node_input, child_partials, use_matvec)
         scale = tf.reduce_max(node_partials, axis=-1, keepdims=True)
         scale = tf.where(scale > 0, scale, tf.ones_like(scale))
         scale = tf.stop_gradient(scale)
         node_partials = node_partials / scale
-        log_scale_sum = log_scale_sum + tf.math.log(scale[..., 0])
-        postorder_partials_ta = postorder_partials_ta.write(node_index, node_partials)
+        return node_partials, tf.math.log(scale[..., 0])
 
-    root_partials = postorder_partials_ta.gather([2 * taxon_count - 2])[0]
-    site_likelihood = tf.reduce_sum(frequencies * root_partials, axis=-1)
+    partials, log_scales = _likelihood_partials(
+        topology, sequences_onehot, transition_probs, batch_shape, mapping,
+        leaf_log_scale, unroll,
+    )
+    site_likelihood = tf.reduce_sum(frequencies * partials[-1], axis=-1)
+    log_scale_sum = tf.reduce_sum(log_scales, axis=0)  # leaves contribute 0
     return tf.math.log(site_likelihood) + log_scale_sum

@@ -368,6 +368,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
     clock_model_rates: tf.Tensor,
     pattern_counts: tp.Optional[tf.Tensor] = None,
     use_native: tp.Union[str, bool] = "auto",
+    unroll: tp.Union[str, bool] = "auto",
 ) -> Distribution:
     unrooted_tree = tree.get_unrooted_tree()
     scaled_tree = unrooted_tree.with_branch_lengths(
@@ -384,6 +385,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
             transition_probs_tree,
             subst_model_params["frequencies"],
             use_native=use_native,
+            unroll=unroll,
         )
     else:
         site_rate_distribution = get_site_rate_distribution(
@@ -401,6 +403,7 @@ def get_sequence_distribution(  # TODO: Consider case where sequence is root?
                 transition_probs_tree,
                 tf.expand_dims(subst_model_params["frequencies"], -2),
                 use_native=use_native,
+                unroll=unroll,
             ),
         )
     if pattern_counts is None:
@@ -424,6 +427,7 @@ def phylo_model_to_joint_distribution(
     initial_alignment: Alignment,
     pattern_counts: tp.Optional[tf.Tensor] = None,
     use_native: tp.Union[str, bool] = "auto",
+    unroll: tp.Union[str, bool] = "auto",
     include_likelihood: bool = True,
 ) -> JointDistributionCoroutine:
     """Build the joint distribution for a phylogenetic model.
@@ -476,6 +480,7 @@ def phylo_model_to_joint_distribution(
                 rates,
                 pattern_counts=pattern_counts,
                 use_native=use_native,
+                unroll=unroll,
             )
 
     return JointDistributionCoroutine(model_fn)

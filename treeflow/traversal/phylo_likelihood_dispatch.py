@@ -59,16 +59,16 @@ def _static_leaf_count(sequences_onehot, postorder_node_indices):
 
 
 def phylogenetic_log_likelihood(
+    topology,
     sequences_onehot: tf.Tensor,
     transition_probs: tf.Tensor,
     frequencies: tf.Tensor,
-    postorder_node_indices: tf.Tensor,
-    child_indices: tf.Tensor,
     batch_shape=(),
     use_native: bool = False,
     rescaling="auto",
     rescaling_threshold: int = None,
     block_size: int = 1,
+    unroll="auto",
 ) -> tf.Tensor:
     """Per-site phylogenetic LOG likelihood, dispatching rescaled/unrescaled.
 
@@ -87,42 +87,43 @@ def phylogenetic_log_likelihood(
         ``use_native`` is False. See
         :func:`treeflow.acceleration.native.native_phylogenetic_likelihood`.
     """
-    args = (
-        sequences_onehot,
-        transition_probs,
-        frequencies,
-        postorder_node_indices,
-        child_indices,
-    )
-
     if use_native:
         from treeflow.acceleration.native import (
             native_phylogenetic_likelihood,
             native_phylogenetic_log_likelihood_rescaled,
         )
 
+        native_args = (
+            sequences_onehot,
+            transition_probs,
+            frequencies,
+            topology.postorder_node_indices,
+            topology.node_child_indices,
+        )
+
         def unscaled_log():
             return tf.math.log(
                 native_phylogenetic_likelihood(
-                    *args, batch_shape=batch_shape, block_size=block_size
+                    *native_args, batch_shape=batch_shape, block_size=block_size
                 )
             )
 
         def rescaled_log():
             return native_phylogenetic_log_likelihood_rescaled(
-                *args, batch_shape=batch_shape, block_size=block_size
+                *native_args, batch_shape=batch_shape, block_size=block_size
             )
 
     else:
+        args = (topology, sequences_onehot, transition_probs, frequencies)
 
         def unscaled_log():
             return tf.math.log(
-                phylogenetic_likelihood(*args, batch_shape=batch_shape)
+                phylogenetic_likelihood(*args, batch_shape=batch_shape, unroll=unroll)
             )
 
         def rescaled_log():
             return phylogenetic_log_likelihood_rescaled(
-                *args, batch_shape=batch_shape
+                *args, batch_shape=batch_shape, unroll=unroll
             )
 
     if rescaling is True:
@@ -130,7 +131,9 @@ def phylogenetic_log_likelihood(
     if rescaling is False:
         return unscaled_log()
     if rescaling == "auto":
-        leaf_count = _static_leaf_count(sequences_onehot, postorder_node_indices)
+        leaf_count = _static_leaf_count(
+            sequences_onehot, topology.postorder_node_indices
+        )
         threshold = (
             rescaling_threshold
             if rescaling_threshold is not None

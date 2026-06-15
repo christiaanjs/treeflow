@@ -1,14 +1,17 @@
 from numpy.testing import assert_allclose
+import pytest
 from treeflow.traversal.ratio_transform import ratios_to_node_heights
-import tensorflow as tf
+from treeflow_test_helpers.ratio_helpers import topology_from_ratio_test_data
 
 
-def test_ratios_to_node_heights(ratio_test_data):
+@pytest.mark.parametrize("unroll", ["auto", True, False])
+def test_ratios_to_node_heights(ratio_test_data, unroll):
+    topology = topology_from_ratio_test_data(ratio_test_data)
     res = ratios_to_node_heights(
-        tf.constant(ratio_test_data.preorder_node_indices, dtype=tf.int32),
-        tf.constant(ratio_test_data.node_parent_indices, dtype=tf.int32),
+        topology,
         ratio_test_data.ratios,
         ratio_test_data.anchor_heights,
+        unroll=unroll,
     )
 
     assert_allclose(res, ratio_test_data.heights)

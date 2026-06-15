@@ -36,8 +36,9 @@ def test_native_matches_reference_forward(small_ratio_problem, function_mode):
         if function_mode
         else native_ratios_to_node_heights
     )
-    ref_val = ref_fn(*_args(small_ratio_problem))
-    nat_val = nat_fn(*_args(small_ratio_problem))
+    p = small_ratio_problem
+    ref_val = ref_fn(p["topology"], p["ratios"], p["anchor_heights"])
+    nat_val = nat_fn(*_args(p))
     assert_allclose(nat_val.numpy(), ref_val.numpy(), rtol=1e-12, atol=1e-12)
 
 
@@ -60,9 +61,7 @@ def test_native_float32(small_ratio_problem):
     nat = native_ratios_to_node_heights(
         p["preorder_node_indices"], p["parent_indices"], ratios, anchor
     )
-    ref = reference(
-        p["preorder_node_indices"], p["parent_indices"], ratios, anchor
-    )
+    ref = reference(p["topology"], ratios, anchor)
     assert nat.dtype == tf.float32
     assert_allclose(nat.numpy(), ref.numpy(), rtol=1e-5, atol=1e-6)
 
@@ -72,7 +71,7 @@ def test_native_float32(small_ratio_problem):
 # ---------------------------------------------------------------------------
 
 
-def _grads(fn, problem):
+def _grads(fn, problem, native=True):
     ratios = tf.Variable(problem["ratios"])
     anchor = tf.Variable(problem["anchor_heights"])
     # Non-uniform weights so every node-height adjoint is distinct.
@@ -81,19 +80,22 @@ def _grads(fn, problem):
         tf.shape(problem["ratios"])[-1:],
     )
     with tf.GradientTape() as tape:
-        heights = fn(
-            problem["preorder_node_indices"],
-            problem["parent_indices"],
-            ratios,
-            anchor,
-        )
+        if native:
+            heights = fn(
+                problem["preorder_node_indices"],
+                problem["parent_indices"],
+                ratios,
+                anchor,
+            )
+        else:
+            heights = fn(problem["topology"], ratios, anchor)
         loss = tf.reduce_sum(heights * weights)
     return tape.gradient(loss, [ratios, anchor])
 
 
 def test_native_gradient_matches_reference(small_ratio_problem):
-    ref_grads = _grads(reference, small_ratio_problem)
-    nat_grads = _grads(native_ratios_to_node_heights, small_ratio_problem)
+    ref_grads = _grads(reference, small_ratio_problem, native=False)
+    nat_grads = _grads(native_ratios_to_node_heights, small_ratio_problem, native=True)
     for ref_g, nat_g in zip(ref_grads, nat_grads):
         assert nat_g is not None
         assert_allclose(nat_g.numpy(), ref_g.numpy(), rtol=1e-9, atol=1e-9)
@@ -106,8 +108,8 @@ def test_native_gradient_function_mode(small_ratio_problem, function_mode):
         if function_mode
         else native_ratios_to_node_heights
     )
-    ref_grads = _grads(reference, small_ratio_problem)
-    nat_grads = _grads(fn, small_ratio_problem)
+    ref_grads = _grads(reference, small_ratio_problem, native=False)
+    nat_grads = _grads(fn, small_ratio_problem, native=True)
     for ref_g, nat_g in zip(ref_grads, nat_grads):
         assert_allclose(nat_g.numpy(), ref_g.numpy(), rtol=1e-9, atol=1e-9)
 
@@ -156,15 +158,15 @@ def test_native_batched_matches_reference(
 ):
     p = make_ratio_problem_factory(leaf_count=10, batch_shape=batch_shape, seed=9)
     nat = native_ratios_to_node_heights(*_args(p))
-    ref = reference(*_args(p))
+    ref = reference(p["topology"], p["ratios"], p["anchor_heights"])
     assert tuple(nat.shape) == batch_shape + (p["node_count"],)
     assert_allclose(nat.numpy(), ref.numpy(), rtol=1e-12, atol=1e-12)
 
 
 def test_native_batched_gradient_matches_reference(make_ratio_problem_factory):
     p = make_ratio_problem_factory(leaf_count=10, batch_shape=(4,), seed=12)
-    ref_grads = _grads(reference, p)
-    nat_grads = _grads(native_ratios_to_node_heights, p)
+    ref_grads = _grads(reference, p, native=False)
+    nat_grads = _grads(native_ratios_to_node_heights, p, native=True)
     for ref_g, nat_g in zip(ref_grads, nat_grads):
         assert nat_g is not None
         assert nat_g.shape == ref_g.shape
@@ -183,9 +185,7 @@ def test_native_broadcast_anchor_gradient_reduces(make_ratio_problem_factory):
         )
         loss = tf.reduce_sum(nat)
     with tf.GradientTape() as tape_ref:
-        ref = reference(
-            p["preorder_node_indices"], p["parent_indices"], ratios, anchor
-        )
+        ref = reference(p["topology"], ratios, anchor)
         loss_ref = tf.reduce_sum(ref)
     nat_g = tape.gradient(loss, anchor)
     ref_g = tape_ref.gradient(loss_ref, anchor)

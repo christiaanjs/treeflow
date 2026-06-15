@@ -70,8 +70,12 @@ class TreeRatioBijector(RootedTreeBijector):
         fixed_sampling_times: bool = True,
         name="TreeRatioBijector",
         validate_args=False,
+        use_native="auto",
+        unroll="auto",
     ):
-        height_bijector = NodeHeightRatioChainBijector(topology, anchor_heights)
+        height_bijector = NodeHeightRatioChainBijector(
+            topology, anchor_heights, use_native=use_native, unroll=unroll
+        )
         sampling_time_bijector = (
             Identity()
             if fixed_sampling_times

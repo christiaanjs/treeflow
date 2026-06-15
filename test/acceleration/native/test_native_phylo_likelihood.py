@@ -57,16 +57,16 @@ def test_native_matches_reference_forward(small_problem, function_mode):
         if function_mode
         else native_phylogenetic_likelihood
     )
-    args = (
-        small_problem["sequences"],
-        small_problem["transition_probs"],
-        small_problem["frequencies"],
-        small_problem["postorder_node_indices"],
-        small_problem["node_child_indices"],
+    p = small_problem
+    batch_shape = tf.shape(p["sequences"])[:1]
+    ref_val = ref_fn(
+        p["topology"], p["sequences"], p["transition_probs"], p["frequencies"],
+        batch_shape=batch_shape,
     )
-    batch_shape = tf.shape(small_problem["sequences"])[:1]
-    ref_val = ref_fn(*args, batch_shape=batch_shape)
-    nat_val = nat_fn(*args, batch_shape=batch_shape)
+    nat_val = nat_fn(
+        p["sequences"], p["transition_probs"], p["frequencies"],
+        p["postorder_node_indices"], p["node_child_indices"], batch_shape=batch_shape,
+    )
     assert_allclose(nat_val.numpy(), ref_val.numpy(), rtol=1e-12, atol=1e-12)
 
 
@@ -79,11 +79,10 @@ def test_native_float32(small_problem):
         seq, probs, freqs, p["postorder_node_indices"], p["node_child_indices"]
     )
     ref = reference(
+        p["topology"],
         seq,
         probs,
         freqs,
-        p["postorder_node_indices"],
-        p["node_child_indices"],
         batch_shape=tf.shape(seq)[:1],
     )
     assert nat.dtype == tf.float32
@@ -95,26 +94,32 @@ def test_native_float32(small_problem):
 # ---------------------------------------------------------------------------
 
 
-def _grads(fn, problem, wrt_freqs=False):
+def _grads(fn, problem, wrt_freqs=False, native=False):
     probs = tf.Variable(problem["transition_probs"])
     freqs = tf.Variable(problem["frequencies"])
+    batch_shape = tf.shape(problem["sequences"])[:1]
     with tf.GradientTape() as tape:
-        site_partials = fn(
-            problem["sequences"],
-            probs,
-            freqs,
-            problem["postorder_node_indices"],
-            problem["node_child_indices"],
-            batch_shape=tf.shape(problem["sequences"])[:1],
-        )
+        if native:
+            site_partials = fn(
+                problem["sequences"], probs, freqs,
+                problem["postorder_node_indices"], problem["node_child_indices"],
+                batch_shape=batch_shape,
+            )
+        else:
+            site_partials = fn(
+                problem["topology"], problem["sequences"], probs, freqs,
+                batch_shape=batch_shape,
+            )
         loss = tf.reduce_sum(tf.math.log(site_partials))
     targets = [probs, freqs] if wrt_freqs else [probs]
     return tape.gradient(loss, targets)
 
 
 def test_native_gradient_matches_reference(small_problem):
-    ref_grads = _grads(reference, small_problem, wrt_freqs=True)
-    nat_grads = _grads(native_phylogenetic_likelihood, small_problem, wrt_freqs=True)
+    ref_grads = _grads(reference, small_problem, wrt_freqs=True, native=False)
+    nat_grads = _grads(
+        native_phylogenetic_likelihood, small_problem, wrt_freqs=True, native=True
+    )
     for ref_g, nat_g in zip(ref_grads, nat_grads):
         assert nat_g is not None
         assert_allclose(nat_g.numpy(), ref_g.numpy(), rtol=1e-9, atol=1e-9)
@@ -164,8 +169,8 @@ def test_native_gradient_function_mode(small_problem, function_mode):
         if function_mode
         else native_phylogenetic_likelihood
     )
-    ref_grads = _grads(reference, small_problem, wrt_freqs=True)
-    nat_grads = _grads(fn, small_problem, wrt_freqs=True)
+    ref_grads = _grads(reference, small_problem, wrt_freqs=True, native=False)
+    nat_grads = _grads(fn, small_problem, wrt_freqs=True, native=True)
     for ref_g, nat_g in zip(ref_grads, nat_grads):
         assert_allclose(nat_g.numpy(), ref_g.numpy(), rtol=1e-9, atol=1e-9)
 
@@ -233,11 +238,10 @@ def test_native_batched_transition_probs(small_problem):
         p["node_child_indices"],
     )
     ref = reference(
+        p["topology"],
         p["sequences"],
         probs,
         p["frequencies"],
-        p["postorder_node_indices"],
-        p["node_child_indices"],
         batch_shape=tf.shape(p["sequences"])[:1],
     )
     assert_allclose(nat.numpy(), ref.numpy(), rtol=1e-11, atol=1e-11)
@@ -262,11 +266,10 @@ def test_native_batched_transition_probs(small_problem):
         loss = tf.reduce_sum(
             tf.math.log(
                 reference(
+                    p["topology"],
                     p["sequences"],
                     probs_ref,
                     p["frequencies"],
-                    p["postorder_node_indices"],
-                    p["node_child_indices"],
                     batch_shape=tf.shape(p["sequences"])[:1],
                 )
             )
@@ -314,7 +317,7 @@ def test_native_shared_batch_matches_reference(small_problem):
     args = (seq, probs, freqs, p["postorder_node_indices"], p["node_child_indices"])
 
     nat = native_phylogenetic_likelihood(*args)
-    ref = reference(*args, batch_shape=full_batch)
+    ref = reference(p["topology"], seq, probs, freqs, batch_shape=full_batch)
     assert tuple(nat.shape) == tuple(full_batch.numpy())
     assert_allclose(nat.numpy(), ref.numpy(), rtol=1e-11, atol=1e-11)
 
@@ -322,20 +325,23 @@ def test_native_shared_batch_matches_reference(small_problem):
 def test_native_shared_batch_gradient_matches_reference(small_problem):
     p, seq, probs, freqs, full_batch = _rate_category_problem(small_problem, 3)
 
-    def grads(fn, use_batch_shape):
+    def grads(fn, use_batch_shape, native):
         probs_v = tf.Variable(probs)
         freqs_v = tf.Variable(freqs)
         with tf.GradientTape() as tape:
             kwargs = dict(batch_shape=full_batch) if use_batch_shape else {}
-            out = fn(
-                seq, probs_v, freqs_v,
-                p["postorder_node_indices"], p["node_child_indices"], **kwargs,
-            )
+            if native:
+                out = fn(
+                    seq, probs_v, freqs_v,
+                    p["postorder_node_indices"], p["node_child_indices"], **kwargs,
+                )
+            else:
+                out = fn(p["topology"], seq, probs_v, freqs_v, **kwargs)
             loss = tf.reduce_sum(tf.math.log(out))
         return tape.gradient(loss, [probs_v, freqs_v])
 
-    ref_g = grads(reference, use_batch_shape=True)
-    nat_g = grads(native_phylogenetic_likelihood, use_batch_shape=False)
+    ref_g = grads(reference, use_batch_shape=True, native=False)
+    nat_g = grads(native_phylogenetic_likelihood, use_batch_shape=False, native=True)
     for r, n in zip(ref_g, nat_g):
         assert n is not None
         assert n.shape == r.shape
@@ -421,21 +427,23 @@ def test_native_leading_batch_before_sites(small_problem):
     idx = (p["postorder_node_indices"], p["node_child_indices"])
 
     nat = native_phylogenetic_likelihood(seq, probs, freqs, *idx)
-    ref = reference(seq, probs, freqs, *idx, batch_shape=full_batch)
+    ref = reference(p["topology"], seq, probs, freqs, batch_shape=full_batch)
     assert tuple(nat.shape) == (n_samples, sites, M)
     assert_allclose(nat.numpy(), ref.numpy(), rtol=1e-11, atol=1e-11)
 
-    def grad(fn, use_batch_shape):
+    def grad(fn, use_batch_shape, native):
         probs_v = tf.Variable(probs)
         with tf.GradientTape() as tape:
             kwargs = dict(batch_shape=full_batch) if use_batch_shape else {}
-            loss = tf.reduce_sum(
-                tf.math.log(fn(seq, probs_v, freqs, *idx, **kwargs))
-            )
+            if native:
+                out = fn(seq, probs_v, freqs, *idx, **kwargs)
+            else:
+                out = fn(p["topology"], seq, probs_v, freqs, **kwargs)
+            loss = tf.reduce_sum(tf.math.log(out))
         return tape.gradient(loss, probs_v)
 
-    nat_g = grad(native_phylogenetic_likelihood, False)
-    ref_g = grad(reference, True)
+    nat_g = grad(native_phylogenetic_likelihood, False, native=True)
+    ref_g = grad(reference, True, native=False)
     # Gradient reduces back to the probs' own (sites-broadcast) shape.
     assert tuple(nat_g.shape) == tuple(probs.shape)
     assert_allclose(nat_g.numpy(), ref_g.numpy(), rtol=1e-9, atol=1e-9)

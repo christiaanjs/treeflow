@@ -32,6 +32,7 @@ class LeafCTMC(Distribution):
         use_native="auto",
         rescaling="adaptive",
         block_size=1,
+        unroll="auto",
         name="LeafCTMC",
     ):
         parameters = dict(locals())
@@ -61,6 +62,9 @@ class LeafCTMC(Distribution):
         self.rescaling = rescaling
         # Site-blocking width for the native ops (SIMD); 1 = per-site (default).
         self.block_size = block_size
+        # Unroll the (pure-TensorFlow) traversal for a static topology; see
+        # treeflow.traversal.postorder.postorder_node_traversal.
+        self.unroll = unroll
 
     @classmethod
     def _parameter_properties(
@@ -151,12 +155,12 @@ class LeafCTMC(Distribution):
                 block_size=self.block_size,
             )
         return phylogenetic_likelihood(
+            self.transition_probs_tree.topology,
             x_b,
             transition_probs,
             self.frequencies,
-            self.transition_probs_tree.topology.postorder_node_indices,
-            self.transition_probs_tree.topology.node_child_indices,
             batch_shape=sample_and_batch_shape,
+            unroll=self.unroll,
         )
 
     def _log_prob(self, x, seed=None):
@@ -171,15 +175,15 @@ class LeafCTMC(Distribution):
             x
         )
         return phylogenetic_log_likelihood(
+            self.transition_probs_tree.topology,
             x_b,
             transition_probs,
             self.frequencies,
-            self.transition_probs_tree.topology.postorder_node_indices,
-            self.transition_probs_tree.topology.node_child_indices,
             batch_shape=sample_and_batch_shape,
             use_native=self._use_native,
             rescaling=self.rescaling,
             block_size=self.block_size,
+            unroll=self.unroll,
         )
 
 

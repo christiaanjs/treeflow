@@ -32,11 +32,10 @@ def test_phylo_likelihood_hky_beast(
     else:
         func = phylogenetic_likelihood
     site_partials = func(
+        hello_tensor_tree.topology,
         encoded_sequences,
         probs,
         hky_params["frequencies"],
-        hello_tensor_tree.topology.postorder_node_indices,
-        hello_tensor_tree.topology.node_child_indices,
         batch_shape=tf.shape(encoded_sequences)[:1],
     )
     res = tf.reduce_sum(tf.math.log(site_partials))

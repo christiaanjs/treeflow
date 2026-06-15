@@ -152,13 +152,17 @@ class ConstantCoalescent(RootedTreeDistribution):
             ),
         )
 
-    def _default_event_space_bijector(self, topology: TensorflowTreeTopology):
+    def _default_event_space_bijector(
+        self, topology: TensorflowTreeTopology, use_native="auto", unroll="auto"
+    ):
         from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
 
         return TreeRatioBijector(
             topology=topology,
             anchor_heights=get_anchor_heights_tensor(topology, self.sampling_times),
             fixed_sampling_times=True,
+            use_native=use_native,
+            unroll=unroll,
         )
 
 

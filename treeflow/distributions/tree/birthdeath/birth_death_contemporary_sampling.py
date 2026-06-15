@@ -127,7 +127,9 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
     def sampling_times(self):
         return tf.zeros(self.taxon_count, dtype=self.dtype.node_heights)
 
-    def _default_event_space_bijector(self, topology: TensorflowTreeTopology):
+    def _default_event_space_bijector(
+        self, topology: TensorflowTreeTopology, use_native="auto", unroll="auto"
+    ):
         from treeflow.bijectors.tree_ratio_bijector import TreeRatioBijector
 
         anchor_heights = tf.zeros(self.taxon_count - 1, dtype=self.dtype.node_heights)
@@ -135,6 +137,8 @@ class BirthDeathContemporarySampling(RootedTreeDistribution):
             topology=topology,
             anchor_heights=anchor_heights,
             fixed_sampling_times=True,
+            use_native=use_native,
+            unroll=unroll,
         )
 
 
