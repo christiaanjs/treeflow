@@ -78,8 +78,12 @@ def _preorder_unrolled(pre_np, par_np, mapping, input, root_init):
     return tf.nest.map_structure(lambda *xs: tf.stack(xs, axis=0), *vals)
 
 
+@tf.function
 def _preorder_tensorarray(topology, mapping, input, root_init):
-    """Dynamic-topology traversal: a bounded ``tf.while_loop`` over a TensorArray."""
+    """Dynamic-topology traversal: a bounded `tf.while_loop` over a TensorArray.
+    Decorated with `tf.function` so that AutoGraph works.
+    """
+
     taxon_count = topology.taxon_count
     n_internal = taxon_count - 1
     # Convert to tensors so the (symbolic) loop variable can index them: a static
@@ -103,9 +107,6 @@ def _preorder_tensorarray(topology, mapping, input, root_init):
         lambda x, ta: ta.write(n_internal - 1, x), root_init, tensorarrays
     )
 
-    def cond(k, tas):
-        return k < n_internal
-
     def body(k, tas):
         i = preorder_node_indices[k] - taxon_count
         parent_index = parent_indices[i]
@@ -113,10 +114,11 @@ def _preorder_tensorarray(topology, mapping, input, root_init):
         node_input = tf.nest.map_structure(lambda x: x[i], input)
         output = mapping(parent_output, node_input)
         tas = tf.nest.map_structure(lambda x, ta: ta.write(i, x), output, tas)
-        return k + 1, tas
+        return tas
 
-    _, tensorarrays = tf.while_loop(
-        cond, body, (tf.constant(1), tensorarrays),
-        maximum_iterations=n_internal - 1,
-    )
+    for k in range(1, n_internal):
+        tensorarrays = body(
+            k, tensorarrays
+        )  # Autograph is proven faster than tf.while_loop here
+
     return tf.nest.map_structure(lambda x: x.stack(), tensorarrays)

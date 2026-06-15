@@ -9,7 +9,7 @@ from treeflow_test_helpers.ratio_helpers import (
 from treeflow.traversal.preorder import preorder_traversal
 from treeflow.traversal.ratio_transform import move_outside_axis_to_inside
 from tensorflow_probability.python.internal import distribution_util
-
+from treeflow.tree.topology.numpy_tree_topology import StaticNumpyTreeTopology
 
 def c(x):
     return tf.constant(x, dtype=DEFAULT_FLOAT_DTYPE_TF)
@@ -19,7 +19,7 @@ def move_inside_axis_to_outside(x):
     return distribution_util.move_dimension(x, -1, 0)
 
 
-def ratios_to_node_heights_traversal(topology, ratios, anchor_heights):
+def ratios_to_node_heights_traversal(topology, ratios, anchor_heights, unroll=False):
     input = (
         move_inside_axis_to_outside(ratios),
         move_inside_axis_to_outside(anchor_heights),
@@ -31,21 +31,27 @@ def ratios_to_node_heights_traversal(topology, ratios, anchor_heights):
 
     init = input[0][-1] + input[1][-1]
 
-    traversal_res = preorder_traversal(topology, mapping, input, init)
+    traversal_res = preorder_traversal(topology, mapping, input, init, unroll=unroll)
     return move_outside_axis_to_inside(traversal_res)
 
 
-@pytest.mark.parametrize("function_mode", [True, False])
+@pytest.mark.parametrize("unroll", [True, False])
+@pytest.mark.parametrize("function_mode", [True, False, "jit_compile"])
 def test_preorder_traversal_ratio_transform(
-    ratio_test_data: RatioTestData, function_mode: bool
+    ratio_test_data: RatioTestData, function_mode: bool, unroll: bool
 ):
     topology = topology_from_ratio_test_data(ratio_test_data)
     ratios = c(ratio_test_data.ratios)
     anchor_heights = c(ratio_test_data.anchor_heights)
 
+    if unroll and function_mode:
+        topology = StaticNumpyTreeTopology.from_numpy_topology(topology.numpy())
+
     if function_mode:
-        func = tf.function(ratios_to_node_heights_traversal)
+        func = tf.function(
+            ratios_to_node_heights_traversal, jit_compile=function_mode == "jit_compile"
+        )
     else:
         func = ratios_to_node_heights_traversal
-    res = func(topology, ratios, anchor_heights)
+    res = func(topology, ratios, anchor_heights, unroll=unroll)
     assert_allclose(res.numpy(), ratio_test_data.heights)

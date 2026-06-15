@@ -20,7 +20,7 @@ def postorder_node_traversal(
     ],
     input: TInputStructure,
     leaf_init: TOutputStructure,
-    child_read_stack: bool = False,
+    xla_compatible: bool = False,
     unroll: tp.Union[bool, str] = "auto",
 ) -> TOutputStructure:
     """Postorder (children-before-parents) traversal over a fixed topology.
@@ -43,15 +43,12 @@ def postorder_node_traversal(
         Per-internal-node input structure, indexed ``input[node_index - taxon_count]``.
     leaf_init
         Per-leaf output structure (leaves on axis 0), used to seed the traversal.
-    child_read_stack
-        Only used by the dynamic (``TensorArray``) path. How children are read each
-        step:
+    xla_compatible
+        Only affects the dynamic (``TensorArray``) path. How children are read each
+        step and TensorArrays are initialized.
 
-        - ``False`` (default): ``TensorArray.gather`` — a single batched read,
-          fastest for eager/graph execution.
-        - ``True``: per-child ``TensorArray.read`` + ``tf.stack``; ~7% slower in
-          graph mode but its gradient avoids ``TensorListScatterIntoExistingList``
-          (no XLA CPU kernel), so set it when ``jit_compile``-ing the value+gradient.
+        XLA compiling the TensorArray-based traversal may result in quadratic scaling,
+        so this is not actually recommended.
     unroll
         Whether to unroll the traversal into a straight-line graph for the (static)
         topology instead of running a ``tf.while_loop`` over a ``TensorArray``:
@@ -68,6 +65,7 @@ def postorder_node_traversal(
         topology evaluated many times (e.g. VI/MCMC on one tree); the dynamic path is
         the right choice when the topology varies per call.
     """
+
     post_np = tf.get_static_value(topology.postorder_node_indices)
     child_np = tf.get_static_value(topology.child_indices)
     static = post_np is not None and child_np is not None
@@ -79,9 +77,7 @@ def postorder_node_traversal(
         )
     if static and unroll is not False:
         return _postorder_unrolled(post_np, child_np, mapping, input, leaf_init)
-    return _postorder_tensorarray(
-        topology, mapping, input, leaf_init, child_read_stack
-    )
+    return _postorder_tensorarray(topology, mapping, input, leaf_init, xla_compatible)
 
 
 def _postorder_unrolled(post_np, child_np, mapping, input, leaf_init):
@@ -104,25 +100,29 @@ def _postorder_unrolled(post_np, child_np, mapping, input, leaf_init):
     return tf.nest.map_structure(lambda *xs: tf.stack(xs, axis=0), *vals)
 
 
-def _postorder_tensorarray(topology, mapping, input, leaf_init, child_read_stack):
-    """Dynamic-topology traversal: a bounded ``tf.while_loop`` over a TensorArray."""
+@tf.function
+def _postorder_tensorarray(topology, mapping, input, leaf_init, xla_compatible):
+    """Dynamic-topology traversal: a bounded `tf.while_loop` over a TensorArray.
+    Decorated with `tf.function` so that AutoGraph works.
+    """
+
     taxon_count = topology.taxon_count
     node_count = 2 * taxon_count - 1
 
-    # Seed the per-node TensorArrays in one vectorised `unstack` rather than a
-    # sequential per-leaf write loop. We pad the leaf block with zeros for the
-    # internal slots (overwritten during the traversal); `unstack` is used instead
-    # of `scatter` because `TensorListScatterIntoExistingList` has no XLA kernel.
     def init_ta(x):
-        pad = tf.zeros(
-            tf.concat([[node_count - taxon_count], tf.shape(x)[1:]], 0), x.dtype
-        )
-        return tf.TensorArray(
+        ta = tf.TensorArray(
             dtype=x.dtype,
             size=node_count,
             element_shape=x.shape[1:],
             clear_after_read=False,
-        ).unstack(tf.concat([x, pad], 0))
+        )
+        if xla_compatible:
+            pad = tf.zeros(
+                tf.concat([[node_count - taxon_count], tf.shape(x)[1:]], 0), x.dtype
+            )
+            return ta.unstack(tf.concat([x, pad], 0))
+        else:
+            return ta.scatter(tf.range(taxon_count), x)
 
     tensorarrays = tf.nest.map_structure(init_ta, leaf_init)
     postorder_node_indices = topology.postorder_node_indices
@@ -130,17 +130,11 @@ def _postorder_tensorarray(topology, mapping, input, leaf_init, child_read_stack
     num_children = child_indices.shape[-1]
 
     def read_children(ta, node_child_indices):
-        if child_read_stack:
+        if xla_compatible:
             return tf.stack(
                 [ta.read(node_child_indices[c]) for c in range(num_children)]
             )
         return ta.gather(node_child_indices)
-
-    # Explicit bounded while_loop (rather than a `for i in tf.range(...)` relying on
-    # AutoGraph): runs in eager/graph/XLA without conversion, and the static
-    # `maximum_iterations` lets XLA fix the TensorArray list size when compiling.
-    def cond(i, tas):
-        return i < taxon_count - 1
 
     def body(i, tas):
         node_index = postorder_node_indices[i]
@@ -151,13 +145,10 @@ def _postorder_tensorarray(topology, mapping, input, leaf_init, child_read_stack
         node_input = tf.nest.map_structure(lambda x: x[node_index - taxon_count], input)
         topology_data = PostorderTopologyData(child_indices=node_child_indices)
         output = mapping(child_output, node_input, topology_data)
-        tas = tf.nest.map_structure(
-            lambda x, ta: ta.write(node_index, x), output, tas
-        )
-        return i + 1, tas
+        tas = tf.nest.map_structure(lambda x, ta: ta.write(node_index, x), output, tas)
+        return tas
 
-    _, tensorarrays = tf.while_loop(
-        cond, body, (tf.constant(0), tensorarrays),
-        maximum_iterations=taxon_count - 1,
-    )
+    for i in range(taxon_count - 1):
+        # Autograph is proven faster than tf.while_loop here
+        tensorarrays = body(i, tensorarrays)
     return tf.nest.map_structure(lambda x: x.stack(), tensorarrays)
