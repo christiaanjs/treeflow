@@ -87,13 +87,48 @@ def test_tf_rescaled_gradient_matches(small):
     assert_allclose(grads(True).numpy(), grads(False).numpy(), rtol=1e-9, atol=1e-10)
 
 
-def test_tf_rescaled_avoids_underflow():
+@pytest.mark.parametrize("unroll", [True, False])
+def test_tf_rescaled_avoids_underflow(unroll):
+    # 600 taxa exercises the likelihood traversal well past the profiler's sizes;
+    # parametrising over unroll checks the unrolled (static-topology) path scales.
     p = _make_problem(600, 4, 4, seed=5)
     batch = tf.shape(p["sequences"])[:1]
-    unrescaled = phylogenetic_likelihood(*_args(p), batch_shape=batch)
-    rescaled = phylogenetic_log_likelihood_rescaled(*_args(p), batch_shape=batch)
+    unrescaled = phylogenetic_likelihood(*_args(p), batch_shape=batch, unroll=unroll)
+    rescaled = phylogenetic_log_likelihood_rescaled(
+        *_args(p), batch_shape=batch, unroll=unroll
+    )
     assert np.all(unrescaled.numpy() == 0.0)
     assert np.all(np.isfinite(rescaled.numpy()))
+
+
+def _has_while(concrete_fn):
+    return any("While" in op.type for op in concrete_fn.graph.get_operations())
+
+
+def test_tf_likelihood_unrolls_at_scale():
+    """>64 taxa: with a captured (constant) topology the likelihood traversal
+    compiles to a straight-line graph (no while_loop) when unrolled, matches the
+    dynamic result, and a tf.while_loop otherwise. This is the direct path; routing
+    the topology through a JointDistribution decomposes it and only folds for small
+    trees, which is why the unrolled path there is limited to small datasets."""
+    p = _make_problem(128, 4, 8, seed=4)
+    topology = p["topology"]
+    batch = tf.shape(p["sequences"])[:1]
+    static = phylogenetic_likelihood(*_args(p), batch_shape=batch, unroll=True)
+    dynamic = phylogenetic_likelihood(*_args(p), batch_shape=batch, unroll=False)
+    assert_allclose(static.numpy(), dynamic.numpy(), rtol=1e-12, atol=1e-12)
+
+    def concrete(unroll):
+        return tf.function(
+            lambda s, pr, f: phylogenetic_likelihood(
+                topology, s, pr, f, batch_shape=tf.shape(s)[:1], unroll=unroll
+            )
+        ).get_concrete_function(
+            p["sequences"], p["transition_probs"], p["frequencies"]
+        )
+
+    assert not _has_while(concrete(unroll=True))  # unrolled at 128 taxa
+    assert _has_while(concrete(unroll=False))  # dynamic while_loop
 
 
 # ---------------------------------------------------------------------------
