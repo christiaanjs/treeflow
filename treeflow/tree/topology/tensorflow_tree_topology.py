@@ -43,11 +43,26 @@ class TensorflowTreeTopologyAttrs(
 
     @property
     def preorder_node_indices(self) -> tf.Tensor:
+        # Internal nodes (id >= taxon_count) in preorder. Prefer a statically-known
+        # result: when the inputs are constant
+        # (e.g. a topology built from a concrete tree, even when captured inside a
+        # tf.function), fold to a constant tensor 
         preorder_indices = self.preorder_indices
+        taxon_count = self.taxon_count
+        
+        static_indices = tf.get_static_value(preorder_indices)
+        static_taxon = tf.get_static_value(taxon_count)
+        if (
+            static_indices is not None
+            and static_taxon is not None
+            and np.ndim(static_indices) == 1
+        ):
+            static_indices = np.asarray(static_indices)
+            return tf.constant(static_indices[static_indices >= int(static_taxon)])
         return tf.boolean_mask(
             preorder_indices,
-            preorder_indices >= self.taxon_count,
-            axis=tf.rank(preorder_indices) - 1,
+            preorder_indices >= taxon_count,
+            axis=ps.rank(preorder_indices) - 1,
         )
 
 
