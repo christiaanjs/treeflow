@@ -82,8 +82,13 @@ def _preorder_tensorarray(topology, mapping, input, root_init):
     """Dynamic-topology traversal: a bounded ``tf.while_loop`` over a TensorArray."""
     taxon_count = topology.taxon_count
     n_internal = taxon_count - 1
-    preorder_node_indices = topology.preorder_node_indices
-    parent_indices = topology.parent_indices[taxon_count:] - taxon_count
+    # Convert to tensors so the (symbolic) loop variable can index them: a static
+    # NumPy topology exposes these as NumPy arrays, which can't be indexed by a
+    # traced tf.while_loop counter.
+    preorder_node_indices = tf.convert_to_tensor(topology.preorder_node_indices)
+    parent_indices = tf.convert_to_tensor(topology.parent_indices)[taxon_count:] - (
+        taxon_count
+    )
 
     tensorarrays = tf.nest.map_structure(
         lambda x: tf.TensorArray(

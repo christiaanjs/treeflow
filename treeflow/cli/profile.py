@@ -52,6 +52,7 @@ from treeflow.model.phylo_model import (
 )
 from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioBijector
 from treeflow.traversal.anchor_heights import get_anchor_heights
+from treeflow.tree.topology.numpy_tree_topology import StaticNumpyTreeTopology
 from treeflow.cli.inference_common import EXAMPLE_PHYLO_MODEL_DICT
 from treeflow.acceleration.native import is_available as native_is_available
 from treeflow.acceleration.native import (
@@ -224,12 +225,22 @@ def profile_dataset(
     }
     other_keys = list(other_latents)
 
+    # Build the tree from a *static* topology and rebuild it as in-graph constants
+    # inside `assemble` (which runs in each timed trace). This is the hybrid trick:
+    # the captured tensor topology is re-materialised as a Placeholder when routed
+    # through the JointDistribution for >64 taxa (so the static/unrolled engine
+    # would fail there), whereas in-trace constants fold at any size -> the static
+    # engine unrolls through the full joint too.
+    static_topology = StaticNumpyTreeTopology(tree.topology.parent_indices.numpy())
+
     def assemble(heights, *other_values) -> tp.Dict[str, object]:
-        # Build the tree from the captured dataset topology (a constant), not the
-        # model's *sampled* tree: the sampled topology's indices are op outputs that
-        # tf.get_static_value only folds for small trees, so the unrolled (static)
-        # traversal would otherwise fail to detect the topology on larger datasets.
-        latents = {tree_field: tree.with_node_heights(heights)}
+        latents = {
+            tree_field: TensorflowRootedTree(
+                topology=static_topology.to_constant_tensor_topology(),
+                node_heights=heights,
+                sampling_times=tree.sampling_times,
+            )
+        }
         latents.update(dict(zip(other_keys, other_values)))
         return latents
 
