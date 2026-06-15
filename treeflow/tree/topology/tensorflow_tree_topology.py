@@ -35,6 +35,16 @@ class TensorflowTreeTopologyAttrs(
     @property
     def postorder_node_indices(self) -> tf.Tensor:
         taxon_count = self.taxon_count
+        # Prefer a statically-known result so the unrolled traversal drivers can fold
+        # it via tf.get_static_value even inside a tf.function (whether a captured
+        # `tf.range` constant-folds in-graph varies across TF versions; folding a
+        # numpy `arange` into a constant does not).
+        static_taxon = tf.get_static_value(taxon_count)
+        if static_taxon is not None:
+            tc = int(static_taxon)
+            return tf.constant(
+                np.arange(tc, 2 * tc - 1), dtype=self.parent_indices.dtype
+            )
         return tf.range(taxon_count, 2 * taxon_count - 1, dtype=taxon_count.dtype)
 
     @property
