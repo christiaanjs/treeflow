@@ -7,9 +7,11 @@ import tensorflow as tf
 from treeflow.tree.taxon_set import TaxonSet, TupleTaxonSet
 from treeflow.tree.topology.base_tree_topology import (
     AbstractTreeTopology,
-    BaseTreeTopology,
 )
-from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
+from treeflow.tree.topology.numpy_tree_topology import (
+    NumpyTreeTopology,
+    StaticNumpyTreeTopology,
+)
 import treeflow.tree.topology.numpy_topology_operations as np_top_ops
 import tensorflow_probability.python.internal.prefer_static as ps
 from treeflow.tf_util import AttrsLengthMixin
@@ -139,7 +141,7 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
 
 
 def numpy_topology_to_tensor(
-    topology: NumpyTreeTopology, dtype=tf.int32
+    topology: tp.Union[NumpyTreeTopology, StaticNumpyTreeTopology], dtype=tf.int32
 ) -> TensorflowTreeTopology:
     parent_indices = topology.parent_indices
     child_indices = np_top_ops.get_child_indices(parent_indices)

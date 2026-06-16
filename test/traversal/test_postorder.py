@@ -19,7 +19,7 @@ def traversal_likelihood(
     frequencies,
     topology: TensorflowTreeTopology,
     batch_rank=1,
-    unroll: bool = False,
+    unroll: str = "auto",
     xla_compatible: bool = False,
 ):
     child_transition_probs_child_first = tf.gather(
@@ -58,12 +58,12 @@ def traversal_likelihood(
 
 @pytest.mark.parametrize("xla_compatible", [True, False])
 @pytest.mark.parametrize("function_mode", [True, False])
-@pytest.mark.parametrize("unroll", [True, False])
+@pytest.mark.parametrize("unroll", ["unrolled", "tensorarray", "while_loop"])
 def test_postorder_node_traversal_phylo_likelihood(
     hello_tensor_tree: TensorflowRootedTree,
     hello_alignment: Alignment,
     function_mode: bool,
-    unroll: bool,
+    unroll: str,
     xla_compatible: bool,
     hky_params,
     hello_hky_log_likelihood: float,
@@ -81,7 +81,9 @@ def test_postorder_node_traversal_phylo_likelihood(
     else:
         func = traversal_likelihood
 
-    if unroll and function_mode:
+    if unroll == "unrolled" and function_mode:
+        # 'unrolled' needs the topology index values statically foldable inside the
+        # traced function; the static NumPy topology guarantees that.
         topology = StaticNumpyTreeTopology.from_numpy_topology(
             hello_tensor_tree.topology.numpy()
         )

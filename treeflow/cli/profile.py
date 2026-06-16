@@ -67,15 +67,18 @@ DTYPES = {"float32": tf.float32, "float64": tf.float64}
 DENSITY_COMPONENTS = ["likelihood", "prior", "overhead"]
 
 # How each engine evaluates the tree traversals (likelihood + ratio transform):
-#   native  -- the hand-written C++ ops
-#   static  -- pure TensorFlow, traversal unrolled into a straight-line graph for
-#              the (statically known) topology
-#   dynamic -- pure TensorFlow, traversal as a tf.while_loop over a TensorArray
-#              (handles a topology that is not known at trace time)
+#   native      -- the hand-written C++ ops
+#   static      -- pure TF, straight-line unrolled graph, no TensorArray
+#                  (unroll="unrolled"); fastest, needs a statically-known topology
+#   tensorarray -- pure TF, Python-unrolled loop over a TensorArray
+#                  (unroll="tensorarray"); needs only a static node count
+#   dynamic     -- pure TF, tf.while_loop over a TensorArray (unroll="while_loop");
+#                  handles a topology not known at trace time
 ENGINE_CONFIGS = {
     "native": dict(use_native=True, unroll="auto"),
-    "static": dict(use_native=False, unroll=True),
-    "dynamic": dict(use_native=False, unroll=False),
+    "static": dict(use_native=False, unroll="unrolled"),
+    "tensorarray": dict(use_native=False, unroll="tensorarray"),
+    "dynamic": dict(use_native=False, unroll="while_loop"),
 }
 ENGINE_ALIASES = {"tf": "dynamic"}  # back-compat: "tf" == the dynamic TF engine
 
@@ -344,7 +347,7 @@ def profile_dataset(
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
     ratios = tf.identity(
         NodeHeightRatioBijector(
-            tree.topology, anchor_heights, use_native=False, unroll=False
+            tree.topology, anchor_heights, use_native=False, unroll="auto"
         ).inverse(node_heights)
     )
 

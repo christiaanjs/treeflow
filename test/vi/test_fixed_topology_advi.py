@@ -36,17 +36,17 @@ def _build_pinned(model_file, tree, alignment, use_native, unroll):
 
 
 @pytest.mark.parametrize("use_native", USE_NATIVE_PARAMS)
-@pytest.mark.parametrize("unroll", [True, False])
+@pytest.mark.parametrize("unroll", ["unrolled", "while_loop"])
 def test_fit_fixed_topology_native_and_unroll(
     actual_model_file, hello_tensor_tree, hello_alignment, use_native, unroll
 ):
     """Fixed-topology VI runs through both the native and pure-TensorFlow engines,
-    with the traversals either unrolled or dynamic.
+    with the traversals either fully unrolled or run as a dynamic while_loop.
 
-    With ``unroll=True`` and ``use_native=False`` this also *verifies unrolling*: the
-    traversal drivers raise if ``unroll=True`` but the (captured) topology is not
-    statically foldable, so a successful fit means the likelihood and ratio-transform
-    traversals were unrolled inside the traced VI step.
+    With ``unroll="unrolled"`` and ``use_native=False`` this also *verifies unrolling*:
+    that mode raises if the (captured) topology index values are not statically
+    foldable, so a successful fit means the likelihood and ratio-transform traversals
+    were unrolled inside the traced VI step.
     """
     tf.random.set_seed(1)
     pinned = _build_pinned(
@@ -62,24 +62,24 @@ def test_fit_fixed_topology_native_and_unroll(
         unroll=unroll,
         sample_size=2,
     )
-    # Completing all steps is the end-to-end check: with unroll=True the traversal
-    # drivers would have *raised* during the traced fit if the topology weren't
-    # statically foldable, so reaching here means the traversals were unrolled.
+    # Completing all steps is the end-to-end check: with unroll="unrolled" the
+    # traversal drivers would have *raised* during the traced fit if the topology
+    # weren't statically foldable, so reaching here means the traversals were unrolled.
     # (ELBO finiteness is a separate, numerically-fragile VI concern, not asserted.)
     assert tuple(results.loss.shape) == (num_steps,)
 
 
-@pytest.mark.parametrize("unroll", [True, False])
+@pytest.mark.parametrize("unroll", ["unrolled", "while_loop"])
 def test_fit_fixed_topology_static_numpy_topology(
     actual_model_file, hello_tensor_tree, hello_alignment, unroll
 ):
     """Fixed-topology VI accepts a static NumPy topology pin.
 
     The bijector keeps the static topology for the ratio transform (whose traversal
-    folds the static indices and unrolls when ``unroll=True``) and rebuilds it as an
-    in-graph-constant TensorflowTreeTopology for the tree value the JointDistribution
-    consumes. Completing all steps with ``unroll=True`` means the traversals were
-    unrolled (they raise otherwise)."""
+    folds the static indices and unrolls when ``unroll="unrolled"``) and rebuilds it
+    as an in-graph-constant TensorflowTreeTopology for the tree value the
+    JointDistribution consumes. Completing all steps with ``unroll="unrolled"`` means
+    the traversals were unrolled (it raises otherwise)."""
     tf.random.set_seed(1)
     pinned = _build_pinned(
         actual_model_file, hello_tensor_tree, hello_alignment, False, unroll

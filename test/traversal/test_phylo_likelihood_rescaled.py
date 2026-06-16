@@ -87,10 +87,10 @@ def test_tf_rescaled_gradient_matches(small):
     assert_allclose(grads(True).numpy(), grads(False).numpy(), rtol=1e-9, atol=1e-10)
 
 
-@pytest.mark.parametrize("unroll", [True, False])
+@pytest.mark.parametrize("unroll", ["unrolled", "tensorarray", "while_loop"])
 def test_tf_rescaled_avoids_underflow(unroll):
     # 600 taxa exercises the likelihood traversal well past the profiler's sizes;
-    # parametrising over unroll checks the unrolled (static-topology) path scales.
+    # parametrising over the traversal modes checks each scales.
     p = _make_problem(600, 4, 4, seed=5)
     batch = tf.shape(p["sequences"])[:1]
     unrescaled = phylogenetic_likelihood(*_args(p), batch_shape=batch, unroll=unroll)

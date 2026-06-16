@@ -1,6 +1,11 @@
 import typing as tp
 import tensorflow as tf
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
+from treeflow.traversal.postorder import (
+    UNROLL_MODES,
+    _resolve_unroll_mode,
+    static_taxon_count,
+)
 
 TInputStructure = tp.TypeVar("TInputStructure")
 TOutputStructure = tp.TypeVar("TOutputStructure")
@@ -11,7 +16,7 @@ def preorder_traversal(
     mapping: tp.Callable[[TOutputStructure, TInputStructure], TOutputStructure],
     input: TInputStructure,
     root_init: TOutputStructure,
-    unroll: tp.Union[bool, str] = "auto",
+    unroll: str = "auto",
 ) -> TOutputStructure:
     """Preorder (parents-before-children) traversal over a fixed topology.
 
@@ -32,34 +37,41 @@ def preorder_traversal(
     root_init
         Output structure for the root node, used to seed the traversal.
     unroll
-        Whether to unroll the traversal into a straight-line graph for the (static)
-        topology instead of running a ``tf.while_loop`` over a ``TensorArray``:
+        Which traversal strategy to use -- one of ``"auto"`` (default), ``"unrolled"``,
+        ``"tensorarray"`` or ``"while_loop"``:
 
-        - ``"auto"`` (default): unroll iff the topology index tensors are statically
-          known (``tf.get_static_value`` succeeds — true when the topology is a
-          constant/eager tensor rather than a ``tf.function`` placeholder).
-        - ``True``/``False``: force on/off (``True`` raises if not static).
+        - ``"unrolled"``: a straight-line Python-unrolled graph with **no
+          TensorArray**. Requires the topology index *values* to be statically known
+          (``tf.get_static_value`` folds them). Fastest overall.
+        - ``"tensorarray"``: a Python-unrolled loop that writes a ``TensorArray``.
+          Requires only the node *count* (index shape) to be static.
+        - ``"while_loop"``: an AutoGraph ``tf.while_loop`` over a ``TensorArray``.
+          Requires nothing static; O(1) graph, for a varying or very large topology.
+        - ``"auto"``: ``"unrolled"`` if values static, else ``"tensorarray"`` if count
+          static, else ``"while_loop"``.
 
-        The unrolled graph is much faster (linear, no per-step loop overhead) and is
-        differentiated by a single reverse sweep, at the cost of a per-topology
-        trace/compile whose size grows with the node count. Prefer it for a fixed
-        topology evaluated many times; the dynamic path handles a varying topology.
+        XLA / ``jit_compile`` notes (empirically verified): ``"unrolled"`` is the only
+        mode that XLA-compiles for **value+gradient** -- under ``jit_compile`` always
+        use it (a static-value topology), because the TensorArray modes' backward pass
+        materialises a ``TensorList`` that cannot cross the XLA/TF boundary. The
+        TensorArray modes XLA-compile only the **forward** pass. Wrapping the
+        TensorArray traversal in an inner ``tf.function`` does not shield it from an
+        enclosing ``jit_compile`` (compilation propagates through).
     """
-    # `preorder_node_indices` is static-preferring (see TensorflowTreeTopology), so
-    # it folds via get_static_value when the topology is constant -- including inside
-    # a tf.function with a captured topology -- enabling the unrolled path there too.
+    # `preorder_node_indices` is static-preferring (see TensorflowTreeTopology), so it
+    # folds via get_static_value when the topology is constant -- including inside a
+    # tf.function with a captured topology -- enabling the unrolled path there too.
     pre_np = tf.get_static_value(topology.preorder_node_indices)
     par_np = tf.get_static_value(topology.parent_indices)
-    static = pre_np is not None and par_np is not None
-    if unroll is True and not static:
-        raise ValueError(
-            "unroll=True requires a statically known topology, but "
-            "tf.get_static_value could not fold the topology index tensors "
-            "(is the topology a tf.function argument rather than a constant?)."
-        )
-    if static and unroll is not False:
+    values_static = pre_np is not None and par_np is not None
+    count_static = static_taxon_count(topology) is not None
+
+    mode = _resolve_unroll_mode(unroll, values_static, count_static)
+    if mode == "unrolled":
         return _preorder_unrolled(pre_np, par_np, mapping, input, root_init)
-    return _preorder_tensorarray(topology, mapping, input, root_init)
+    return _preorder_tensorarray(
+        topology, mapping, input, root_init, while_loop=(mode == "while_loop")
+    )
 
 
 def _preorder_unrolled(pre_np, par_np, mapping, input, root_init):
@@ -79,16 +91,15 @@ def _preorder_unrolled(pre_np, par_np, mapping, input, root_init):
 
 
 @tf.function
-def _preorder_tensorarray(topology, mapping, input, root_init):
-    """Dynamic-topology traversal: a bounded `tf.while_loop` over a TensorArray.
-    Decorated with `tf.function` so that AutoGraph works.
+def _preorder_tensorarray(topology, mapping, input, root_init, while_loop):
+    """TensorArray traversal. ``while_loop=False`` Python-unrolls the loop (needs a
+    static node count); ``while_loop=True`` runs an AutoGraph ``tf.while_loop``.
+    Decorated with ``tf.function`` so AutoGraph converts the ``for k in tf.range(...)``
+    loop into a ``while_loop``.
     """
-
     taxon_count = topology.taxon_count
     n_internal = taxon_count - 1
-    # Convert to tensors so the (symbolic) loop variable can index them: a static
-    # NumPy topology exposes these as NumPy arrays, which can't be indexed by a
-    # traced tf.while_loop counter.
+    # Tensors so a (possibly symbolic) loop variable can index them.
     preorder_node_indices = tf.convert_to_tensor(topology.preorder_node_indices)
     parent_indices = tf.convert_to_tensor(topology.parent_indices)[taxon_count:] - (
         taxon_count
@@ -113,11 +124,13 @@ def _preorder_tensorarray(topology, mapping, input, root_init):
         parent_output = tf.nest.map_structure(lambda ta: ta.read(parent_index), tas)
         node_input = tf.nest.map_structure(lambda x: x[i], input)
         output = mapping(parent_output, node_input)
-        tas = tf.nest.map_structure(lambda x, ta: ta.write(i, x), output, tas)
-        return tas
+        return tf.nest.map_structure(lambda x, ta: ta.write(i, x), output, tas)
 
-    for k in range(1, n_internal):
-        # Autograph can still unroll the loop
-        tensorarrays = body(k, tensorarrays)
-
+    if while_loop:
+        for k in tf.range(1, n_internal):  # AutoGraph -> tf.while_loop
+            tensorarrays = body(k, tensorarrays)
+    else:
+        # Static node count -> Python-unrolled loop (no while_loop).
+        for k in range(1, static_taxon_count(topology) - 1):
+            tensorarrays = body(k, tensorarrays)
     return tf.nest.map_structure(lambda x: x.stack(), tensorarrays)

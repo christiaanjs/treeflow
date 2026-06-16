@@ -4,7 +4,7 @@ from treeflow.traversal.ratio_transform import ratios_to_node_heights
 from treeflow_test_helpers.ratio_helpers import topology_from_ratio_test_data
 
 
-@pytest.mark.parametrize("unroll", ["auto", True, False])
+@pytest.mark.parametrize("unroll", ["auto", "unrolled", "tensorarray", "while_loop"])
 def test_ratios_to_node_heights(ratio_test_data, unroll):
     topology = topology_from_ratio_test_data(ratio_test_data)
     res = ratios_to_node_heights(

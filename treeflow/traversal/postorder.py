@@ -7,10 +7,66 @@ from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopolo
 TInputStructure = tp.TypeVar("TInputStructure")
 TOutputStructure = tp.TypeVar("TOutputStructure")
 
+# The three traversal strategies `unroll` selects between (plus "auto"):
+#   "unrolled"    -- straight-line Python-unrolled graph, NO TensorArray. Needs the
+#                    topology index *values* statically known. Fastest overall, and
+#                    the only path that XLA-compiles for value+gradient.
+#   "tensorarray" -- Python-unrolled loop that writes a TensorArray. Needs only the
+#                    node *count* (shape) static; the index values may be tensors.
+#   "while_loop"  -- AutoGraph `tf.while_loop` over a TensorArray. Needs nothing
+#                    static; O(1) graph, the right choice for a varying topology.
+UNROLL_MODES = ("unrolled", "tensorarray", "while_loop")
+
 
 @attr.attrs(auto_attribs=True)
 class PostorderTopologyData:
     child_indices: tf.Tensor
+
+
+def static_taxon_count(topology) -> tp.Optional[int]:
+    """The taxon count as a Python int if statically known, else ``None``.
+
+    ``topology.taxon_count`` is prefer_static (derived from ``parent_indices``'s
+    shape, which ``tf.function`` preserves), so it resolves to a concrete value when
+    the node count is known -- unlike derived index arrays such as
+    ``preorder_node_indices``, whose static shape a ``boolean_mask`` can drop even
+    when the input shape is known."""
+    tc = tf.get_static_value(topology.taxon_count)
+    return None if tc is None else int(tc)
+
+
+def _resolve_unroll_mode(unroll, values_static, count_static):
+    """Map the ``unroll`` argument to a concrete traversal mode, validating that the
+    requested mode's staticness requirement is met."""
+    if unroll == "auto":
+        # Prefer the no-TensorArray unroll: it is the fastest overall and the only
+        # path that XLA-compiles for value+gradient. Fall back to a TensorArray loop
+        # (unrolled while the count is static, otherwise a dynamic while_loop).
+        if values_static:
+            return "unrolled"
+        if count_static:
+            return "tensorarray"
+        return "while_loop"
+    if unroll == "unrolled":
+        if not values_static:
+            raise ValueError(
+                "unroll='unrolled' requires statically-known topology index *values* "
+                "(tf.get_static_value must fold them); the topology is dynamic. Use "
+                "'tensorarray' (static count) or 'while_loop' (fully dynamic)."
+            )
+        return "unrolled"
+    if unroll == "tensorarray":
+        if not count_static:
+            raise ValueError(
+                "unroll='tensorarray' requires a statically-known node *count* "
+                "(topology index shape); it is unknown. Use 'while_loop'."
+            )
+        return "tensorarray"
+    if unroll == "while_loop":
+        return "while_loop"
+    raise ValueError(
+        f"unroll must be 'auto' or one of {UNROLL_MODES}; got {unroll!r}."
+    )
 
 
 def postorder_node_traversal(
@@ -21,7 +77,7 @@ def postorder_node_traversal(
     input: TInputStructure,
     leaf_init: TOutputStructure,
     xla_compatible: bool = False,
-    unroll: tp.Union[bool, str] = "auto",
+    unroll: str = "auto",
 ) -> TOutputStructure:
     """Postorder (children-before-parents) traversal over a fixed topology.
 
@@ -44,40 +100,58 @@ def postorder_node_traversal(
     leaf_init
         Per-leaf output structure (leaves on axis 0), used to seed the traversal.
     xla_compatible
-        Only affects the dynamic (``TensorArray``) path. How children are read each
-        step and TensorArrays are initialized.
-
-        XLA compiling the TensorArray-based traversal may result in quadratic scaling,
-        so this is not actually recommended.
+        Only affects the TensorArray paths (``"tensorarray"``/``"while_loop"``). When
+        ``True`` the TensorArray is seeded with ``unstack`` and children are read with
+        per-child ``read`` + ``stack``; when ``False`` (default) it is seeded with
+        ``scatter`` and children are read with ``gather``. ``scatter``/``gather`` have
+        no XLA kernel, so ``xla_compatible=True`` is required to XLA-compile the
+        TensorArray *forward* pass (see the ``unroll`` notes on XLA). It can scale
+        quadratically under XLA, so it is for forward-only XLA use, not a default.
     unroll
-        Whether to unroll the traversal into a straight-line graph for the (static)
-        topology instead of running a loop over a ``TensorArray``:
+        Which traversal strategy to use -- one of ``"auto"`` (default), ``"unrolled"``,
+        ``"tensorarray"`` or ``"while_loop"``:
 
-        - ``"auto"`` (default): unroll iff the topology index tensors are statically
-          known (``tf.get_static_value`` succeeds — true when the topology is a
-          constant/eager tensor rather than a ``tf.function`` placeholder).
-        - ``True``/``False``: force on/off (``True`` raises if the topology is not
-          static).
+        - ``"unrolled"``: a straight-line Python-unrolled graph with **no
+          TensorArray**. Requires the topology index *values* to be statically known
+          (``tf.get_static_value`` folds them -- true for a constant/eager topology).
+          Fastest overall (linear, no per-step loop overhead; one reverse-sweep
+          gradient).
+        - ``"tensorarray"``: a Python-unrolled loop that writes a ``TensorArray``.
+          Requires only the node *count* (index shape) to be static; the index values
+          may be runtime tensors (e.g. a topology routed through a JointDistribution).
+        - ``"while_loop"``: an AutoGraph ``tf.while_loop`` over a ``TensorArray``.
+          Requires nothing static; O(1) graph, so it is the right choice when the
+          topology (or its size) varies per call or is very large.
+        - ``"auto"``: pick the fastest feasible -- ``"unrolled"`` if the values are
+          static, else ``"tensorarray"`` if the count is static, else ``"while_loop"``.
 
-        The unrolled graph is much faster (linear, no per-step loop overhead) and is
-        differentiated by a single reverse sweep, at the cost of a per-topology
-        trace/compile whose size grows with the node count. Prefer it for a fixed
-        topology evaluated many times (e.g. VI/MCMC on one tree); the dynamic path is
-        the right choice when the topology varies per call.
+        XLA / ``jit_compile`` notes (empirically verified):
+
+        - ``"unrolled"`` is the **only** mode that XLA-compiles for **value+gradient**.
+          Under ``jit_compile`` always use ``"unrolled"`` (so a static-value topology),
+          since the TensorArray modes' backward pass materialises a ``TensorList`` that
+          cannot cross the XLA/TF boundary.
+        - The ``"tensorarray"``/``"while_loop"`` modes XLA-compile only the **forward**
+          pass, and only with ``xla_compatible=True`` (the default scatter/gather ops
+          have no XLA kernel). Their value+gradient never XLA-compiles regardless of
+          ``xla_compatible``.
+        - Wrapping a TensorArray traversal in an inner ``tf.function`` does **not**
+          shield it from an enclosing ``jit_compile``: the compilation propagates
+          through (even with ``jit_compile=False`` on the inner function), so it is not
+          an escape hatch for the above.
     """
+    post_static = tf.get_static_value(topology.postorder_node_indices)
+    child_static = tf.get_static_value(topology.child_indices)
+    values_static = post_static is not None and child_static is not None
+    count_static = static_taxon_count(topology) is not None
 
-    post_np = tf.get_static_value(topology.postorder_node_indices)
-    child_np = tf.get_static_value(topology.child_indices)
-    static = post_np is not None and child_np is not None
-    if unroll is True and not static:
-        raise ValueError(
-            "unroll=True requires a statically known topology, but "
-            "tf.get_static_value could not fold the topology index tensors "
-            "(is the topology a tf.function argument rather than a constant?)."
-        )
-    if static and unroll is not False:
-        return _postorder_unrolled(post_np, child_np, mapping, input, leaf_init)
-    return _postorder_tensorarray(topology, mapping, input, leaf_init, xla_compatible)
+    mode = _resolve_unroll_mode(unroll, values_static, count_static)
+    if mode == "unrolled":
+        return _postorder_unrolled(post_static, child_static, mapping, input, leaf_init)
+    return _postorder_tensorarray(
+        topology, mapping, input, leaf_init, xla_compatible,
+        while_loop=(mode == "while_loop"),
+    )
 
 
 def _postorder_unrolled(post_np, child_np, mapping, input, leaf_init):
@@ -101,13 +175,21 @@ def _postorder_unrolled(post_np, child_np, mapping, input, leaf_init):
 
 
 @tf.function
-def _postorder_tensorarray(topology, mapping, input, leaf_init, xla_compatible):
-    """Dynamic-topology traversal: a bounded `tf.while_loop` over a TensorArray.
-    Decorated with `tf.function` so that AutoGraph works.
+def _postorder_tensorarray(
+    topology, mapping, input, leaf_init, xla_compatible, while_loop
+):
+    """TensorArray traversal. ``while_loop=False`` Python-unrolls the loop (needs a
+    static node count); ``while_loop=True`` runs an AutoGraph ``tf.while_loop`` (no
+    staticness required). Decorated with ``tf.function`` so AutoGraph converts the
+    ``for i in tf.range(...)`` loop into a ``while_loop``.
     """
-
     taxon_count = topology.taxon_count
     node_count = 2 * taxon_count - 1
+    # Tensors so a (possibly symbolic) loop variable can index them: a static NumPy
+    # topology exposes these as NumPy arrays, which a while_loop counter can't index.
+    postorder_node_indices = tf.convert_to_tensor(topology.postorder_node_indices)
+    child_indices = tf.convert_to_tensor(topology.child_indices)
+    num_children = child_indices.shape[-1]
 
     def init_ta(x):
         ta = tf.TensorArray(
@@ -121,13 +203,9 @@ def _postorder_tensorarray(topology, mapping, input, leaf_init, xla_compatible):
                 tf.concat([[node_count - taxon_count], tf.shape(x)[1:]], 0), x.dtype
             )
             return ta.unstack(tf.concat([x, pad], 0))
-        else:
-            return ta.scatter(tf.range(taxon_count), x)
+        return ta.scatter(tf.range(taxon_count), x)
 
     tensorarrays = tf.nest.map_structure(init_ta, leaf_init)
-    postorder_node_indices = topology.postorder_node_indices
-    child_indices = topology.child_indices
-    num_children = child_indices.shape[-1]
 
     def read_children(ta, node_child_indices):
         if xla_compatible:
@@ -145,10 +223,13 @@ def _postorder_tensorarray(topology, mapping, input, leaf_init, xla_compatible):
         node_input = tf.nest.map_structure(lambda x: x[node_index - taxon_count], input)
         topology_data = PostorderTopologyData(child_indices=node_child_indices)
         output = mapping(child_output, node_input, topology_data)
-        tas = tf.nest.map_structure(lambda x, ta: ta.write(node_index, x), output, tas)
-        return tas
+        return tf.nest.map_structure(lambda x, ta: ta.write(node_index, x), output, tas)
 
-    for i in range(taxon_count - 1):
-        # Autograph still unrolls the loop
-        tensorarrays = body(i, tensorarrays)
+    if while_loop:
+        for i in tf.range(taxon_count - 1):  # AutoGraph -> tf.while_loop
+            tensorarrays = body(i, tensorarrays)
+    else:
+        # Static node count -> Python-unrolled loop (no while_loop).
+        for i in range(static_taxon_count(topology) - 1):
+            tensorarrays = body(i, tensorarrays)
     return tf.nest.map_structure(lambda x: x.stack(), tensorarrays)
