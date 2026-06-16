@@ -47,11 +47,27 @@ def test_preorder_traversal_ratio_transform(
     if unroll == "unrolled" and function_mode:
         topology = StaticNumpyTreeTopology.from_numpy_topology(topology.numpy())
 
+    def gradient_func(topology, ratios, anchor_heights, **kwargs):
+        with tf.GradientTape() as tape:
+            tape.watch(ratios)
+            res = tf.reduce_sum(
+                ratios_to_node_heights_traversal(
+                    topology, ratios, anchor_heights, **kwargs
+                )
+            )
+        return tape.gradient(res, [ratios])
+
     if function_mode:
         func = tf.function(
             ratios_to_node_heights_traversal, jit_compile=function_mode == "jit_compile"
+        )
+        gradient_func = tf.function(
+            gradient_func, jit_compile=function_mode == "jit_compile"
         )
     else:
         func = ratios_to_node_heights_traversal
     res = func(topology, ratios, anchor_heights, unroll=unroll)
     assert_allclose(res.numpy(), ratio_test_data.heights)
+
+    grad_res = gradient_func(topology, ratios, anchor_heights, unroll=unroll)
+    assert all(g is not None for g in grad_res)
