@@ -51,7 +51,7 @@ def postorder_node_traversal(
         so this is not actually recommended.
     unroll
         Whether to unroll the traversal into a straight-line graph for the (static)
-        topology instead of running a ``tf.while_loop`` over a ``TensorArray``:
+        topology instead of running a loop over a ``TensorArray``:
 
         - ``"auto"`` (default): unroll iff the topology index tensors are statically
           known (``tf.get_static_value`` succeeds — true when the topology is a
@@ -149,6 +149,6 @@ def _postorder_tensorarray(topology, mapping, input, leaf_init, xla_compatible):
         return tas
 
     for i in range(taxon_count - 1):
-        # Autograph is proven faster than tf.while_loop here
+        # Autograph still unrolls the loop
         tensorarrays = body(i, tensorarrays)
     return tf.nest.map_structure(lambda x: x.stack(), tensorarrays)

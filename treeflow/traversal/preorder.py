@@ -117,8 +117,7 @@ def _preorder_tensorarray(topology, mapping, input, root_init):
         return tas
 
     for k in range(1, n_internal):
-        tensorarrays = body(
-            k, tensorarrays
-        )  # Autograph is proven faster than tf.while_loop here
+        # Autograph can still unroll the loop
+        tensorarrays = body(k, tensorarrays)
 
     return tf.nest.map_structure(lambda x: x.stack(), tensorarrays)
