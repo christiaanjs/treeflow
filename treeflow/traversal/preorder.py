@@ -2,7 +2,6 @@ import typing as tp
 import tensorflow as tf
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.traversal.postorder import (
-    UNROLL_MODES,
     _resolve_unroll_mode,
     static_taxon_count,
 )

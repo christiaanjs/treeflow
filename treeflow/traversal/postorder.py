@@ -13,8 +13,10 @@ TOutputStructure = tp.TypeVar("TOutputStructure")
 #                    the only path that XLA-compiles for value+gradient.
 #   "tensorarray" -- Python-unrolled loop that writes a TensorArray. Needs only the
 #                    node *count* (shape) static; the index values may be tensors.
+#                    Might incur significant compilation time for large trees, but
+#                    faster than "while_loop" once compiled.
 #   "while_loop"  -- AutoGraph `tf.while_loop` over a TensorArray. Needs nothing
-#                    static; O(1) graph, the right choice for a varying topology.
+#                    static; O(1) graph.
 UNROLL_MODES = ("unrolled", "tensorarray", "while_loop")
 
 
