@@ -2,3 +2,4 @@ from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_appro
 from treeflow.vi.hmc import fit_fixed_topology_hmc, HMCResults
 from treeflow.vi.marginal_likelihood import *
 from treeflow.vi.optimizers import *
+from treeflow.vi.convergence_criteria import *
