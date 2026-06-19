@@ -21,6 +21,7 @@ def traversal_likelihood(
     batch_rank=1,
     unroll: str = "auto",
     xla_compatible: bool = False,
+    custom_gradient: bool = False,
 ):
     child_transition_probs_child_first = tf.gather(
         transition_probabilities, topology.node_child_indices, axis=-3
@@ -51,6 +52,7 @@ def traversal_likelihood(
         leaf_init,
         unroll=unroll,
         xla_compatible=xla_compatible,
+        custom_gradient=custom_gradient,
     )
     root_partials = partials[-1]
     site_partials = tf.reduce_sum(frequencies * root_partials, axis=-1)
@@ -120,3 +122,55 @@ def test_postorder_node_traversal_phylo_likelihood(
         xla_compatible=xla_compatible,
     )
     assert all(g is not None for g in grad_res)
+
+
+@pytest.mark.parametrize("unroll", ["unrolled", "tensorarray", "while_loop"])
+def test_postorder_custom_gradient_matches_autodiff(
+    hello_tensor_tree: TensorflowRootedTree,
+    hello_alignment: Alignment,
+    unroll: str,
+    hky_params,
+    hello_hky_log_likelihood: float,
+):
+    """The complementary-traversal custom gradient must match autodiff w.r.t. the
+    traversal `input` (the transition probabilities flowing through it)."""
+    subst_model = HKY()
+    eigen = subst_model.eigen(**hky_params)
+    probs = tf.Variable(
+        tf.expand_dims(
+            get_transition_probabilities_eigen(
+                eigen, hello_tensor_tree.branch_lengths
+            ),
+            0,
+        )
+    )
+    encoded_sequences = hello_alignment.get_encoded_sequence_tensor(
+        hello_tensor_tree.taxon_set
+    )
+
+    if unroll == "unrolled":
+        topology = StaticNumpyTreeTopology.from_numpy_topology(
+            hello_tensor_tree.topology.numpy()
+        )
+    else:
+        topology = hello_tensor_tree.topology
+
+    def value_and_grad(custom_gradient):
+        with tf.GradientTape() as tape:
+            ll = traversal_likelihood(
+                encoded_sequences,
+                probs,
+                hky_params["frequencies"],
+                topology,
+                unroll=unroll,
+                custom_gradient=custom_gradient,
+            )
+        return ll, tape.gradient(ll, probs)
+
+    ll_auto, grad_auto = value_and_grad(False)
+    ll_custom, grad_custom = value_and_grad(True)
+
+    assert_allclose(ll_custom.numpy(), hello_hky_log_likelihood)
+    assert_allclose(ll_custom.numpy(), ll_auto.numpy(), rtol=1e-12)
+    assert grad_custom is not None
+    assert_allclose(grad_custom.numpy(), grad_auto.numpy(), rtol=1e-9, atol=1e-12)
