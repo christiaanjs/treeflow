@@ -90,12 +90,17 @@ def get_event_shape_and_space_bijector(
 
 
 def get_fixed_topology_bijector(
-    dist: tfd.Distribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
+    dist: tfd.Distribution,
+    topology_pins=tp.Dict[str, TensorflowTreeTopology],
+    use_native="auto",
+    unroll="auto",
 ):
     if hasattr(dist, "tree_name") and getattr(dist, "tree_name") in topology_pins:
         topology = topology_pins[dist.tree_name]
         tree_bijector: TreeRatioBijector = (
-            dist.experimental_default_event_space_bijector(topology=topology)
+            dist.experimental_default_event_space_bijector(
+                topology=topology, use_native=use_native, unroll=unroll
+            )
         )
         return FixedTopologyRootedTreeBijector(
             topology,
@@ -107,9 +112,17 @@ def get_fixed_topology_bijector(
 
 
 def get_fixed_topology_joint_bijector(
-    model: tfd.JointDistribution, topology_pins=tp.Dict[str, TensorflowTreeTopology]
+    model: tfd.JointDistribution,
+    topology_pins=tp.Dict[str, TensorflowTreeTopology],
+    use_native="auto",
+    unroll="auto",
 ) -> tfb.Composition:
-    bijector_fn = partial(get_fixed_topology_bijector, topology_pins=topology_pins)
+    bijector_fn = partial(
+        get_fixed_topology_bijector,
+        topology_pins=topology_pins,
+        use_native=use_native,
+        unroll=unroll,
+    )
     return _DefaultJointBijector(model, bijector_fn=bijector_fn)
 
 

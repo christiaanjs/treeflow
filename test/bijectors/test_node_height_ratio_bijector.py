@@ -49,7 +49,15 @@ def test_NodeHeightRatioBijector_forward_log_det_jacobian_gradient(
     flat_ratio_test_data: RatioTestData,
 ):
     ratio_test_data = flat_ratio_test_data
-    bijector = bijector_from_ratio_test_data(ratio_test_data)
+    # This test differentiates the forward log-det-Jacobian, i.e. it takes
+    # higher-order derivatives through the forward transform. The native op only
+    # registers a first-order gradient, so pin the pure-TensorFlow engine here;
+    # the native first-order gradient is covered in the native test suite.
+    bijector = NodeHeightRatioBijector(
+        topology_from_ratio_test_data(ratio_test_data),
+        ratio_test_data.anchor_heights,
+        use_native=False,
+    )
     heights = tf.convert_to_tensor(ratio_test_data.heights)
     ratios = tf.constant(bijector.inverse(heights).numpy())
     # Gradient gets weird when we use this tensor directly because of caching

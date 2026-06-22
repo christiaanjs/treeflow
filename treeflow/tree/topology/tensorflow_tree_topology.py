@@ -7,9 +7,11 @@ import tensorflow as tf
 from treeflow.tree.taxon_set import TaxonSet, TupleTaxonSet
 from treeflow.tree.topology.base_tree_topology import (
     AbstractTreeTopology,
-    BaseTreeTopology,
 )
-from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
+from treeflow.tree.topology.numpy_tree_topology import (
+    NumpyTreeTopology,
+    StaticNumpyTreeTopology,
+)
 import treeflow.tree.topology.numpy_topology_operations as np_top_ops
 import tensorflow_probability.python.internal.prefer_static as ps
 from treeflow.tf_util import AttrsLengthMixin
@@ -35,6 +37,16 @@ class TensorflowTreeTopologyAttrs(
     @property
     def postorder_node_indices(self) -> tf.Tensor:
         taxon_count = self.taxon_count
+        # Prefer a statically-known result so the unrolled traversal drivers can fold
+        # it via tf.get_static_value even inside a tf.function (whether a captured
+        # `tf.range` constant-folds in-graph varies across TF versions; folding a
+        # numpy `arange` into a constant does not).
+        static_taxon = tf.get_static_value(taxon_count)
+        if static_taxon is not None:
+            tc = int(static_taxon)
+            return tf.constant(
+                np.arange(tc, 2 * tc - 1), dtype=self.parent_indices.dtype
+            )
         return tf.range(taxon_count, 2 * taxon_count - 1, dtype=taxon_count.dtype)
 
     @property
@@ -43,11 +55,26 @@ class TensorflowTreeTopologyAttrs(
 
     @property
     def preorder_node_indices(self) -> tf.Tensor:
+        # Internal nodes (id >= taxon_count) in preorder. Prefer a statically-known
+        # result: when the inputs are constant
+        # (e.g. a topology built from a concrete tree, even when captured inside a
+        # tf.function), fold to a constant tensor 
         preorder_indices = self.preorder_indices
+        taxon_count = self.taxon_count
+        
+        static_indices = tf.get_static_value(preorder_indices)
+        static_taxon = tf.get_static_value(taxon_count)
+        if (
+            static_indices is not None
+            and static_taxon is not None
+            and np.ndim(static_indices) == 1
+        ):
+            static_indices = np.asarray(static_indices)
+            return tf.constant(static_indices[static_indices >= int(static_taxon)])
         return tf.boolean_mask(
             preorder_indices,
-            preorder_indices >= self.taxon_count,
-            axis=tf.rank(preorder_indices) - 1,
+            preorder_indices >= taxon_count,
+            axis=ps.rank(preorder_indices) - 1,
         )
 
 
@@ -114,7 +141,7 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
 
 
 def numpy_topology_to_tensor(
-    topology: NumpyTreeTopology, dtype=tf.int32
+    topology: tp.Union[NumpyTreeTopology, StaticNumpyTreeTopology], dtype=tf.int32
 ) -> TensorflowTreeTopology:
     parent_indices = topology.parent_indices
     child_indices = np_top_ops.get_child_indices(parent_indices)

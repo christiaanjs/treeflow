@@ -1,5 +1,7 @@
+import typing as tp
 import tensorflow as tf
-from tensorflow_probability.python.internal import prefer_static as ps
+from treeflow.traversal.preorder import preorder_traversal
+from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 
 
 def move_outside_axis_to_inside(x):
@@ -8,30 +10,40 @@ def move_outside_axis_to_inside(x):
     return tf.transpose(x, perm)
 
 
-@tf.function
+def _node_axis_to_front(x):
+    """Move the (last) node axis to the front -- inverse of move_outside_axis_to_inside."""
+    rank = tf.rank(x)
+    perm = tf.concat([[rank - 1], tf.range(0, rank - 1)], axis=0)
+    return tf.transpose(x, perm)
+
+
 def ratios_to_node_heights(
-    preorder_node_indices: tf.Tensor,
-    parent_indices: tf.Tensor,
+    topology: TensorflowTreeTopology,
     ratios: tf.Tensor,
     anchor_heights: tf.Tensor,
+    unroll: tp.Union[bool, str] = "auto",
 ):
-    node_count = ratios.shape[-1]
-    node_heights_ta = tf.TensorArray(
-        dtype=ratios.dtype,
-        size=node_count,
-        element_shape=ratios.shape[:-1],
-        clear_after_read=False,
-    )
+    """Node-height ratio transform, on the generic ``preorder_traversal``.
 
-    node_heights_ta = node_heights_ta.write(
-        node_count - 1,
-        ratios[..., node_count - 1] + anchor_heights[..., node_count - 1],
-    )
-    for i in preorder_node_indices[1:]:
-        parent_height = node_heights_ta.read(parent_indices[i])
-        anchor_height = anchor_heights[..., i]
-        proportion = ratios[..., i]
-        node_height = (parent_height - anchor_height) * proportion + anchor_height
-        node_heights_ta = node_heights_ta.write(i, node_height)
+    The node axis of ``ratios``/``anchor_heights`` is the last axis, indexed by
+    internal-node id.
 
-    return move_outside_axis_to_inside(node_heights_ta.stack())
+    unroll
+        Forwarded to :func:`preorder_traversal`: ``"auto"`` unrolls when the topology
+        is statically known (it is when ``topology`` is a constant/eager object, even
+        captured inside a ``tf.function``), ``True`` forces it (raising otherwise),
+        ``False`` keeps the dynamic ``tf.while_loop``.
+    """
+    n_internal = ratios.shape[-1]
+    ratios_nf = _node_axis_to_front(ratios)          # [n_internal, ...batch]
+    anchor_nf = _node_axis_to_front(anchor_heights)  # [n_internal, ...] (broadcasts)
+    root_init = ratios_nf[n_internal - 1] + anchor_nf[n_internal - 1]
+
+    def mapping(parent_height, node_input):
+        ratio_i, anchor_i = node_input
+        return (parent_height - anchor_i) * ratio_i + anchor_i
+
+    heights = preorder_traversal(
+        topology, mapping, (ratios_nf, anchor_nf), root_init, unroll=unroll
+    )
+    return move_outside_axis_to_inside(heights)

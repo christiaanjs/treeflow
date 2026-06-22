@@ -10,6 +10,7 @@ from treeflow.evolution.substitution.probabilities import (
 from treeflow.traversal.postorder import postorder_node_traversal
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.traversal.phylo_likelihood import move_indices_to_outside
+from treeflow.tree.topology.numpy_tree_topology import StaticNumpyTreeTopology
 
 
 def traversal_likelihood(
@@ -18,6 +19,8 @@ def traversal_likelihood(
     frequencies,
     topology: TensorflowTreeTopology,
     batch_rank=1,
+    unroll: str = "auto",
+    xla_compatible: bool = False,
 ):
     child_transition_probs_child_first = tf.gather(
         transition_probabilities, topology.node_child_indices, axis=-3
@@ -42,17 +45,26 @@ def traversal_likelihood(
         )
 
     partials = postorder_node_traversal(
-        topology, mapping, child_transition_probs, leaf_init
+        topology,
+        mapping,
+        child_transition_probs,
+        leaf_init,
+        unroll=unroll,
+        xla_compatible=xla_compatible,
     )
     root_partials = partials[-1]
     return tf.reduce_sum(frequencies * root_partials, axis=-1)
 
 
+@pytest.mark.parametrize("xla_compatible", [True, False])
 @pytest.mark.parametrize("function_mode", [True, False])
+@pytest.mark.parametrize("unroll", ["unrolled", "tensorarray", "while_loop"])
 def test_postorder_node_traversal_phylo_likelihood(
     hello_tensor_tree: TensorflowRootedTree,
     hello_alignment: Alignment,
     function_mode: bool,
+    unroll: str,
+    xla_compatible: bool,
     hky_params,
     hello_hky_log_likelihood: float,
 ):
@@ -65,14 +77,26 @@ def test_postorder_node_traversal_phylo_likelihood(
         hello_tensor_tree.taxon_set
     )
     if function_mode:
-        func = tf.function(traversal_likelihood)
+        func = tf.function(traversal_likelihood, jit_compile=xla_compatible)
     else:
         func = traversal_likelihood
+
+    if unroll == "unrolled" and function_mode:
+        # 'unrolled' needs the topology index values statically foldable inside the
+        # traced function; the static NumPy topology guarantees that.
+        topology = StaticNumpyTreeTopology.from_numpy_topology(
+            hello_tensor_tree.topology.numpy()
+        )
+    else:
+        topology = hello_tensor_tree.topology
+
     site_partials = func(
         encoded_sequences,
         probs,
         hky_params["frequencies"],
-        hello_tensor_tree.topology,
+        topology,
+        unroll=unroll,
+        xla_compatible=xla_compatible,
     )
     res = tf.reduce_sum(tf.math.log(site_partials))
     expected = hello_hky_log_likelihood

@@ -166,9 +166,14 @@ def get_fixed_topology_mean_field_approximation(
     init_loc=None,
     dtype=DEFAULT_FLOAT_DTYPE_TF,
     var_name_prefix="",
+    use_native="auto",
+    unroll="auto",
 ) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Tensor]]:
     bijector_func = partial(
-        get_fixed_topology_joint_bijector, topology_pins=topology_pins
+        get_fixed_topology_joint_bijector,
+        topology_pins=topology_pins,
+        use_native=use_native,
+        unroll=unroll,
     )
     event_shape_fn = partial(
         get_fixed_topology_event_shape, topology_pins=topology_pins

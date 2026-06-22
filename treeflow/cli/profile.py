@@ -52,8 +52,12 @@ from treeflow.model.phylo_model import (
 )
 from treeflow.bijectors.node_height_ratio_bijector import NodeHeightRatioBijector
 from treeflow.traversal.anchor_heights import get_anchor_heights
+from treeflow.tree.topology.numpy_tree_topology import StaticNumpyTreeTopology
 from treeflow.cli.inference_common import EXAMPLE_PHYLO_MODEL_DICT
 from treeflow.acceleration.native import is_available as native_is_available
+from treeflow.acceleration.native import (
+    ratio_transform_is_available as native_ratio_is_available,
+)
 
 
 DTYPES = {"float32": tf.float32, "float64": tf.float64}
@@ -61,6 +65,22 @@ DTYPES = {"float32": tf.float32, "float64": tf.float64}
 # Components of the density evaluation, in the order they are reported. These
 # sum to the full target evaluation.
 DENSITY_COMPONENTS = ["likelihood", "prior", "overhead"]
+
+# How each engine evaluates the tree traversals (likelihood + ratio transform):
+#   native      -- the hand-written C++ ops
+#   static      -- pure TF, straight-line unrolled graph, no TensorArray
+#                  (unroll="unrolled"); fastest, needs a statically-known topology
+#   tensorarray -- pure TF, Python-unrolled loop over a TensorArray
+#                  (unroll="tensorarray"); needs only a static node count
+#   dynamic     -- pure TF, tf.while_loop over a TensorArray (unroll="while_loop");
+#                  handles a topology not known at trace time
+ENGINE_CONFIGS = {
+    "native": dict(use_native=True, unroll="auto"),
+    "static": dict(use_native=False, unroll="unrolled"),
+    "tensorarray": dict(use_native=False, unroll="tensorarray"),
+    "dynamic": dict(use_native=False, unroll="while_loop"),
+}
+ENGINE_ALIASES = {"tf": "dynamic"}  # back-compat: "tf" == the dynamic TF engine
 
 
 class Dataset(tp.NamedTuple):
@@ -183,7 +203,7 @@ def profile_dataset(
             tree,
             dataset.alignment,
             pattern_counts=pc,
-            use_native=(engine == "native"),
+            **ENGINE_CONFIGS[engine],
         )
         for engine in engines
     }
@@ -208,53 +228,152 @@ def profile_dataset(
     }
     other_keys = list(other_latents)
 
+    # Build the tree from a *static* topology and rebuild it as in-graph constants
+    # inside `assemble` (which runs in each timed trace). This is the hybrid trick:
+    # the captured tensor topology is re-materialised as a Placeholder when routed
+    # through the JointDistribution for >64 taxa (so the static/unrolled engine
+    # would fail there), whereas in-trace constants fold at any size -> the static
+    # engine unrolls through the full joint too.
+    static_topology = StaticNumpyTreeTopology(tree.topology.parent_indices.numpy())
+
     def assemble(heights, *other_values) -> tp.Dict[str, object]:
-        latents = {tree_field: tree_obj.with_node_heights(heights)}
+        latents = {
+            tree_field: TensorflowRootedTree(
+                topology=static_topology.to_constant_tensor_topology(),
+                node_heights=heights,
+                sampling_times=tree.sampling_times,
+            )
+        }
         latents.update(dict(zip(other_keys, other_values)))
         return latents
 
     grad_args = [node_heights] + [other_latents[k] for k in other_keys]
 
-    # Full target (prior + likelihood) per engine.
-    full_time = {
-        engine: time_value_and_grad(
-            lambda h, *o, e=engine: pinned[e].unnormalized_log_prob(**assemble(h, *o)),
-            grad_args,
-            replicates,
-        )
-        for engine in engines
-    }
+    # A timing that records a missing (NaN) result and a warning rather than
+    # aborting the whole profile, so one engine/component failing (e.g. the static
+    # engine when the topology cannot be statically folded through a particular
+    # path) does not lose the timings that did succeed.
+    warnings_list: tp.List[dict] = []
 
-    # Prior-only target (engine independent).
-    prior_time = time_value_and_grad(
-        lambda h, *o: prior_model.log_prob(**assemble(h, *o)),
-        grad_args,
-        replicates,
-    )
+    def safe_time(component, engine, fn, args):
+        try:
+            return time_value_and_grad(fn, args, replicates), ""
+        except Exception as ex:  # report and continue
+            # Use the last non-empty line: TF wraps the real message ("...in user
+            # code:") so the first line is uninformative.
+            lines = [ln.strip() for ln in str(ex).splitlines() if ln.strip()]
+            detail = lines[-1] if lines else str(ex)
+            msg = f"{type(ex).__name__}: {detail}"[:300]
+            warnings_list.append(
+                dict(
+                    dataset=dataset.name,
+                    engine=engine,
+                    component=component,
+                    error=msg,
+                )
+            )
+            return float("nan"), msg
 
-    # Fixed per-step overhead: assemble the tree from heights and touch every
-    # latent so that tree reconstruction and gradient bookkeeping are timed, but
-    # no density is evaluated.
     def overhead_fn(heights, *other_values):
+        # Fixed per-step overhead: assemble the tree from heights and touch every
+        # latent (tree reconstruction + gradient bookkeeping), with no density.
         latents = assemble(heights, *other_values)
         return tf.add_n(
             [tf.reduce_sum(latents[tree_field].node_heights)]
             + [tf.reduce_sum(v) for v in other_values]
         )
 
-    overhead_time = time_value_and_grad(overhead_fn, grad_args, replicates)
+    # --- Full joint target (prior + likelihood), through the JointDistribution ---
+    full_time, full_err = {}, {}
+    for engine in engines:
+        full_time[engine], full_err[engine] = safe_time(
+            "full",
+            engine,
+            lambda h, *o, e=engine: pinned[e].unnormalized_log_prob(**assemble(h, *o)),
+            grad_args,
+        )
+    prior_time, prior_err = safe_time(
+        "prior", "shared", lambda h, *o: prior_model.log_prob(**assemble(h, *o)), grad_args
+    )
+    overhead_time, overhead_err = safe_time(
+        "overhead", "shared", overhead_fn, grad_args
+    )
 
-    # Node-height ratio transform (reparameterisation), engine independent.
+    # --- Phylogenetic likelihood traversal, timed directly per engine ---
+    # The topology is a captured constant here, so the static (unrolled) engine can
+    # statically detect it at any size (unlike routing the tree through the
+    # JointDistribution, whose decomposition only folds for small trees). Random
+    # transition probabilities suffice: the traversal cost is shape-, not value-,
+    # dependent. Gradient is w.r.t. the transition probabilities.
+    from treeflow.traversal.phylo_likelihood_dispatch import (
+        phylogenetic_log_likelihood,
+    )
+
+    state_count = int(enc.shape[-1])
+    node_count = 2 * dataset.taxon_count - 1
+    rng_probs = np.random.default_rng(seed + 7)
+    probs0 = rng_probs.uniform(0.1, 1.0, (1, node_count, state_count, state_count))
+    probs0 = probs0 / probs0.sum(-1, keepdims=True)
+    direct_probs = tf.constant(probs0, dtype)
+    direct_freq = tf.constant(np.full(state_count, 1.0 / state_count), dtype)
+    direct_batch = tf.shape(enc)[:-2]
+
+    def make_direct_like_fn(engine):
+        cfg = ENGINE_CONFIGS[engine]
+
+        def fn(probs):
+            return tf.reduce_sum(
+                phylogenetic_log_likelihood(
+                    tree.topology,
+                    enc,
+                    probs,
+                    direct_freq,
+                    batch_shape=direct_batch,
+                    use_native=cfg["use_native"],
+                    unroll=cfg["unroll"],
+                    rescaling=False,
+                )
+            )
+
+        return fn
+
+    direct_time, direct_err = {}, {}
+    for engine in engines:
+        direct_time[engine], direct_err[engine] = safe_time(
+            "likelihood_direct", engine, make_direct_like_fn(engine), [direct_probs]
+        )
+
+    # --- Node-height ratio transform (reparameterisation), per engine ---
     anchor_heights = tf.constant(get_anchor_heights(tree.numpy()), dtype=dtype)
-    ratio_bijector = NodeHeightRatioBijector(tree.topology, anchor_heights)
-    ratios = tf.identity(ratio_bijector.inverse(node_heights))
+    ratios = tf.identity(
+        NodeHeightRatioBijector(
+            tree.topology, anchor_heights, use_native=False, unroll="auto"
+        ).inverse(node_heights)
+    )
 
-    def ratio_fn(r):
-        return tf.reduce_sum(
-            ratio_bijector.forward(r)
-        ) + ratio_bijector.forward_log_det_jacobian(r, event_ndims=1)
+    def make_ratio_fn(engine):
+        cfg = ENGINE_CONFIGS[engine]
+        bijector = NodeHeightRatioBijector(
+            tree.topology,
+            anchor_heights,
+            use_native=cfg["use_native"],
+            unroll=cfg["unroll"],
+        )
 
-    ratio_time = time_value_and_grad(ratio_fn, [ratios], replicates)
+        def ratio_fn(r):
+            return tf.reduce_sum(
+                bijector.forward(r)
+            ) + bijector.forward_log_det_jacobian(r, event_ndims=1)
+
+        return ratio_fn
+
+    ratio_time, ratio_err = {}, {}
+    for engine in engines:
+        if engine == "native" and not native_ratio_is_available():
+            continue
+        ratio_time[engine], ratio_err[engine] = safe_time(
+            "ratio_transform", engine, make_ratio_fn(engine), [ratios]
+        )
 
     rows: tp.List[dict] = []
     base = dict(
@@ -263,29 +382,27 @@ def profile_dataset(
         patterns=dataset.pattern_count,
         sites=int(dataset.alignment.site_count),
     )
-    for engine in engines:
-        likelihood = full_time[engine] - prior_time
-        prior = prior_time - overhead_time
-        component_times = {
-            "likelihood": likelihood,
-            "prior": prior,
-            "overhead": overhead_time,
-            "full": full_time[engine],
-        }
-        for component, seconds in component_times.items():
-            rows.append(
-                dict(base, engine=engine, component=component, time_ms=seconds * 1e3)
+
+    def row(engine, component, seconds, error=""):
+        rows.append(
+            dict(
+                base,
+                engine=engine,
+                component=component,
+                time_ms=seconds * 1e3,
+                error=error,
             )
-    # Ratio transform does not depend on the likelihood engine; record once.
-    rows.append(
-        dict(
-            base,
-            engine="shared",
-            component="ratio_transform",
-            time_ms=ratio_time * 1e3,
         )
-    )
-    return rows
+
+    for engine in engines:
+        row(engine, "full", full_time[engine], full_err[engine])
+        row(engine, "likelihood", full_time[engine] - prior_time, full_err[engine])
+        row(engine, "prior", prior_time - overhead_time, prior_err)
+        row(engine, "overhead", overhead_time, overhead_err)
+        row(engine, "likelihood_direct", direct_time[engine], direct_err[engine])
+        if engine in ratio_time:
+            row(engine, "ratio_transform", ratio_time[engine], ratio_err.get(engine, ""))
+    return rows, warnings_list
 
 
 def _print_dataset_summary(dataset: Dataset, rows: tp.List[dict], engines):
@@ -305,17 +422,33 @@ def _print_dataset_summary(dataset: Dataset, rows: tp.List[dict], engines):
                 return row["time_ms"]
         return float("nan")
 
-    header = f"  {'component':<16}" + "".join(f"{e:>12}" for e in engines)
+    header = f"  {'component':<18}" + "".join(f"{e:>12}" for e in engines)
     print(header)
-    for component in ["likelihood", "prior", "overhead", "full"]:
-        line = f"  {component:<16}"
+    for component in [
+        "likelihood",
+        "prior",
+        "overhead",
+        "full",
+        "likelihood_direct",
+        "ratio_transform",
+    ]:
+        line = f"  {component:<18}"
         for engine in engines:
             line += f"{lookup(engine, component):>12.3f}"
         print(line)
-    print(f"  {'ratio_transform':<16}{lookup('shared', 'ratio_transform'):>12.3f}")
-    if "native" in engines and "tf" in engines:
-        speedup = lookup("tf", "likelihood") / lookup("native", "likelihood")
-        print(f"  -> native likelihood speedup: {speedup:.1f}x")
+    # Speedups relative to the dynamic (TensorArray) engine, where present.
+    if "dynamic" in engines:
+        for engine in engines:
+            if engine == "dynamic":
+                continue
+            for component in ["likelihood", "likelihood_direct", "ratio_transform"]:
+                base_t = lookup("dynamic", component)
+                eng_t = lookup(engine, component)
+                if eng_t and not np.isnan(eng_t) and not np.isnan(base_t):
+                    print(
+                        f"  -> {engine} {component} speedup vs dynamic: "
+                        f"{base_t / eng_t:.1f}x"
+                    )
 
 
 @click.command()
@@ -353,9 +486,14 @@ def _print_dataset_summary(dataset: Dataset, rows: tp.List[dict], engines):
 )
 @click.option(
     "--engines",
-    default="native,tf",
+    default="native,static,dynamic",
     show_default=True,
-    help="Comma-separated likelihood engines to compare ('native', 'tf').",
+    help=(
+        "Comma-separated traversal engines to compare: 'native' (C++ ops), "
+        "'static' (pure-TF, unrolled for the static topology) and 'dynamic' "
+        "(pure-TF, TensorArray while_loop). 'tf' is accepted as an alias for "
+        "'dynamic'."
+    ),
 )
 @click.option(
     "-r",
@@ -392,8 +530,10 @@ def treeflow_profile(
     seed,
 ):
     """Profile the per-iteration cost of phylogenetic inference and its breakdown
-    into likelihood, prior, overhead and ratio-transform components, comparing
-    the native and pure-TensorFlow likelihood engines across dataset sizes."""
+    into likelihood, prior, overhead and ratio-transform components, comparing the
+    traversal engines across dataset sizes: ``native`` (C++ ops), ``static`` (pure
+    TensorFlow unrolled for the static topology) and ``dynamic`` (pure TensorFlow
+    TensorArray while_loop)."""
     import yaml
 
     tf_dtype = DTYPES[dtype]
@@ -401,12 +541,19 @@ def treeflow_profile(
     requested_engines = [e.strip() for e in engines.split(",") if e.strip()]
     engine_list = []
     for engine in requested_engines:
+        engine = ENGINE_ALIASES.get(engine, engine)
+        if engine not in ENGINE_CONFIGS:
+            raise click.ClickException(
+                f"Unknown engine {engine!r}; choose from "
+                f"{', '.join(ENGINE_CONFIGS)} (or alias 'tf')."
+            )
         if engine == "native" and not native_is_available():
             click.echo("Native op not available; skipping the 'native' engine.")
             continue
-        engine_list.append(engine)
+        if engine not in engine_list:
+            engine_list.append(engine)
     if not engine_list:
-        raise click.ClickException("No usable likelihood engines requested.")
+        raise click.ClickException("No usable traversal engines requested.")
 
     if model_file is None:
         model_dict = EXAMPLE_PHYLO_MODEL_DICT
@@ -432,15 +579,24 @@ def treeflow_profile(
                 _dataset_from_files("real", tree, input, tf_dtype)
             )
 
+        all_warnings: tp.List[dict] = []
         for dataset in datasets:
             print(f"Profiling {dataset.name} ...")
-            rows = profile_dataset(
+            rows, warnings = profile_dataset(
                 dataset, phylo_model, engine_list, replicates, tf_dtype, seed
             )
             all_rows.extend(rows)
+            all_warnings.extend(warnings)
             _print_dataset_summary(dataset, rows, engine_list)
 
     _print_scaling_analysis(all_rows, engine_list)
+
+    if all_warnings:
+        print("\n=== warnings (missing timings) ===")
+        for w in all_warnings:
+            print(
+                f"  {w['dataset']} / {w['engine']} / {w['component']}: {w['error']}"
+            )
 
     if output is not None:
         import pandas as pd
@@ -467,17 +623,20 @@ def _print_scaling_analysis(rows: tp.List[dict], engines):
                 return row["time_ms"]
         return float("nan")
 
+    # Speedup columns: each non-dynamic engine's likelihood vs the dynamic engine.
+    speedup_engines = (
+        [e for e in engines if e != "dynamic"] if "dynamic" in engines else []
+    )
     header = f"  {'taxa':>6}" + "".join(f"{'full-' + e:>14}" for e in engines)
-    if "native" in engines and "tf" in engines:
-        header += f"{'like speedup':>14}"
+    header += "".join(f"{e + ' like x':>14}" for e in speedup_engines)
     print(header)
     for name, taxa in datasets:
         line = f"  {taxa:>6}"
         for engine in engines:
             line += f"{lookup(name, engine, 'full'):>14.3f}"
-        if "native" in engines and "tf" in engines:
-            speedup = lookup(name, "tf", "likelihood") / lookup(
-                name, "native", "likelihood"
-            )
-            line += f"{speedup:>13.1f}x"
+        for engine in speedup_engines:
+            base_t = lookup(name, "dynamic", "likelihood")
+            eng_t = lookup(name, engine, "likelihood")
+            speedup = base_t / eng_t if eng_t else float("nan")
+            line += f"{'n/a':>14}" if np.isnan(speedup) else f"{speedup:>13.1f}x"
         print(line)

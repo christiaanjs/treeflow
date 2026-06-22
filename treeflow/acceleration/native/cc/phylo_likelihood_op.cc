@@ -61,7 +61,10 @@
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#include "tree_traversal.h"
+
 using namespace tensorflow;
+using treeflow::ReadIndices;
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
@@ -173,17 +176,8 @@ REGISTER_OP("PhyloLikelihoodRescaledGrad")
       return OkStatus();
     });
 
-namespace {
-
-// Read an index tensor (int32 or int64) into an int64 vector.
-template <typename Tindex>
-inline void ReadIndices(const Tensor& t, std::vector<int64_t>* out) {
-  auto flat = t.flat<Tindex>();
-  out->resize(flat.size());
-  for (int64_t i = 0; i < flat.size(); ++i) (*out)[i] = flat(i);
-}
-
-}  // namespace
+// ReadIndices lives in tree_traversal.h and is shared with the node-height
+// ratio op.
 
 template <typename T, typename Tindex>
 class PhyloLikelihoodOp : public OpKernel {

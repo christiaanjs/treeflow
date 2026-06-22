@@ -9,12 +9,17 @@ from treeflow.distributions.tree.base_tree_distribution import BaseTreeDistribut
 class FixedTopologyRootedTreeBijector(Bijector):
     def __init__(
         self,
-        topology: TensorflowTreeTopology,
+        topology,
         height_bijector: Bijector,
         sampling_times: tp.Optional[tf.Tensor] = None,
         name="FixedTopologyRootedTreeBijector",
         validate_args=False,
     ):
+        # ``topology`` may be a TensorflowTreeTopology (tensor arrays) or a static
+        # NumPy topology (e.g. StaticNumpyTreeTopology). The latter is kept as-is for
+        # the height bijector (so its traversal can fold/unroll the static indices),
+        # and rebuilt as an in-graph-constant TensorflowTreeTopology for the tree
+        # value emitted by ``_forward`` (see ``_tensor_topology``).
         self.topology = topology
         self.height_bijector = height_bijector
         if sampling_times is None:
@@ -35,10 +40,25 @@ class FixedTopologyRootedTreeBijector(Bijector):
             dtype=self.height_bijector.dtype,
         )
 
+    def _tensor_topology(self) -> TensorflowTreeTopology:
+        """The topology as a TensorflowTreeTopology for the emitted tree value.
+
+        A TensorflowTreeTopology pin is returned unchanged. A static NumPy topology is
+        rebuilt with its index arrays as ``tf.constant``s via
+        ``to_constant_tensor_topology``; since ``_forward`` runs inside the (VI) trace
+        these are in-graph ``Const`` ops, so the JointDistribution sees a normal
+        tensor topology *and* the downstream likelihood traversal can still fold them
+        (``tf.get_static_value``) and unroll at any tree size.
+        """
+        topology = self.topology
+        if isinstance(topology, TensorflowTreeTopology):
+            return topology
+        return topology.to_constant_tensor_topology()
+
     def _forward(self, x):
         node_heights = self.height_bijector.forward(x)
         return TensorflowRootedTree(
-            topology=self.topology,
+            topology=self._tensor_topology(),
             sampling_times=self.sampling_times,
             node_heights=node_heights,
         )

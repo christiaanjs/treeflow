@@ -89,9 +89,14 @@ def get_fixed_topology_inverse_autoregressive_flow_approximation(
     n_hidden_layers: int = DEFAULT_N_HIDDEN_LAYERS,
     n_iaf_bijectors: int = DEFAULT_N_IAF_BIJECTORS,
     init_loc=None,  # ignored
+    use_native="auto",
+    unroll="auto",
 ) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Tensor]]:
     bijector_func = partial(
-        get_fixed_topology_joint_bijector, topology_pins=topology_pins
+        get_fixed_topology_joint_bijector,
+        topology_pins=topology_pins,
+        use_native=use_native,
+        unroll=unroll,
     )
     event_shape_fn = partial(
         get_fixed_topology_event_shape, topology_pins=topology_pins

@@ -38,11 +38,12 @@ def test_profile_runs_and_writes_csv(tmp_path):
     assert {"likelihood", "prior", "overhead", "full", "ratio_transform"} <= set(
         df["component"]
     )
+    # The pure-TensorFlow static (unrolled) and dynamic (TensorArray) engines are
+    # always available and profiled.
+    assert {"static", "dynamic"} <= set(df["engine"])
 
     # Within an engine, likelihood + prior + overhead should reconstruct full.
     for (taxa, engine), group in df.groupby(["taxa", "engine"]):
-        if engine == "shared":
-            continue
         times = group.set_index("component")["time_ms"]
         if {"likelihood", "prior", "overhead", "full"} <= set(times.index):
             parts = times[["likelihood", "prior", "overhead"]].sum()

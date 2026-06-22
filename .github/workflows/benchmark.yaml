@@ -43,7 +43,7 @@ jobs:
           treeflow_profile \
             --taxa 16,32,64,128 \
             --sites 1000 \
-            --engines native,tf \
+            --engines native,static,dynamic \
             --replicates 30 \
             --output inference-profile.csv
 

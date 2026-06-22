@@ -3,6 +3,7 @@ import pytest
 import tensorflow as tf
 
 from treeflow.acceleration.native import phylo_likelihood as native
+from treeflow.acceleration.native import node_height_ratio as native_ratio
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 from treeflow.tree.topology.tensorflow_tree_topology import numpy_topology_to_tensor
 
@@ -32,15 +33,24 @@ def _ensure_native_built():
             pytest.fail(message, pytrace=False)
         pytest.skip(message, allow_module_level=True)
 
+    from treeflow.acceleration.native.build import (
+        build,
+        build_node_height_ratio,
+    )
+
     if not os.path.exists(native.library_path()):
         try:
-            from treeflow.acceleration.native.build import build
-
             build()
         except Exception as e:  # pragma: no cover - environment dependent
             unavailable(f"Could not build native op: {e}")
+    if not os.path.exists(native_ratio.library_path()):
+        try:
+            build_node_height_ratio()
+        except Exception as e:  # pragma: no cover - environment dependent
+            unavailable(f"Could not build native ratio op: {e}")
     try:
         native.load_op_library()
+        native_ratio.load_op_library()
     except Exception as e:  # pragma: no cover
         unavailable(f"Could not load native op: {e}")
 
@@ -110,3 +120,50 @@ def small_problem():
 @pytest.fixture
 def make_large_problem():
     return make_problem
+
+
+def make_ratio_problem(leaf_count, batch_shape=(), seed=0, dtype=tf.float64):
+    """Build a random node-height ratio transform problem and its tensors.
+
+    Returns the preorder/parent index tensors (in internal-node space, as the
+    bijector passes them to ``ratios_to_node_heights``) together with random
+    ratios in ``[0, 1)`` (root entry a positive height) and random non-negative
+    anchor heights, optionally with leading batch dimensions.
+    """
+    rng = np.random.default_rng(seed)
+    parent_indices = _random_parent_indices(leaf_count, rng)
+    topology = numpy_topology_to_tensor(
+        NumpyTreeTopology(parent_indices=parent_indices)
+    )
+    np_dtype = dtype.as_numpy_dtype
+    node_count = leaf_count - 1  # internal nodes
+
+    taxon_count = leaf_count
+    preorder = topology.preorder_node_indices - taxon_count
+    parent = topology.parent_indices[taxon_count:] - taxon_count
+
+    shape = tuple(batch_shape) + (node_count,)
+    ratios = rng.uniform(0.05, 0.95, size=shape).astype(np_dtype)
+    # The last internal node (root) carries an unconstrained height, not a ratio.
+    ratios[..., -1] = rng.uniform(1.0, 3.0, size=ratios[..., -1].shape)
+    anchor = rng.uniform(0.0, 0.5, size=(node_count,)).astype(np_dtype)
+
+    return dict(
+        topology=topology,
+        preorder_node_indices=preorder,
+        parent_indices=parent,
+        ratios=tf.constant(ratios),
+        anchor_heights=tf.constant(anchor),
+        leaf_count=leaf_count,
+        node_count=node_count,
+    )
+
+
+@pytest.fixture
+def small_ratio_problem():
+    return make_ratio_problem(leaf_count=8, seed=3)
+
+
+@pytest.fixture
+def make_ratio_problem_factory():
+    return make_ratio_problem

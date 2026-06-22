@@ -1,7 +1,12 @@
 from treeflow.tree.rooted.base_rooted_tree import AbstractRootedTree
 from treeflow.tree.taxon_set import TaxonSet
-from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
-from treeflow.tree.unrooted.numpy_unrooted_tree import NumpyUnrootedTree
+from treeflow.tree.topology.numpy_tree_topology import (
+    NumpyTreeTopology,
+    StaticNumpyTreeTopology,
+)
+from treeflow.tree.unrooted.numpy_unrooted_tree import (
+    NumpyUnrootedTree,
+)
 import numpy as np
 import attr
 import typing as tp
@@ -13,7 +18,7 @@ class NumpyRootedTreeAttrs(
 ):  # Convenience type hint
     node_heights: np.ndarray
     sampling_times: np.ndarray
-    topology: NumpyTreeTopology
+    topology: tp.Union[NumpyTreeTopology, StaticNumpyTreeTopology]
 
 
 class NumpyRootedTree(
@@ -26,7 +31,9 @@ class NumpyRootedTree(
         heights: tp.Optional[np.ndarray] = None,
         node_heights: tp.Optional[np.ndarray] = None,
         sampling_times: tp.Optional[np.ndarray] = None,
-        topology: tp.Optional[NumpyTreeTopology] = None,
+        topology: tp.Optional[
+            tp.Union[NumpyTreeTopology, StaticNumpyTreeTopology]
+        ] = None,
         parent_indices: tp.Optional[np.ndarray] = None,
         taxon_set: tp.Optional[TaxonSet] = None,
     ):
@@ -34,7 +41,7 @@ class NumpyRootedTree(
             assert (
                 parent_indices is not None
             ), "Either `topology` or `parent_indices` must be specified"
-            topology = NumpyTreeTopology(
+            topology = StaticNumpyTreeTopology(
                 parent_indices=parent_indices, taxon_set=taxon_set
             )
         taxon_count = topology.taxon_count
