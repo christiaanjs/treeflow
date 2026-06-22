@@ -10,5 +10,10 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest *)"
+    ]
   }
 }

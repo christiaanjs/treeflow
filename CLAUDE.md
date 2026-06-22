@@ -42,7 +42,7 @@ pytest -m cli            # CLI end-to-end tests (requires data files)
 pytest -m bito           # tests requiring the optional bito package
 ```
 
-Always use `/usr/local/bin/pytest` (the pip-installed version) if there is ambiguity on PATH.
+If `pytest` doesn't work because of missing dependencies and running in a web session with a pre-installed `pytest` make sure you are using the pip-installed version.
 
 ## Project Structure
 
