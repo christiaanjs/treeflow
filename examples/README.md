@@ -23,17 +23,3 @@ The dataset is an alignment of mitochondrial DNA sequences from carnivores, [acc
 
 > Suchard, Marc A., and Andrew Rambaut. "Many-core algorithms for statistical phylogenetics." *Bioinformatics* 25.11 (2009): 1370-1376.
 
-## Tree-traversal execution backends
-
-[`tree_traversal_backends_benchmark.ipynb`](tree_traversal_backends_benchmark.ipynb)
-benchmarks ways of running a *generic*, differentiable tree traversal — a
-`tf.while_loop` under graph mode vs. XLA (`jit_compile`), an unrolled
-fixed-topology graph, the hand-written native C++ ops, and an optional JAX
-`lax.scan` prototype (which runs only if JAX is installed). It compares them on
-simple per-node operations (the node-height ratio transform and the Felsenstein
-partial likelihood, both of which have a native op) and on a neural-network
-message-passing block whose hidden width is swept. The goal is to decide when a
-native kernel is worth hand-writing versus when a compiled generic combinator
-(which can host arbitrary differentiable per-node functions, including NN layers)
-is the better tool.
-
