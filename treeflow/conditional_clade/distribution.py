@@ -36,6 +36,10 @@ from treeflow.conditional_clade.support import (
     ConditionalCladeSupport,
     SubsplitAssignment,
 )
+from treeflow.conditional_clade.traversal_estimators import (
+    traversal_log_prob,
+    straight_through_traversal_log_prob,
+)
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 
 
@@ -104,10 +108,34 @@ class ConditionalCladeDistribution:
         """Log-probability of a topology given its chosen flat subsplit indices.
 
         ``flat_indices`` may carry a leading batch dimension (one row per tree);
-        the conditional log-probabilities are summed over the last axis.
+        the conditional log-probabilities are summed over the last axis. This is
+        the exact log-prob of a pre-sampled traversal -- the score-function
+        gradient used by REINFORCE / leave-one-out / VIMCO.
         """
-        cond = self.conditional_log_probs()
-        return tf.reduce_sum(tf.gather(cond, flat_indices), axis=-1)
+        return traversal_log_prob(self.conditional_log_probs(), flat_indices)
+
+    def straight_through_log_prob_from_flat_indices(
+        self,
+        flat_indices: tf.Tensor,
+        temperature: float = 1.0,
+        gumbel: bool = False,
+        seed=None,
+    ) -> tf.Tensor:
+        """Straight-through ``log q(T)`` for a pre-sampled traversal.
+
+        Forward value equals :meth:`log_prob_from_flat_indices`; the gradient
+        flows through the per-clade (Gumbel-)softmax relaxation. Vectorised graph
+        ops, so it runs inside ``tf.function`` with no per-node Python recursion.
+        """
+        return straight_through_traversal_log_prob(
+            self.conditional_log_probs(),
+            tf.convert_to_tensor(self.logits, self.dtype),
+            flat_indices,
+            self._segment_ids,
+            temperature=temperature,
+            gumbel=gumbel,
+            seed=seed,
+        )
 
     def log_prob_assignment(self, assignment: SubsplitAssignment) -> tf.Tensor:
         flat_indices = self.support.assignment_flat_indices(assignment)

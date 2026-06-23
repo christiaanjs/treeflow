@@ -17,13 +17,22 @@ accompanying notebook:
   variate (the variance-reduction idea VIMCO is built on).
 * :func:`vimco_surrogate` -- VIMCO, for the multi-sample importance-weighted
   bound.
-* :func:`sample_relaxed_cost` -- draws a whole topology with straight-through /
-  Gumbel-Softmax choices at every internal node, returning a differentiable cost
-  for the relaxation-based estimators.
+* :func:`sample_relaxed_cost` -- the *reference* relaxation-based cost: draws a
+  whole topology with straight-through / Gumbel-Softmax choices at every internal
+  node by Python recursion. Correct but slow (a host-device sync per node); for
+  training prefer the vectorised
+  :func:`treeflow.conditional_clade.traversal_estimators.straight_through_traversal_cost`,
+  which computes the same relaxed gradient on a pre-sampled traversal with no
+  per-node Python.
 
 The *surrogate* functions return a scalar whose ``tf.GradientTape`` gradient is
 the desired estimator, so a training step is just ``tape.gradient(surrogate,
 theta)``.
+
+All estimators consume a *pre-sampled traversal* (the flat subsplit indices of a
+batch of sampled topologies). The shared helpers that turn that traversal into
+the differentiable per-sample quantities live in
+:mod:`treeflow.conditional_clade.traversal_estimators` and are re-exported here.
 """
 
 from __future__ import annotations
@@ -36,6 +45,11 @@ import tensorflow as tf
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.conditional_clade.clade import is_singleton
 from treeflow.conditional_clade.distribution import ConditionalCladeDistribution
+from treeflow.conditional_clade.traversal_estimators import (
+    traversal_log_prob,
+    straight_through_traversal_log_prob,
+    straight_through_traversal_cost,
+)
 
 
 # ----------------------------------------------------------------------
@@ -249,4 +263,7 @@ __all__ = [
     "vimco_surrogate",
     "sample_relaxed_cost",
     "RelaxedSample",
+    "traversal_log_prob",
+    "straight_through_traversal_log_prob",
+    "straight_through_traversal_cost",
 ]

@@ -9,6 +9,9 @@ This subpackage provides:
 * :mod:`treeflow.conditional_clade.distribution` -- a differentiable distribution
   over rooted topologies, with sampling, log-probability, exhaustive enumeration
   and exact KL for small taxon sets.
+* :mod:`treeflow.conditional_clade.traversal_estimators` -- vectorised graph-op
+  helpers that turn a pre-sampled traversal into the differentiable quantities
+  the estimators need (exact and straight-through log-probabilities).
 * :mod:`treeflow.conditional_clade.estimators` -- gradient estimators (score
   function, leave-one-out / VIMCO, straight-through Gumbel-Softmax) and the
   "1/0 probability gradient" sampler.
@@ -27,6 +30,11 @@ from treeflow.conditional_clade.distribution import (
     ConditionalCladeDistribution,
     segment_log_softmax,
 )
+from treeflow.conditional_clade.traversal_estimators import (
+    traversal_log_prob,
+    straight_through_traversal_log_prob,
+    straight_through_traversal_cost,
+)
 from treeflow.conditional_clade.tree_distribution import (
     ConditionalCladeTreeDistribution,
 )
@@ -40,4 +48,7 @@ __all__ = [
     "ConditionalCladeDistribution",
     "ConditionalCladeTreeDistribution",
     "segment_log_softmax",
+    "traversal_log_prob",
+    "straight_through_traversal_log_prob",
+    "straight_through_traversal_cost",
 ]
