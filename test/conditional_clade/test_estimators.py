@@ -6,6 +6,7 @@ from treeflow.conditional_clade.distribution import ConditionalCladeDistribution
 from treeflow.conditional_clade.estimators import (
     gumbel_softmax,
     leave_one_out_baseline,
+    rao_blackwellized_surrogate,
     sample_relaxed_cost,
     score_function_surrogate,
     straight_through_categorical,
@@ -172,3 +173,85 @@ def test_straight_through_relaxation_reduces_kl():
     final_kl = q.exact_kl_divergence(p).numpy()
     # Straight-through is biased but should still make clear progress.
     assert final_kl < initial_kl
+
+
+def test_rao_blackwellized_unbiased_against_exact():
+    """RB-REINFORCE should match the exact reverse-KL gradient in expectation."""
+    n = 4
+    support = ConditionalCladeSupport(n)
+    p = ConditionalCladeDistribution(support, random_logits(support, seed=70))
+    q_logits = tf.Variable(random_logits(support, seed=71))
+    q = ConditionalCladeDistribution(support, q_logits)
+
+    with tf.GradientTape() as tape:
+        exact_kl = q.exact_kl_divergence(p)
+    exact_grad = tape.gradient(exact_kl, q_logits).numpy()
+
+    rng = np.random.default_rng(72)
+    n_batches = 300
+    batch_size = 16
+    grad_accum = np.zeros_like(exact_grad)
+    for _ in range(n_batches):
+        flat = tf.constant(q.sample_flat_index_batch(batch_size, rng), tf.int32)
+        with tf.GradientTape() as tape:
+            surrogate = tf.reduce_mean(
+                rao_blackwellized_surrogate(q, p, flat)
+            )
+        grad_accum += tape.gradient(surrogate, q_logits).numpy()
+    mc_grad = grad_accum / n_batches
+
+    cosine = np.dot(mc_grad, exact_grad) / (
+        np.linalg.norm(mc_grad) * np.linalg.norm(exact_grad)
+    )
+    assert cosine > 0.97
+
+
+def test_rao_blackwellized_lower_variance_than_rloo():
+    n = 5
+    support = ConditionalCladeSupport(n)
+    p = ConditionalCladeDistribution(support, random_logits(support, seed=73))
+    q_logits = tf.Variable(random_logits(support, seed=74))
+    q = ConditionalCladeDistribution(support, q_logits)
+    log_p_cond = p.conditional_log_probs()
+
+    rng = np.random.default_rng(75)
+    n_reps = 200
+    batch_size = 16
+
+    def grads(kind):
+        out = []
+        for _ in range(n_reps):
+            flat = tf.constant(q.sample_flat_index_batch(batch_size, rng), tf.int32)
+            with tf.GradientTape() as tape:
+                if kind == "rb":
+                    loss = tf.reduce_mean(rao_blackwellized_surrogate(q, p, flat))
+                else:
+                    log_q = q.log_prob_from_flat_indices(flat)
+                    log_p = tf.reduce_sum(tf.gather(log_p_cond, flat), axis=-1)
+                    cost = log_q - log_p
+                    loss = score_function_surrogate(
+                        cost, log_q, leave_one_out_baseline(cost)
+                    )
+            out.append(tape.gradient(loss, q_logits).numpy())
+        return np.stack(out)
+
+    var_rb = grads("rb").var(0).sum()
+    var_rloo = grads("rloo").var(0).sum()
+    assert var_rb < var_rloo
+
+
+def test_rao_blackwellized_reduces_kl():
+    n = 5
+    support = ConditionalCladeSupport(n)
+    p = ConditionalCladeDistribution(support, random_logits(support, seed=76))
+    q_logits = tf.Variable(random_logits(support, seed=77))
+    q = ConditionalCladeDistribution(support, q_logits)
+    optimizer = tf.optimizers.Adam(0.1)
+    rng = np.random.default_rng(78)
+    initial = float(q.exact_kl_divergence(p))
+    for _ in range(150):
+        flat = tf.constant(q.sample_flat_index_batch(16, rng), tf.int32)
+        with tf.GradientTape() as tape:
+            loss = tf.reduce_mean(rao_blackwellized_surrogate(q, p, flat))
+        optimizer.apply_gradients([(tape.gradient(loss, q_logits), q_logits)])
+    assert float(q.exact_kl_divergence(p)) < initial - 0.5

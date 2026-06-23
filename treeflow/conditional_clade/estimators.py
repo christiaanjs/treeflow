@@ -182,6 +182,94 @@ def vimco_surrogate(log_q: tf.Tensor, log_weights: tf.Tensor) -> tf.Tensor:
 
 
 # ----------------------------------------------------------------------
+# Rao-Blackwellised REINFORCE (exact local categorical expectation)
+# ----------------------------------------------------------------------
+def _cost_to_go(
+    support, q_cond: np.ndarray, p_cond: np.ndarray
+) -> tp.Tuple[np.ndarray, np.ndarray]:
+    """Exact cost-to-go ``V(clade)`` and per-subsplit ``X`` for a CCD target.
+
+    ``V(c) = E[ sum over the subtree rooted at clade c of (log q - log p) ]``,
+    computed by dynamic programming over clades (children before parents). This is
+    tractable precisely because the reverse-KL cost of a CCD target decomposes
+    additively over subsplits. ``X[i] = (log q - log p)(subsplit i) +
+    V(child1_i) + V(child2_i)`` is the cost-to-go *after* taking subsplit ``i``.
+    """
+    from treeflow.conditional_clade.clade import popcount
+
+    n = support.taxon_count
+    visit_value = np.zeros(1 << n)  # V; singletons/leaves are 0
+    probs = np.exp(q_cond)  # per-segment categorical probabilities
+    for clade in sorted(support.parent_clades, key=popcount):  # increasing size
+        idx = support.parent_clade_index[clade]
+        offset = support.parent_offsets[idx]
+        value = 0.0
+        for k, subsplit in enumerate(support.subsplits_by_parent[idx]):
+            i = offset + k
+            value += probs[i] * (
+                (q_cond[i] - p_cond[i])
+                + visit_value[subsplit.child1]
+                + visit_value[subsplit.child2]
+            )
+        visit_value[clade] = value
+    cost_after = np.asarray(
+        [
+            (q_cond[i] - p_cond[i])
+            + visit_value[s.child1]
+            + visit_value[s.child2]
+            for i, s in enumerate(support.flat_subsplits)
+        ]
+    )
+    return visit_value, cost_after
+
+
+def rao_blackwellized_surrogate(
+    q_distribution: ConditionalCladeDistribution,
+    p_distribution: ConditionalCladeDistribution,
+    flat_indices: tf.Tensor,
+) -> tf.Tensor:
+    """Rao-Blackwellised REINFORCE surrogate for ``E_q[log q - log p]``.
+
+    At each internal node the categorical over that clade's subsplits is summed
+    **analytically** (using an exact cost-to-go ``V(clade)``), so the only
+    remaining randomness is which tree structure was sampled. This is an unbiased,
+    lower-variance score-function estimator -- the per-sample surrogate's
+    ``tf.GradientTape`` gradient is the Rao-Blackwellised gradient.
+
+    It requires ``p`` to be a :class:`ConditionalCladeDistribution` on the same
+    support, because the construction relies on the cost decomposing additively
+    over subsplits (so the cost-to-go is computable by dynamic programming). For a
+    non-decomposable target (e.g. a phylogenetic likelihood) the cost-to-go is
+    intractable and this estimator does not apply -- see the notebook discussion.
+
+    Eager-only: the cost-to-go DP is evaluated in NumPy (the differentiable part
+    -- the per-clade softmax -- stays in TensorFlow).
+    """
+    support = q_distribution.support
+    q_cond = q_distribution.conditional_log_probs()
+    p_cond = p_distribution.conditional_log_probs()
+    _, cost_after = _cost_to_go(support, q_cond.numpy(), p_cond.numpy())
+
+    dtype = q_cond.dtype
+    segment_ids = tf.constant(support.segment_ids, dtype=tf.int32)
+    # SV[c] = sum_s q(s|c) * stop_grad(cost_after(s)); differentiable in q logits.
+    segment_value = tf.math.unsorted_segment_sum(
+        tf.exp(q_cond) * tf.constant(cost_after, dtype=dtype),
+        segment_ids,
+        support.parent_clade_count,
+    )
+    flat = tf.cast(flat_indices, tf.int32)
+    # Score term: sum over the realised clades of their analytic local expectation.
+    score_term = tf.reduce_sum(
+        tf.gather(segment_value, tf.gather(segment_ids, flat)), axis=-1
+    )
+    # Direct (pathwise) term: forward value is log q - log p; gradient is grad log q.
+    log_q = tf.reduce_sum(tf.gather(q_cond, flat), axis=-1)
+    log_p = tf.reduce_sum(tf.gather(p_cond, flat), axis=-1)
+    return score_term + (log_q - log_p)
+
+
+# ----------------------------------------------------------------------
 # Relaxed recursive sampling (straight-through over the whole topology)
 # ----------------------------------------------------------------------
 class RelaxedSample(tp.NamedTuple):
@@ -261,6 +349,7 @@ __all__ = [
     "score_function_surrogate",
     "leave_one_out_baseline",
     "vimco_surrogate",
+    "rao_blackwellized_surrogate",
     "sample_relaxed_cost",
     "RelaxedSample",
     "traversal_log_prob",
