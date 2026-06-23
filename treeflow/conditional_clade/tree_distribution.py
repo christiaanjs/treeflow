@@ -36,6 +36,13 @@ from treeflow.tree.taxon_set import TupleTaxonSet
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 
 
+def _native_conditional_clade():
+    """Lazily import the native op module (kept optional)."""
+    from treeflow.acceleration.native import conditional_clade
+
+    return conditional_clade
+
+
 class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopology]):
     """Conditional clade distribution over ``TensorflowTreeTopology`` samples."""
 
@@ -44,6 +51,7 @@ class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopolo
         support: ConditionalCladeSupport,
         logits: tp.Optional[tf.Tensor] = None,
         float_dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF,
+        use_native: tp.Union[bool, str] = "auto",
         validate_args: bool = False,
         allow_nan_stats: bool = True,
         name: str = "ConditionalCladeTreeDistribution",
@@ -52,6 +60,16 @@ class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopolo
         self.ccd = ConditionalCladeDistribution(support, logits, dtype=float_dtype)
         self.support = support
         self.float_dtype = float_dtype
+
+        # Route sample / log_prob through the native C++ ops when requested and
+        # available; "auto" uses them if the library can be loaded, else falls
+        # back to the pure-TensorFlow tensor_ops implementation.
+        if use_native == "auto":
+            self._use_native = _native_conditional_clade().is_available()
+        else:
+            self._use_native = bool(use_native)
+            if self._use_native:
+                _native_conditional_clade().load_op_library()
 
         n = support.taxon_count
         self._n = n
@@ -76,6 +94,7 @@ class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopolo
         self._flat_child2 = tf.constant(
             [s.child2 for s in support.flat_subsplits], dtype=tf.int32
         )
+        self._flat_parent = tf.constant(support.flat_parents, dtype=tf.int32)
 
         # Hash table (parent * 2**n + canonical child1) -> flat subsplit index,
         # for the graph-mode log-probability.
@@ -151,11 +170,37 @@ class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopolo
             preorder_indices=preorder_indices,
         )
 
+    def _sample_n_native(self, per_sample_seeds) -> TensorflowTreeTopology:
+        native = _native_conditional_clade()
+        logits = tf.convert_to_tensor(self.logits, dtype=self.float_dtype)
+        parent_indices = native.native_sample_parent_indices(
+            logits,
+            tf.cast(per_sample_seeds, tf.int32),
+            self._clade_offset,
+            self._clade_count,
+            self._flat_child1,
+            self._flat_child2,
+            self._n,
+        )
+        child_indices = native.native_parent_indices_to_child_indices(
+            parent_indices, self._n
+        )
+        preorder_indices = native.native_child_indices_to_preorder(
+            child_indices, self._n
+        )
+        return TensorflowTreeTopology(
+            parent_indices=parent_indices,
+            child_indices=child_indices,
+            preorder_indices=preorder_indices,
+        )
+
     def _sample_n(self, n, seed=None) -> TensorflowTreeTopology:
         seed = samplers.sanitize_seed(seed, salt="ConditionalCladeTreeDistribution")
         per_sample_seeds = samplers.split_seed(
             seed, n=tf.convert_to_tensor(n, dtype=tf.int32)
         )
+        if self._use_native:
+            return self._sample_n_native(per_sample_seeds)
         output_signature = TensorflowTreeTopology(
             parent_indices=tf.TensorSpec([self._node_count - 1], tf.int32),
             child_indices=tf.TensorSpec([self._node_count, 2], tf.int32),
@@ -204,11 +249,23 @@ class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopolo
         cond = self.conditional_log_probs()
         n = self._n
         node_count = self._node_count
-        table = self._flat_index_table
-        pow2n = self._pow2n
 
         batch_shape = ps.shape(parent_indices)[:-1]
-        flat_parent = tf.reshape(parent_indices, [-1, node_count - 1])
+        flat_parent_indices = tf.reshape(parent_indices, [-1, node_count - 1])
+
+        if self._use_native:
+            native = _native_conditional_clade()
+            flat_log_prob = native.native_topology_log_prob(
+                cond,
+                flat_parent_indices,
+                self._flat_parent,
+                self._flat_child1,
+                n,
+            )
+            return tf.reshape(flat_log_prob, batch_shape)
+
+        table = self._flat_index_table
+        pow2n = self._pow2n
 
         def single(pi):
             return tensor_ops.topology_log_prob(
@@ -216,7 +273,7 @@ class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopolo
             )
 
         flat_log_prob = tf.map_fn(
-            single, flat_parent, fn_output_signature=self.float_dtype
+            single, flat_parent_indices, fn_output_signature=self.float_dtype
         )
         return tf.reshape(flat_log_prob, batch_shape)
 

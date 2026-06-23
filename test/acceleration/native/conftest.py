@@ -4,6 +4,7 @@ import tensorflow as tf
 
 from treeflow.acceleration.native import phylo_likelihood as native
 from treeflow.acceleration.native import node_height_ratio as native_ratio
+from treeflow.acceleration.native import conditional_clade as native_clade
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 from treeflow.tree.topology.tensorflow_tree_topology import numpy_topology_to_tensor
 
@@ -36,6 +37,7 @@ def _ensure_native_built():
     from treeflow.acceleration.native.build import (
         build,
         build_node_height_ratio,
+        build_conditional_clade,
     )
 
     if not os.path.exists(native.library_path()):
@@ -48,9 +50,15 @@ def _ensure_native_built():
             build_node_height_ratio()
         except Exception as e:  # pragma: no cover - environment dependent
             unavailable(f"Could not build native ratio op: {e}")
+    if not os.path.exists(native_clade.library_path()):
+        try:
+            build_conditional_clade()
+        except Exception as e:  # pragma: no cover - environment dependent
+            unavailable(f"Could not build native conditional clade op: {e}")
     try:
         native.load_op_library()
         native_ratio.load_op_library()
+        native_clade.load_op_library()
     except Exception as e:  # pragma: no cover
         unavailable(f"Could not load native op: {e}")
 

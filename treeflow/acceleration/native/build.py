@@ -34,6 +34,12 @@ def build_node_height_ratio() -> str:
     return os.path.join(_HERE, "_node_height_ratio_op.so")
 
 
+def build_conditional_clade() -> str:
+    """Build the conditional clade topology ops and return the library path."""
+    _run_build("conditional_clade_op")
+    return os.path.join(_HERE, "_conditional_clade_op.so")
+
+
 def build_all() -> None:
     """Build every native op."""
     _run_build()
