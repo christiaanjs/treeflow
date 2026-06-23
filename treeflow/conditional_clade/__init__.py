@@ -27,6 +27,9 @@ from treeflow.conditional_clade.distribution import (
     ConditionalCladeDistribution,
     segment_log_softmax,
 )
+from treeflow.conditional_clade.tree_distribution import (
+    ConditionalCladeTreeDistribution,
+)
 
 __all__ = [
     "Subsplit",
@@ -35,5 +38,6 @@ __all__ = [
     "ConditionalCladeSupport",
     "SubsplitAssignment",
     "ConditionalCladeDistribution",
+    "ConditionalCladeTreeDistribution",
     "segment_log_softmax",
 ]
