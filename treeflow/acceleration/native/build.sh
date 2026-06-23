@@ -33,16 +33,6 @@ CXX="${CXX:-g++}"
 read -r -a TF_CFLAGS <<<"$(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))')"
 read -r -a TF_LFLAGS <<<"$(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))')"
 
-# Enable AVX2 on x86_64 only. -mavx2 is an x86 flag and g++ rejects it on
-# other architectures (e.g. aarch64/arm64), which breaks Docker builds there.
-# We deliberately avoid -march=native: enabling AVX512-FP16 trips a bug in the
-# Eigen headers bundled with TensorFlow. -O3 with -mavx2 is plenty for these
-# kernels on x86; on ARM, -O3 alone already autovectorizes with NEON.
-ARCH_FLAGS=()
-case "$(uname -m)" in
-  x86_64 | amd64) ARCH_FLAGS+=(-mavx2) ;;
-esac
-
 for name in "${TARGETS[@]}"; do
   out="$(op_output "${name}")"
   if [ -z "${out}" ]; then
@@ -53,7 +43,7 @@ for name in "${TARGETS[@]}"; do
   OUT="${HERE}/${out}"
   echo "Building ${OUT}"
   # -I cc so the ops can include the shared tree_traversal.h header.
-  "${CXX}" -std=c++17 -shared -fPIC -O3 "${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}" \
+  "${CXX}" -std=c++17 -shared -fPIC -O3 -march=native \
     -I"${HERE}/cc" \
     "${SRC}" -o "${OUT}" \
     "${TF_CFLAGS[@]}" "${TF_LFLAGS[@]}"

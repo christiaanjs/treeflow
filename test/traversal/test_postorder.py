@@ -53,7 +53,8 @@ def traversal_likelihood(
         xla_compatible=xla_compatible,
     )
     root_partials = partials[-1]
-    return tf.reduce_sum(frequencies * root_partials, axis=-1)
+    site_partials = tf.reduce_sum(frequencies * root_partials, axis=-1)
+    return tf.reduce_sum(tf.math.log(site_partials))
 
 
 @pytest.mark.parametrize("xla_compatible", [True, False])
@@ -76,8 +77,17 @@ def test_postorder_node_traversal_phylo_likelihood(
     encoded_sequences = hello_alignment.get_encoded_sequence_tensor(
         hello_tensor_tree.taxon_set
     )
+
+    def gradient_func(sequences, probs, freqs, topology, **kwargs):
+        with tf.GradientTape() as tape:
+            tape.watch(probs)
+            tape.watch(freqs)
+            ll = traversal_likelihood(sequences, probs, freqs, topology, **kwargs)
+        return tape.gradient(ll, [probs, freqs])
+
     if function_mode:
         func = tf.function(traversal_likelihood, jit_compile=xla_compatible)
+        gradient_func = tf.function(gradient_func, jit_compile=xla_compatible)
     else:
         func = traversal_likelihood
 
@@ -90,7 +100,7 @@ def test_postorder_node_traversal_phylo_likelihood(
     else:
         topology = hello_tensor_tree.topology
 
-    site_partials = func(
+    res = func(
         encoded_sequences,
         probs,
         hky_params["frequencies"],
@@ -98,6 +108,15 @@ def test_postorder_node_traversal_phylo_likelihood(
         unroll=unroll,
         xla_compatible=xla_compatible,
     )
-    res = tf.reduce_sum(tf.math.log(site_partials))
     expected = hello_hky_log_likelihood
     assert_allclose(res.numpy(), expected)
+
+    grad_res = gradient_func(
+        encoded_sequences,
+        probs,
+        hky_params["frequencies"],
+        topology,
+        unroll=unroll,
+        xla_compatible=xla_compatible,
+    )
+    assert all(g is not None for g in grad_res)

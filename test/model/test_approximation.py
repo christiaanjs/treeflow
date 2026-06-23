@@ -169,7 +169,9 @@ def test_get_iaf_approximation_tree(flat_tree_test_data: TreeTestData):
         dtype=DEFAULT_FLOAT_DTYPE_TF,
         topology_pins={tree_name: test_tree.topology},
     )
-    assert len(variable_dict) == n_hidden_layers * n_iaf_bijectors * 3
+    # network weights: (n_hidden_layers + 1 output) * (kernel + bias) * n_bijectors
+    # + 2 affine-base variables (loc_var, log_scale_var)
+    assert len(variable_dict) == n_hidden_layers * n_iaf_bijectors * 3 + 2
     sample = approximation.sample()
     assert (
         tf.reduce_all(

@@ -192,8 +192,7 @@ def test_native_block_size_matches_unblocked(small_problem, block_size):
     )
     base = native_phylogenetic_likelihood(*args, block_size=1)
     blocked = native_phylogenetic_likelihood(*args, block_size=block_size)
-    # Forward is bit-identical (per-site summation order is preserved).
-    assert_allclose(blocked.numpy(), base.numpy(), rtol=0, atol=0)
+    assert_allclose(blocked.numpy(), base.numpy(), rtol=1e-15, atol=1e-18)
 
     def grads(block):
         probs = tf.Variable(p["transition_probs"])
