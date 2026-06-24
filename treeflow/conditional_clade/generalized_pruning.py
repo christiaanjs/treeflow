@@ -21,6 +21,18 @@ straight-through bias -- in time linear in the number of subsplits (the DAG size
 rather than the ``(2n-3)!!`` topologies. It is the tractable analogue, for an
 enumerable DAG, of the straight-through likelihood.
 
+**Pluggable decision weights.** The weights ``w`` need not be the exact marginal
+conditional probabilities. Any per-parent-group weighting can be dropped in (see
+the ``*_weights`` samplers): the *exact* marginal gives the per-site tree-marginal
+above, while a **(Gumbel-)softmax sample** relaxes a single drawn tree. The key
+fact -- exactly your intuition -- is that when the weights are a **hard** one-hot
+per clade, the sum-product collapses onto a single tree and the objective becomes
+the proper *across-sites* likelihood ``sum_s log L_s(T) = log L(T)`` (no Jensen
+gap). So a straight-through weighting (hard one-hot forward, relaxed backward)
+turns generalized pruning into a Gumbel-softmax / straight-through topology
+estimator on the **correct** joint objective, where a single Gumbel-max draw per
+clade is an exact CCD tree sample and supplies *every* clade's partial at once.
+
 Two equivalent passes are provided over the *static* DAG (so both unroll cleanly
 under ``tf.function``):
 
@@ -43,6 +55,78 @@ import tensorflow as tf
 
 from treeflow import DEFAULT_FLOAT_DTYPE_TF
 from treeflow.conditional_clade.clade import clade_size
+from treeflow.conditional_clade.distribution import segment_log_softmax
+
+
+# ----------------------------------------------------------------------------
+# Decision-weight samplers
+#
+# Each maps clade logits to subsplit weights ``w`` (flat order, summing to one
+# within every parent-clade segment), to be fed to the DAG sum-product. They share
+# the signature ``(logits, segment_ids, num_segments, temperature, seed)`` so they
+# are interchangeable as the ``weight_fn`` of
+# :func:`relaxed_log_likelihood_from_distribution`.
+# ----------------------------------------------------------------------------
+def _gumbel_like(logits: tf.Tensor, seed=None) -> tf.Tensor:
+    u = tf.random.uniform(
+        tf.shape(logits), minval=1e-20, maxval=1.0, dtype=logits.dtype, seed=seed
+    )
+    return -tf.math.log(-tf.math.log(u))
+
+
+def _segment_one_hot_argmax(
+    values: tf.Tensor, segment_ids: tf.Tensor, num_segments: int
+) -> tf.Tensor:
+    """One-hot of the argmax within each segment (lowest index breaks ties)."""
+    seg_max = tf.math.unsorted_segment_max(values, segment_ids, num_segments)
+    is_max = values >= tf.gather(seg_max, segment_ids)
+    idx = tf.range(tf.size(values))
+    sentinel = tf.fill(tf.shape(idx), tf.size(values))
+    masked_idx = tf.where(is_max, idx, sentinel)
+    seg_min_idx = tf.math.unsorted_segment_min(masked_idx, segment_ids, num_segments)
+    chosen = tf.equal(idx, tf.gather(seg_min_idx, segment_ids))
+    return tf.cast(chosen, values.dtype)
+
+
+def exact_weights(
+    logits, segment_ids, num_segments, temperature=1.0, seed=None
+) -> tf.Tensor:
+    """The exact marginal conditional probabilities (no sampling)."""
+    return tf.exp(segment_log_softmax(logits, segment_ids, num_segments))
+
+
+def gumbel_softmax_weights(
+    logits, segment_ids, num_segments, temperature=1.0, seed=None
+) -> tf.Tensor:
+    """A relaxed (Gumbel-softmax) tree sample: ``softmax((logits + g) / tau)``."""
+    perturbed = logits + _gumbel_like(logits, seed)
+    return tf.exp(segment_log_softmax(perturbed / temperature, segment_ids, num_segments))
+
+
+def straight_through_weights(
+    logits, segment_ids, num_segments, temperature=1.0, seed=None, gumbel=True
+) -> tf.Tensor:
+    """Hard one-hot per clade (forward), relaxed softmax (backward).
+
+    With ``gumbel=True`` the hard choice is a Gumbel-max draw -- an exact CCD tree
+    sample -- so the forward sum-product collapses to that tree's *across-sites*
+    likelihood; the backward pass flows through the (Gumbel-)softmax. With
+    ``gumbel=False`` the hard choice is the plain argmax (the mode).
+    """
+    perturbed = logits + _gumbel_like(logits, seed) if gumbel else logits
+    soft = tf.exp(segment_log_softmax(perturbed / temperature, segment_ids, num_segments))
+    hard = _segment_one_hot_argmax(perturbed, segment_ids, num_segments)
+    return hard + soft - tf.stop_gradient(soft)
+
+
+def gumbel_straight_through_weights(
+    logits, segment_ids, num_segments, temperature=1.0, seed=None
+) -> tf.Tensor:
+    """Gumbel-softmax straight-through (alias of ``straight_through_weights`` with a
+    Gumbel-max hard sample)."""
+    return straight_through_weights(
+        logits, segment_ids, num_segments, temperature, seed, gumbel=True
+    )
 
 
 class SubsplitDAG:
@@ -208,15 +292,33 @@ def relaxed_log_likelihood_from_distribution(
     frequencies: tf.Tensor,
     dag: tp.Optional[SubsplitDAG] = None,
     vectorized: bool = False,
+    weight_fn: tp.Optional[tp.Callable] = None,
+    temperature: float = 1.0,
+    seed=None,
 ) -> tf.Tensor:
     """Generalized-pruning log-likelihood for a :class:`ConditionalCladeDistribution`.
 
-    ``w`` is taken from ``q_distribution.conditional_log_probs()`` (kept
-    differentiable), so the returned scalar's gradient flows to the clade logits.
+    By default ``w`` is the exact marginal (``q_distribution.conditional_log_probs``),
+    giving the deterministic per-site tree-marginal. Pass a sampler as ``weight_fn``
+    -- e.g. :func:`gumbel_softmax_weights` or :func:`straight_through_weights` -- to
+    relax a *single* drawn tree instead; with a hard (straight-through) ``weight_fn``
+    the forward pass is one tree's across-sites likelihood. The returned scalar is
+    differentiable in the clade logits.
     """
     if dag is None:
         dag = SubsplitDAG(q_distribution.support)
-    w = tf.exp(q_distribution.conditional_log_probs())
+    if weight_fn is None:
+        w = tf.exp(q_distribution.conditional_log_probs())
+    else:
+        logits = tf.convert_to_tensor(q_distribution.logits, q_distribution.dtype)
+        segment_ids = tf.constant(q_distribution.support.segment_ids, tf.int32)
+        w = weight_fn(
+            logits,
+            segment_ids,
+            q_distribution.support.parent_clade_count,
+            temperature=temperature,
+            seed=seed,
+        )
     tip_partials = build_tip_partials(dag, sequences_onehot)
     return relaxed_log_likelihood(
         dag, w, P, tip_partials, frequencies, vectorized=vectorized
@@ -231,4 +333,8 @@ __all__ = [
     "relaxed_partials_vectorized",
     "relaxed_log_likelihood",
     "relaxed_log_likelihood_from_distribution",
+    "exact_weights",
+    "gumbel_softmax_weights",
+    "straight_through_weights",
+    "gumbel_straight_through_weights",
 ]
