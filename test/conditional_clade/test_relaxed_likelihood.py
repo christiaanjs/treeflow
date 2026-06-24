@@ -145,3 +145,43 @@ def test_gather_forward_is_a_hard_gather():
         selection, seq, trans, freq, 5, gather=True
     ).numpy()
     np.testing.assert_allclose(gathered, exact)
+
+
+def test_straight_through_gather_works_for_sampled_candidate_subset():
+    """For a non-exhaustive (sampled) candidate set the backward still runs and
+    is exact per computed entry: a subset's selection gradient equals the full
+    gradient restricted to the sampled candidates (the upstream depends only on
+    the realised gathered child, not on which other candidates are present)."""
+    rng = np.random.default_rng(0)
+    num_candidates, sites, state = 12, 5, 4
+    values = tf.constant(rng.standard_normal((num_candidates, sites, state)))
+    full = np.zeros((2, num_candidates))
+    full[0, 2] = 1.0
+    full[1, 9] = 1.0  # realised children at candidates 2 and 9
+    selection_full = tf.Variable(tf.constant(full))
+    with tf.GradientTape() as tape:
+        out_full = straight_through_gather(values, selection_full)
+        loss = tf.reduce_sum(tf.math.sin(out_full))
+    grad_full = tape.gradient(loss, selection_full).numpy()
+
+    subset = [2, 9, 0, 5, 7]  # realised + a few sampled alternatives
+    values_subset = tf.gather(values, subset)
+    sub = np.zeros((2, len(subset)))
+    sub[0, subset.index(2)] = 1.0
+    sub[1, subset.index(9)] = 1.0
+    selection_subset = tf.Variable(tf.constant(sub))
+    with tf.GradientTape() as tape:
+        out_subset = straight_through_gather(values_subset, selection_subset)
+        loss = tf.reduce_sum(tf.math.sin(out_subset))
+    grad_subset = tape.gradient(loss, selection_subset).numpy()
+
+    np.testing.assert_allclose(out_full.numpy(), out_subset.numpy())
+    np.testing.assert_allclose(grad_subset, grad_full[:, subset])
+
+    # Degenerate single-candidate-per-slot set still runs.
+    values_min = tf.gather(values, [2, 9])
+    selection_min = tf.Variable(tf.constant(np.eye(2)))
+    with tf.GradientTape() as tape:
+        out_min = straight_through_gather(values_min, selection_min)
+        loss = tf.reduce_sum(out_min)
+    assert tape.gradient(loss, selection_min) is not None

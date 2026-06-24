@@ -67,6 +67,17 @@ def straight_through_gather(values: tf.Tensor, selection: tf.Tensor):
     ``out = selection @ values`` had been computed (so it matches autodiff of the
     dense one-hot multiply), without ever materialising that product on the
     forward pass.
+
+    Sampled (non-exhaustive) support
+    --------------------------------
+    ``d_selection[o, k] = <d_out[o], values[k]>`` is computed independently per
+    candidate ``k``, and ``d_out`` depends only on the realised gathered row (not
+    on which other candidates are present). So passing a *sampled subset* of
+    candidates still runs and yields gradients that are exact for every candidate
+    in the subset (the omitted candidates simply receive no gradient) -- the only
+    approximation is normalising the ``selection`` softmax over the subset
+    (sampled-softmax). The backward therefore degrades gracefully from an
+    exhaustive to a sampled candidate set.
     """
     values = tf.convert_to_tensor(values)
     selection = tf.convert_to_tensor(selection)
