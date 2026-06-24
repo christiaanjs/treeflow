@@ -74,12 +74,14 @@ REGISTER_OP("ConditionalCladeSample")
     .Input("flat_child1: int32")
     .Input("flat_child2: int32")
     .Output("parent_indices: int32")
+    .Output("flat_indices: int32")
     .SetShapeFn([](InferenceContext* c) {
       int taxon_count;
       TF_RETURN_IF_ERROR(c->GetAttr("taxon_count", &taxon_count));
       ShapeHandle seeds = c->input(1);
       TF_RETURN_IF_ERROR(c->WithRank(seeds, 2, &seeds));
       c->set_output(0, c->MakeShape({c->Dim(seeds, 0), 2 * taxon_count - 2}));
+      c->set_output(1, c->MakeShape({c->Dim(seeds, 0), taxon_count - 1}));
       return OkStatus();
     });
 
@@ -174,9 +176,12 @@ class ConditionalCladeSampleOp : public OpKernel {
     const int32* seeds = seeds_t.flat<int32>().data();
 
     Tensor* parent_t = nullptr;
+    Tensor* flat_t = nullptr;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, {B, node_count - 1}, &parent_t));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(1, {B, n - 1}, &flat_t));
     int32* parent = parent_t->flat<int32>().data();
+    int32* flat_indices = flat_t->flat<int32>().data();
 
     auto work = [&](int64_t begin, int64_t end) {
       for (int64_t b = begin; b < end; ++b) {
@@ -184,7 +189,10 @@ class ConditionalCladeSampleOp : public OpKernel {
         std::mt19937_64 rng(seq);
         std::uniform_real_distribution<double> uniform(0.0, 1.0);
         int32* parent_b = parent + b * (node_count - 1);
+        int32* flat_b = flat_indices + b * (n - 1);
         int next_internal = n;
+        int decision = 0;  // counts internal nodes; flat order is irrelevant
+                           // downstream (the estimators sum over the n-1 indices)
 
         // Recursively expand a clade, returning its assigned node id. Internal
         // ids are handed out on the way back up (post-order).
@@ -210,6 +218,7 @@ class ConditionalCladeSampleOp : public OpKernel {
             }
           }
           const int flat = offset + choice;
+          flat_b[decision++] = flat;  // record the chosen flat subsplit index
           const int id1 = expand(static_cast<uint32_t>(flat_child1[flat]));
           const int id2 = expand(static_cast<uint32_t>(flat_child2[flat]));
           const int nid = next_internal++;

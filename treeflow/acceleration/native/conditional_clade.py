@@ -108,6 +108,31 @@ def native_sample_parent_indices(
     -------
     ``[B, 2n-2]`` int32 ``parent_indices``.
     """
+    parent_indices, _flat = native_sample(
+        logits, seeds, clade_offset, clade_count, flat_child1, flat_child2,
+        taxon_count,
+    )
+    return parent_indices
+
+
+def native_sample(
+    logits: tf.Tensor,
+    seeds: tf.Tensor,
+    clade_offset: tf.Tensor,
+    clade_count: tf.Tensor,
+    flat_child1: tf.Tensor,
+    flat_child2: tf.Tensor,
+    taxon_count: int,
+) -> tp.Tuple[tf.Tensor, tf.Tensor]:
+    """Sample topologies, returning both ``parent_indices`` and ``flat_indices``.
+
+    ``parent_indices`` is ``[B, 2n-2]`` (the TreeFlow topology encoding) and
+    ``flat_indices`` is ``[B, n-1]`` -- the chosen flat subsplit index at each
+    internal node, in expansion order. The order within a row is irrelevant
+    downstream (the estimators sum over the ``n-1`` decisions), and these flat
+    indices feed the traversal estimators directly, so a whole training step can
+    run in graph mode.
+    """
     module = load_op_library()
     return module.conditional_clade_sample(
         tf.convert_to_tensor(logits),
@@ -164,6 +189,7 @@ def native_child_indices_to_preorder(
 
 
 __all__ = [
+    "native_sample",
     "native_sample_parent_indices",
     "native_topology_log_prob",
     "native_parent_indices_to_child_indices",

@@ -230,3 +230,78 @@ def test_score_function_gradient_in_graph_mode():
     for k in range(150):
         step(seeds[k])
     assert kl() < initial
+
+
+def _flatset_index(support):
+    parent_list = support.enumerate_parent_indices()
+    index = {}
+    for i, pi in enumerate(parent_list):
+        assignment = support.parent_indices_to_assignment(pi)
+        key = tuple(sorted(support.assignment_flat_indices(assignment).tolist()))
+        index[key] = i
+    return parent_list, index
+
+
+def test_sample_flat_indices_shape_and_validity():
+    n = 5
+    dist = make_dist(n, seed=4)
+    flat = dist.sample_flat_indices(6, seed=(1, 2))
+    assert flat.shape == (6, n - 1)
+    # each row is n-1 distinct flat subsplit indices in range
+    for row in flat.numpy():
+        assert len(set(row.tolist())) == n - 1
+        assert np.all(row >= 0) and np.all(row < dist.support.subsplit_count)
+
+
+def test_sample_flat_indices_in_tf_function_matches_pmf():
+    n = 4
+    dist = make_dist(n, seed=5)
+    parent_list, index = _flatset_index(dist.support)
+    exact = dist.ccd.enumerate_probs().numpy()
+
+    @tf.function
+    def draw(seed):
+        return dist.sample_flat_indices(2000, seed=seed)
+
+    counts = np.zeros(len(parent_list))
+    for k in range(10):
+        for row in draw(tf.constant([k, k + 1], tf.int32)).numpy():
+            counts[index[tuple(sorted(row.tolist()))]] += 1
+    assert np.max(np.abs(counts / counts.sum() - exact)) < 0.02
+
+
+def test_sample_flat_indices_feeds_log_prob_in_graph_mode():
+    n = 5
+    support = ConditionalCladeSupport(n)
+    logits = random_logits(support, seed=6)
+    dist = ConditionalCladeTreeDistribution(support, logits)
+    ccd = ConditionalCladeDistribution(support, logits)
+
+    @tf.function
+    def step(seed):
+        flat = dist.sample_flat_indices(16, seed=seed)
+        return ccd.log_prob_from_flat_indices(flat)
+
+    log_probs = step((7, 8))
+    assert log_probs.shape == (16,)
+    assert np.all(np.isfinite(log_probs.numpy()))
+
+
+def test_sample_flat_indices_tf_and_native_agree_on_pmf():
+    n = 4
+    support = ConditionalCladeSupport(n)
+    logits = random_logits(support, seed=9)
+    parent_list, index = _flatset_index(support)
+    exact = ConditionalCladeDistribution(support, logits).enumerate_probs().numpy()
+
+    tf_dist = ConditionalCladeTreeDistribution(support, logits, use_native=False)
+
+    @tf.function
+    def draw(seed):
+        return tf_dist.sample_flat_indices(500, seed=seed)
+
+    counts = np.zeros(len(parent_list))
+    for k in range(8):
+        for row in draw(tf.constant([k + 20, k + 21], tf.int32)).numpy():
+            counts[index[tuple(sorted(row.tolist()))]] += 1
+    assert np.max(np.abs(counts / counts.sum() - exact)) < 0.03

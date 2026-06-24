@@ -263,6 +263,26 @@ def topology_log_prob(
     ``parent * 2**n + canonical_child1``) and sums the conditional
     log-probabilities. Differentiable in ``conditional_log_probs``.
     """
+    flat = parent_indices_to_flat_indices(
+        parent_indices, taxon_count, node_count, flat_index_table, pow2n
+    )
+    return tf.reduce_sum(tf.gather(conditional_log_probs, flat))
+
+
+def parent_indices_to_flat_indices(
+    parent_indices: tf.Tensor,
+    taxon_count: int,
+    node_count: int,
+    flat_index_table: tf.lookup.StaticHashTable,
+    pow2n: int,
+) -> tf.Tensor:
+    """Chosen flat subsplit index at each internal node (``[n-1]``), in graph mode.
+
+    Computes the clade at each node, reads off the (canonical) subsplit at every
+    internal node and maps it to its flat index via ``flat_index_table`` (keyed by
+    ``parent * 2**n + canonical_child1``). This is the bridge that lets a graph
+    sampled topology feed the flat-index traversal estimators.
+    """
     parent_indices = tf.cast(parent_indices, INT)
     child_indices = parent_indices_to_child_indices(parent_indices, node_count)
     clade_of = _build_clade_of(child_indices, taxon_count, node_count)
@@ -278,13 +298,13 @@ def topology_log_prob(
     keys = tf.cast(parent_clade, tf.int64) * tf.cast(pow2n, tf.int64) + tf.cast(
         canonical_child1, tf.int64
     )
-    flat = flat_index_table.lookup(keys)
-    return tf.reduce_sum(tf.gather(conditional_log_probs, flat))
+    return flat_index_table.lookup(keys)
 
 
 __all__ = [
     "sample_parent_indices",
     "parent_indices_to_child_indices",
     "child_indices_to_preorder",
+    "parent_indices_to_flat_indices",
     "topology_log_prob",
 ]

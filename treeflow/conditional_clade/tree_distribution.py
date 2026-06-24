@@ -170,6 +170,61 @@ class ConditionalCladeTreeDistribution(BaseTreeDistribution[TensorflowTreeTopolo
             preorder_indices=preorder_indices,
         )
 
+    def sample_flat_indices(self, n: int, seed=None) -> tf.Tensor:
+        """Graph-mode counterpart of ``sample_flat_index_batch``.
+
+        Returns an ``[n, taxon_count - 1]`` int32 tensor of chosen flat subsplit
+        indices, one row per sampled topology, computed entirely with tensor ops
+        (native when available, else the ``tf.while_loop`` sampler). Unlike the
+        eager NumPy ``ConditionalCladeDistribution.sample_flat_index_batch`` this
+        traces into a ``tf.function``, so a whole training step -- sampling
+        included -- can run in graph mode. The order of indices within a row is
+        arbitrary; the traversal estimators sum over them.
+        """
+        seed = samplers.sanitize_seed(seed, salt="ConditionalCladeTreeDistribution")
+        per_sample_seeds = samplers.split_seed(
+            seed, n=tf.convert_to_tensor(n, dtype=tf.int32)
+        )
+        logits = tf.convert_to_tensor(self.logits, dtype=self.float_dtype)
+        if self._use_native:
+            native = _native_conditional_clade()
+            _parent, flat = native.native_sample(
+                logits,
+                tf.cast(per_sample_seeds, tf.int32),
+                self._clade_offset,
+                self._clade_count,
+                self._flat_child1,
+                self._flat_child2,
+                self._n,
+            )
+            return flat
+
+        def one(sample_seed):
+            parent_indices = tensor_ops.sample_parent_indices(
+                logits,
+                node_id_init=self._node_id_init,
+                clade_offset=self._clade_offset,
+                clade_count=self._clade_count,
+                flat_child1=self._flat_child1,
+                flat_child2=self._flat_child2,
+                taxon_count=self._n,
+                node_count=self._node_count,
+                seed=sample_seed,
+            )
+            return tensor_ops.parent_indices_to_flat_indices(
+                parent_indices,
+                self._n,
+                self._node_count,
+                self._flat_index_table,
+                self._pow2n,
+            )
+
+        return tf.map_fn(
+            one,
+            per_sample_seeds,
+            fn_output_signature=tf.TensorSpec([self._n - 1], tf.int32),
+        )
+
     def _sample_n_native(self, per_sample_seeds) -> TensorflowTreeTopology:
         native = _native_conditional_clade()
         logits = tf.convert_to_tensor(self.logits, dtype=self.float_dtype)
