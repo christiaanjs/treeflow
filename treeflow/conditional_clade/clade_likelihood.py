@@ -50,6 +50,19 @@ def _apply_transition(transition: tf.Tensor, partials: tf.Tensor) -> tf.Tensor:
     return tf.linalg.matvec(transition, partials)
 
 
+def _as_transition_fn(transition):
+    """Normalise ``transition`` to a callable ``clade -> [state, state]`` matrix.
+
+    Accepts either a fixed matrix (used on every edge -- equal branch lengths) or
+    a callable giving the transition matrix on the edge above a given child clade
+    (variable branch lengths, e.g. from a node-height ratio transform).
+    """
+    if callable(transition):
+        return transition
+    matrix = tf.convert_to_tensor(transition)
+    return lambda clade: matrix
+
+
 def exhaustive_candidates(clade: int, realised: Subsplit) -> tp.List[Subsplit]:
     """Every subsplit of ``clade`` (for an enumerable support)."""
     return enumerate_clade_subsplits(clade)
@@ -93,6 +106,7 @@ def sampled_subtree_partial_fn(
     rng = np.random.default_rng(seed)
     support = q_distribution.support
     cond_probs = q_distribution.conditional_probs_numpy()
+    transition_fn = _as_transition_fn(transition)
     cache: tp.Dict[int, tf.Tensor] = dict(leaf_partials)
 
     def partial(clade: int) -> tf.Tensor:
@@ -107,8 +121,8 @@ def sampled_subtree_partial_fn(
             probs = cond_probs[start : start + len(subsplits)]
             probs = probs / probs.sum()
             chosen = subsplits[rng.choice(len(subsplits), p=probs)]
-            left = _apply_transition(transition, partial(chosen.child1))
-            right = _apply_transition(transition, partial(chosen.child2))
+            left = _apply_transition(transition_fn(chosen.child1), partial(chosen.child1))
+            right = _apply_transition(transition_fn(chosen.child2), partial(chosen.child2))
             result = left * right
         cache[clade] = result
         return result
@@ -120,7 +134,7 @@ def clade_straight_through_log_likelihood(
     q_distribution,
     parent_indices,
     sequences_onehot: tf.Tensor,
-    transition: tf.Tensor,
+    transition,
     frequencies: tf.Tensor,
     candidate_subsplits_fn: tp.Optional[
         tp.Callable[[int, Subsplit], tp.List[Subsplit]]
@@ -157,6 +171,7 @@ def clade_straight_through_log_likelihood(
     support = q_distribution.support
     n = support.taxon_count
     conditional_log_probs = q_distribution.conditional_log_probs()
+    transition_fn = _as_transition_fn(transition)
 
     assignment = support.parent_indices_to_assignment(parent_indices)
     leaf_partials = {1 << i: sequences_onehot[..., i, :] for i in range(n)}
@@ -185,8 +200,12 @@ def clade_straight_through_log_likelihood(
         combined = []
         logits = []
         for subsplit in candidates:
-            left = _apply_transition(transition, child_partial(subsplit.child1))
-            right = _apply_transition(transition, child_partial(subsplit.child2))
+            left = _apply_transition(
+                transition_fn(subsplit.child1), child_partial(subsplit.child1)
+            )
+            right = _apply_transition(
+                transition_fn(subsplit.child2), child_partial(subsplit.child2)
+            )
             combined.append(left * right)
             flat = support.flat_index[(clade, subsplit)]
             logits.append(conditional_log_probs[flat])
