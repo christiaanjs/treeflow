@@ -108,11 +108,44 @@ heights = native_ratios_to_node_heights(
 )
 ```
 
+## Conditional clade topology ops
+
+Compiled ops for the conditional clade (subsplit Bayesian network) distribution
+over rooted topologies in
+[`treeflow/conditional_clade/`](../../conditional_clade/), the drop-in
+counterparts of the pure-TensorFlow `tf.while_loop` reference in
+[`treeflow/conditional_clade/tensor_ops.py`](../../conditional_clade/tensor_ops.py).
+
+The recursive, data-dependent structure of a topology — which clades get
+expanded depends on which subsplits were sampled — is awkward to express with
+`tf.while_loop` but natural as ordinary C++ recursion, so these kernels are both
+simpler and faster than the graph-mode reference while producing identical
+results.
+
+* `ConditionalCladeSample` — samples `parent_indices` (one independent topology
+  per seed row) from the per-subsplit logits, via a recursive expansion that
+  assigns internal node ids in post-order.
+* `ConditionalCladeLogProb` — the log-probability of a topology, plus the chosen
+  flat subsplit indices saved for the backward pass; `ConditionalCladeLogProbGrad`
+  is the analytic (scatter-add) gradient w.r.t. the conditional log-probabilities,
+  wired in with `@tf.RegisterGradient("ConditionalCladeLogProb")`.
+* `ParentIndicesToChildIndices` / `ChildIndicesToPreorder` — the topology index
+  transforms (deriving `child_indices` and the pre-order traversal).
+
+They are consumed through `ConditionalCladeTreeDistribution(..., use_native=...)`
+(`"auto"` by default: native if the library can be loaded, else the
+pure-TensorFlow path), so `sample` and `log_prob` transparently use the compiled
+ops inside `tf.function`. The lower-level wrappers are in
+[`conditional_clade.py`](conditional_clade.py)
+(`native_sample_parent_indices`, `native_topology_log_prob`,
+`native_parent_indices_to_child_indices`, `native_child_indices_to_preorder`).
+
 ## Building
 
 ```bash
 bash treeflow/acceleration/native/build.sh                  # all ops
 bash treeflow/acceleration/native/build.sh node_height_ratio_op  # just one
+bash treeflow/acceleration/native/build.sh conditional_clade_op  # the clade ops
 # or
 python -m treeflow.acceleration.native.build
 ```
