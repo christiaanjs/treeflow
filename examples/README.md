@@ -9,7 +9,7 @@
 It uses the model specified in [`h3n2-model.yaml`](h3n2-model.yaml).
 
 ## Rates and dates
-[`rates-and-dates.ipynb`](rates-and-dates.ipynb) is a Jupyter notebook that demonstrates TreeFlow's variational inference and model comparison API. We also provide a YAML version of the model definition in [`rates-and-dates-model.yaml`](rates-and-dates.yaml).
+[`rates-and-dates.ipynb`](rates-and-dates.ipynb) is a Jupyter notebook that demonstrates TreeFlow's variational inference and model comparison API. We also provide a YAML version of the model definition in [`rates-and-dates-model.yaml`](rates-and-dates-model.yaml).
 
 The data and model are based on [the BEAST documentation](https://beast.community/rates_and_dates). The original sequences are taken from:
 
@@ -17,7 +17,7 @@ The data and model are based on [the BEAST documentation](https://beast.communit
 
 ## Carnivores
 
-[`carnivores.ipynb`](carnivores.ipynb) is a Jupyter notebook that shows how TreeFlow's probabilistic modelling API can be used for rapid model development. It investigates variation in the transition-tranversion ratio over lineages.
+[`carnivores.ipynb`](carnivores.ipynb) is a Jupyter notebook that shows how TreeFlow's probabilistic modelling API can be used for rapid model development. It investigates variation in the transition-transversion ratio over lineages.
 
 The dataset is an alignment of mitochondrial DNA sequences from carnivores, [accessed from the BEAST examples](https://github.com/beast-dev/beast-mcmc/blob/v1.10.4/examples/Benchmarks/benchmark2.xml), taken from:
 

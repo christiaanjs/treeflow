@@ -10,6 +10,14 @@
         2. Follow the link that appears to Jupyter (`http://127.0.0.1:8888/lab?token=...`)
     * Run one of [TreeFlow's command line applications](cli)
 
+## Where to start
+
+Once TreeFlow is installed, a good place to start is the [rates and dates tutorial](rates-and-dates),
+which works through a complete analysis using the Python API. To run standard analyses
+from the command line, see the [model definition format](model-definition) and the
+[command line applications](cli), and [monitoring convergence](convergence) for how to
+check that variational inference has converged.
+
 
 ## Docker 
 
