@@ -182,25 +182,15 @@ def write_newick(tree: NumpyRootedTree, taxon_names: tp.Sequence[str], path: str
     )
 
 
-def simulate_height_samples(
-    tree: TensorflowRootedTree, sample_count: int, height_scale: float, seed: int
-) -> tp.Tuple[tf.Tensor, tf.Tensor]:
-    """Perturb ``tree``'s node heights in ratio space to build a batch of
-    plausible tree states (e.g. as if drawn from an MCMC chain), giving
-    likelihood/gradient benchmarks realistic branch-length variability rather
-    than repeating one fixed input. Returns ``(branch_lengths, ratios)``, each
-    with a leading batch dimension of size ``sample_count``.
+def get_ratios(tree: TensorflowRootedTree) -> tf.Tensor:
+    """Inverse-transform ``tree``'s own node heights into ratio space -- the
+    single, fixed input used to benchmark the ratio-transform forward pass and
+    its gradient (see ``benchmarking.repeated_times``: the same input is
+    timed repeatedly rather than looping once over many different inputs).
     """
     anchor_heights = get_anchor_heights_tensor(tree.topology, tree.sampling_times)
     bij = NodeHeightRatioBijector(topology=tree.topology, anchor_heights=anchor_heights)
-    loc = bij.inverse(tree.node_heights)
-    base_dist = tf.random.stateless_normal(
-        (sample_count,) + loc.shape, seed=[seed, 0], dtype=loc.dtype
-    ) * tf.cast(height_scale, loc.dtype) + loc
-    ratios = base_dist
-    heights = bij.forward(ratios)
-    sampled_trees = tree.with_node_heights(heights)
-    return sampled_trees.branch_lengths, ratios
+    return bij.inverse(tree.node_heights)
 
 
 def simulate_replicate(

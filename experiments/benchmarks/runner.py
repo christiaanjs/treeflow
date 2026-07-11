@@ -1,7 +1,8 @@
 """Run the simulate -> benchmark sweep and assemble a long-format DataFrame,
 matching the ``out/plot-data.csv`` produced by the old Snakemake pipeline
 (columns: ``method``, ``seed``, ``taxon_count``, ``model``, ``computation``,
-``time``).
+``time``), plus a ``stat`` column distinguishing the ``mean`` and ``min``
+across repeated timings (see ``benchmarking.repeated_times``).
 """
 import os
 import typing as tp
@@ -14,7 +15,26 @@ from benchmarks.benchmarkables import (
     build_likelihood_benchmarkables,
     build_ratio_transform_benchmarkables,
 )
-from benchmarks.simulate import simulate_height_samples, simulate_replicate
+from benchmarks.simulate import get_ratios, simulate_replicate
+
+_NAN_LIKELIHOOD_TIMES = dict(
+    mean=bench.LikelihoodTimes(np.nan, np.nan), min=bench.LikelihoodTimes(np.nan, np.nan)
+)
+_NAN_RATIO_TRANSFORM_TIMES = dict(
+    mean=bench.RatioTransformTimes(np.nan, np.nan),
+    min=bench.RatioTransformTimes(np.nan, np.nan),
+)
+
+
+def _rows_from_times_by_stat(times_by_stat, taxon_count, seed, method, model):
+    rows = []
+    for stat, times in times_by_stat.items():
+        row = bench.annotate_times(
+            times, taxon_count=taxon_count, seed=seed, method=method, model=model
+        )._asdict()
+        row["stat"] = stat
+        rows.append(row)
+    return rows
 
 
 def run_likelihood_sweep(
@@ -25,14 +45,14 @@ def run_likelihood_sweep(
     pop_size: float,
     sampling_window: float,
     sequence_length: int,
-    sample_count: int,
-    height_scale: float,
+    repeats: int,
     sim_model: dict,
     working_dir: str,
 ) -> pd.DataFrame:
-    """Simulate a tree + alignment per ``(taxon_count, seed)``, then run every
+    """Simulate a tree + alignment per ``(taxon_count, seed)``, then time every
     available likelihood benchmarkable (treeflow, treeflow_native, jax if
-    installed, beagle_bito if installed) on it for every model.
+    installed, beagle_bito if installed) on that tree's own branch lengths,
+    repeated ``repeats`` times, for every model.
     """
     from treeflow.model.phylo_model import PhyloModel
 
@@ -50,15 +70,12 @@ def run_likelihood_sweep(
                 seed=seed,
                 tree_dir=tree_dir,
             )
-            branch_lengths, _ = simulate_height_samples(
-                tensor_tree, sample_count=sample_count, height_scale=height_scale, seed=seed
-            )
-            branch_lengths_np = branch_lengths.numpy()
+            branch_lengths_np = tensor_tree.branch_lengths.numpy()
 
             for model_name, model in models.items():
                 for method, benchmarkable in benchmarkables.items():
                     try:
-                        times = bench.benchmark_likelihood(
+                        times_by_stat = bench.benchmark_likelihood(
                             newick_file,
                             fasta_file,
                             model,
@@ -67,20 +84,20 @@ def run_likelihood_sweep(
                             calculate_clock_rate_gradient=calculate_clock_rate_gradient[
                                 model_name
                             ],
+                            repeats=repeats,
                         )
                     except Exception as ex:  # pragma: no cover - defensive, keep sweep going
                         print(f"  {method}/{model_name}/{taxon_count}taxa/seed{seed} failed: {ex}")
-                        times = bench.LikelihoodTimes(np.nan, np.nan)
-                    rows.append(
-                        bench.annotate_times(
-                            times, taxon_count=taxon_count, seed=seed, method=method,
-                            model=model_name,
-                        )._asdict()
+                        times_by_stat = _NAN_LIKELIHOOD_TIMES
+                    rows.extend(
+                        _rows_from_times_by_stat(
+                            times_by_stat, taxon_count, seed, method, model_name
+                        )
                     )
     return (
         pd.DataFrame(rows)
         .melt(
-            id_vars=["method", "seed", "taxon_count", "model"],
+            id_vars=["method", "seed", "taxon_count", "model", "stat"],
             var_name="computation",
             value_name="time",
         )
@@ -92,8 +109,7 @@ def run_ratio_transform_sweep(
     seeds: tp.Sequence[int],
     pop_size: float,
     sampling_window: float,
-    sample_count: int,
-    height_scale: float,
+    repeats: int,
     sim_model: dict,
     working_dir: str,
 ) -> pd.DataFrame:
@@ -113,26 +129,23 @@ def run_ratio_transform_sweep(
                 seed=seed,
                 tree_dir=tree_dir,
             )
-            _, ratios = simulate_height_samples(
-                tensor_tree, sample_count=sample_count, height_scale=height_scale, seed=seed
-            )
-            ratios_np = ratios.numpy()
+            ratios_np = get_ratios(tensor_tree).numpy()
 
             for method, benchmarkable in benchmarkables.items():
                 try:
-                    times = bench.benchmark_ratio_transform(newick_file, ratios_np, benchmarkable)
+                    times_by_stat = bench.benchmark_ratio_transform(
+                        newick_file, ratios_np, benchmarkable, repeats=repeats
+                    )
                 except Exception as ex:  # pragma: no cover
                     print(f"  {method}/ratio_transform/{taxon_count}taxa/seed{seed} failed: {ex}")
-                    times = bench.RatioTransformTimes(np.nan, np.nan)
-                rows.append(
-                    bench.annotate_times(
-                        times, taxon_count=taxon_count, seed=seed, method=method, model="none"
-                    )._asdict()
+                    times_by_stat = _NAN_RATIO_TRANSFORM_TIMES
+                rows.extend(
+                    _rows_from_times_by_stat(times_by_stat, taxon_count, seed, method, "none")
                 )
     return (
         pd.DataFrame(rows)
         .melt(
-            id_vars=["method", "seed", "taxon_count", "model"],
+            id_vars=["method", "seed", "taxon_count", "model", "stat"],
             var_name="computation",
             value_name="time",
         )
@@ -141,17 +154,21 @@ def run_ratio_transform_sweep(
 
 def fit_log_log_lines(plot_data: pd.DataFrame) -> pd.DataFrame:
     """Log-log scaling exponent (``slope``) and ``intercept`` per
-    method/computation/model, matching ``treeflowbenchmarksr::fitLogLogLine``."""
+    method/computation/model/stat, matching ``treeflowbenchmarksr::fitLogLogLine``."""
     rows = []
-    grouped = plot_data.dropna(subset=["time"]).groupby(["method", "computation", "model"])
-    for (method, computation, model), group in grouped:
+    grouped = plot_data.dropna(subset=["time"]).groupby(
+        ["method", "computation", "model", "stat"]
+    )
+    for (method, computation, model, stat), group in grouped:
         if len(group) < 2 or group["taxon_count"].nunique() < 2:
             continue
         slope, intercept = np.polyfit(
             np.log(group["taxon_count"]), np.log(group["time"]), deg=1
         )
         rows.append(
-            dict(method=method, computation=computation, model=model, slope=slope,
-                 intercept=intercept)
+            dict(
+                method=method, computation=computation, model=model, stat=stat,
+                slope=slope, intercept=intercept,
+            )
         )
     return pd.DataFrame(rows)

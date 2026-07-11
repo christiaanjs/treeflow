@@ -1,5 +1,14 @@
 """Timing harness shared by all benchmarkables.
 
+Each computation is timed by calling it ``repeats`` times on a *single* fixed
+input (one tree's actual branch lengths / ratios) and reporting both the
+``mean`` and the ``min`` time across those repeats, rather than looping once
+over a batch of different inputs. The traversal cost doesn't depend on the
+branch-length values themselves, so repeating one input and averaging cancels
+per-call dispatch jitter far better than a single timing per input does;
+``min`` is the standard robust companion (discards positive scheduling noise,
+never underestimates), so both are kept for comparison.
+
 Ported from ``treeflow_benchmarks/benchmarking.py`` (generic, no BEAST
 dependency).
 """
@@ -9,7 +18,6 @@ from collections import namedtuple
 from timeit import default_timer as timer
 
 import numpy as np
-import tensorflow as tf
 
 
 def time_function(func, *args, **kwargs):
@@ -17,6 +25,16 @@ def time_function(func, *args, **kwargs):
     res = func(*args, **kwargs)
     stop = timer()
     return stop - start, res
+
+
+def repeated_times(func, *args, repeats: int = 20, **kwargs) -> tp.Tuple[np.ndarray, object]:
+    """Call ``func(*args, **kwargs)`` ``repeats`` times, timing each call
+    individually. Returns ``(times, last_result)``."""
+    times = np.empty(repeats)
+    result = None
+    for i in range(repeats):
+        times[i], result = time_function(func, *args, **kwargs)
+    return times, result
 
 
 def get_class_with_metadata(_class):
@@ -56,18 +74,6 @@ class LikelihoodBenchmarkable:
     def calculate_gradients(self, branch_lengths: np.ndarray, params: object):
         pass
 
-    def calculate_likelihoods_loop(self, branch_lengths: np.ndarray, params: object):
-        batch_size = branch_lengths.shape[0]
-        output = np.zeros(batch_size, dtype=branch_lengths.dtype)
-        for i in range(batch_size):
-            output[i] = self.calculate_likelihoods(branch_lengths[i], params)
-        return output
-
-    def calculate_gradients_loop(self, branch_lengths: np.ndarray, params: object):
-        batch_size = branch_lengths.shape[0]
-        for i in range(batch_size):
-            self.calculate_gradients(branch_lengths[i], params)
-
 
 def benchmark_likelihood(
     newick_file,
@@ -76,7 +82,11 @@ def benchmark_likelihood(
     branch_lengths: np.ndarray,
     benchmarkable: LikelihoodBenchmarkable,
     calculate_clock_rate_gradient: bool = False,
-) -> LikelihoodTimes:
+    repeats: int = 20,
+) -> tp.Dict[str, LikelihoodTimes]:
+    """Time ``benchmarkable`` on a single ``branch_lengths`` vector, repeated
+    ``repeats`` times. Returns ``{"mean": LikelihoodTimes(...), "min": LikelihoodTimes(...)}``.
+    """
     benchmarkable.initialize(newick_file, fasta_file, model, calculate_clock_rate_gradient)
     from benchmarks.params import get_numpy_gradient_params_dict
     from treeflow.model.phylo_model import PhyloModel
@@ -84,13 +94,16 @@ def benchmark_likelihood(
     params = get_numpy_gradient_params_dict(
         PhyloModel(model), calculate_clock_rate_gradient=calculate_clock_rate_gradient
     )
-    likelihood_time, _ = time_function(
-        benchmarkable.calculate_likelihoods_loop, branch_lengths, params
+    likelihood_times, _ = repeated_times(
+        benchmarkable.calculate_likelihoods, branch_lengths, params, repeats=repeats
     )
-    gradient_time, _ = time_function(
-        benchmarkable.calculate_gradients_loop, branch_lengths, params
+    gradient_times, _ = repeated_times(
+        benchmarkable.calculate_gradients, branch_lengths, params, repeats=repeats
     )
-    return LikelihoodTimes(likelihood_time, gradient_time)
+    return dict(
+        mean=LikelihoodTimes(float(likelihood_times.mean()), float(gradient_times.mean())),
+        min=LikelihoodTimes(float(likelihood_times.min()), float(gradient_times.min())),
+    )
 
 
 class RatioTransformBenchmarkable:
@@ -108,13 +121,22 @@ class RatioTransformBenchmarkable:
 
 
 def benchmark_ratio_transform(
-    newick_file, ratios: np.ndarray, benchmarkable: RatioTransformBenchmarkable
-) -> RatioTransformTimes:
+    newick_file,
+    ratios: np.ndarray,
+    benchmarkable: RatioTransformBenchmarkable,
+    repeats: int = 20,
+) -> tp.Dict[str, RatioTransformTimes]:
+    """Time ``benchmarkable`` on a single ``ratios`` vector, repeated ``repeats``
+    times. Returns ``{"mean": RatioTransformTimes(...), "min": RatioTransformTimes(...)}``.
+    """
     benchmarkable.initialize(newick_file)
     height_gradients = np.ones_like(ratios)
 
-    forward_time, _ = time_function(benchmarkable.calculate_heights, ratios)
-    gradient_time, _ = time_function(
-        benchmarkable.calculate_ratio_gradients, ratios, height_gradients
+    forward_times, _ = repeated_times(benchmarkable.calculate_heights, ratios, repeats=repeats)
+    gradient_times, _ = repeated_times(
+        benchmarkable.calculate_ratio_gradients, ratios, height_gradients, repeats=repeats
     )
-    return RatioTransformTimes(forward_time, gradient_time)
+    return dict(
+        mean=RatioTransformTimes(float(forward_times.mean()), float(gradient_times.mean())),
+        min=RatioTransformTimes(float(forward_times.min()), float(gradient_times.min())),
+    )
