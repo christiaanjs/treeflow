@@ -16,7 +16,29 @@ from tensorflow_probability.python.math.minimize import (
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.model.approximation import get_fixed_topology_mean_field_approximation
 from treeflow.vi.util import default_vi_trace_fn
+from treeflow.vi.convergence_criteria import RelativeLossNotDecreasing
 from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
+
+# Sentinel distinguishing "argument not supplied" (use the default criterion)
+# from an explicit `convergence_criterion=None` (disable early stopping).
+_DEFAULT_CONVERGENCE_CRITERION = object()
+
+
+def default_convergence_criterion() -> RelativeLossNotDecreasing:
+    """The early-stopping criterion used when none is supplied.
+
+    Stops when an EWMA of the per-step ELBO decrease, divided by the current
+    ``|ELBO|``, stays below ``rtol`` for ``min_consecutive`` consecutive steps.
+    Expressing the threshold relative to ``|ELBO|`` makes it invariant to the
+    starting point and to dataset scale. Pass ``convergence_criterion=None`` to
+    ``fit_fixed_topology_variational_approximation`` to disable early stopping.
+    """
+    return RelativeLossNotDecreasing(
+        rtol=1e-6,
+        window_size=1000,
+        min_num_steps=5000,
+        min_consecutive=3,
+    )
 
 
 class ApproximationBuilder(Protocol):
@@ -38,7 +60,9 @@ def fit_fixed_topology_variational_approximation(
     optimizer: Optimizer,
     num_steps: int,
     trace_fn: tp.Optional[tp.Callable[[MinimizeTraceableQuantities], object]] = None,
-    convergence_criterion: tp.Optional[ConvergenceCriterion] = None,
+    convergence_criterion: tp.Optional[
+        ConvergenceCriterion
+    ] = _DEFAULT_CONVERGENCE_CRITERION,
     init_loc: tp.Optional[object] = None,
     return_full_length_trace: bool = True,
     progress_bar: tp.Union[bool, ProgressBarFunc] = False,
@@ -51,6 +75,11 @@ def fit_fixed_topology_variational_approximation(
 ) -> tp.Tuple[Distribution, object]:
     if approx_kwargs is None:
         approx_kwargs = {}
+
+    # An unsupplied criterion defaults to `default_convergence_criterion()`;
+    # `convergence_criterion=None` explicitly disables early stopping.
+    if convergence_criterion is _DEFAULT_CONVERGENCE_CRITERION:
+        convergence_criterion = default_convergence_criterion()
 
     # `use_native`/`unroll` configure the fixed-topology node-height bijector that the
     # approximation builds: the native C++ ratio transform vs the pure-TensorFlow
@@ -93,4 +122,7 @@ def fit_fixed_topology_variational_approximation(
     return (approximation, opt_res)
 
 
-__all__ = ["fit_fixed_topology_variational_approximation"]
+__all__ = [
+    "fit_fixed_topology_variational_approximation",
+    "default_convergence_criterion",
+]
