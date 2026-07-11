@@ -109,3 +109,5 @@ venv.bak/
 
 examples/demo-out/
 .DS_Store
+
+experiments/benchmarks/data/sim/
