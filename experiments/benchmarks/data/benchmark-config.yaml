@@ -1,0 +1,9 @@
+full_taxon_counts:
+- 8
+- 16
+- 32
+- 64
+- 128
+replicates: 3
+sample_count: 10
+sequence_length: 200

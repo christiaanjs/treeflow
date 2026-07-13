@@ -9,6 +9,7 @@ import typing as tp
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from benchmarks import benchmarking as bench
 from benchmarks.benchmarkables import (
@@ -172,3 +173,97 @@ def fit_log_log_lines(plot_data: pd.DataFrame) -> pd.DataFrame:
             )
         )
     return pd.DataFrame(rows)
+
+
+# --- Manuscript export -------------------------------------------------------
+#
+# The treeflow-paper manuscript build (``workflow/ms.smk`` -> the
+# ``benchmark_plot`` R script and ``treeflow_pipeline.manuscript.
+# benchmark_summary_table``) consumes a ``plot-data.csv`` / ``fit-table.csv``
+# pair in the schema the *old* ``treeflow-benchmarks`` Snakemake pipeline
+# produced:
+#
+#   plot-data.csv : method, seed, taxon_count, model, computation, time
+#   fit-table.csv : method, computation, model, slope, intercept
+#
+# with ``computation`` in {``likelihood_time``, ``phylo_gradients_time``} and
+# ``model`` in {``jc``, ``full``}. The richer frames produced above additionally
+# carry ``stat`` (mean/min) and ``task`` columns, name the gradient computation
+# ``gradient_time``, and include the ratio-transform task. ``write_manuscript_data``
+# projects them back onto the manuscript schema so the figure and table can be
+# regenerated directly from this benchmark.
+
+_MANUSCRIPT_COMPUTATION_RENAME = {"gradient_time": "phylo_gradients_time"}
+_MANUSCRIPT_COMPUTATIONS = ["likelihood_time", "phylo_gradients_time"]
+_MANUSCRIPT_MODELS = ["jc", "full"]
+# Methods shown in the manuscript figure/table. jax_jit is intentionally
+# excluded (the manuscript frames JAX as eager execution); it stays in the
+# notebook's own exploratory plots.
+MANUSCRIPT_METHODS = ["treeflow", "treeflow_native", "beagle_bito", "jax"]
+
+
+def write_manuscript_data(
+    plot_data: pd.DataFrame,
+    fit_table: pd.DataFrame,
+    out_dir: str,
+    stat: str = "min",
+    methods: tp.Optional[tp.Sequence[str]] = MANUSCRIPT_METHODS,
+) -> tp.Tuple[str, str]:
+    """Write ``manuscript-plot-data.csv`` and ``manuscript-fit-table.csv`` under
+    ``out_dir`` in the schema consumed by the treeflow-paper manuscript build,
+    restricted to the likelihood task and a single timing ``stat``. Only
+    ``methods`` present in the data are kept (so bito/jax are included when they
+    were available at run time and silently dropped otherwise). Returns the two
+    written paths.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+
+    ld = plot_data[(plot_data["task"] == "likelihood") & (plot_data["stat"] == stat)].copy()
+    ld["computation"] = ld["computation"].replace(_MANUSCRIPT_COMPUTATION_RENAME)
+    if methods is not None:
+        ld = ld[ld["method"].isin(methods)]
+    plot_path = os.path.join(out_dir, "manuscript-plot-data.csv")
+    ld[["method", "seed", "taxon_count", "model", "computation", "time"]].to_csv(
+        plot_path, index=False
+    )
+
+    ft = fit_table[fit_table["stat"] == stat].copy()
+    ft["computation"] = ft["computation"].replace(_MANUSCRIPT_COMPUTATION_RENAME)
+    # Restrict to the manuscript's likelihood-task computations and models; this
+    # also drops the ratio-transform rows (model "none"), whose gradient_time is
+    # renamed to phylo_gradients_time above and would otherwise slip through.
+    ft = ft[
+        ft["computation"].isin(_MANUSCRIPT_COMPUTATIONS)
+        & ft["model"].isin(_MANUSCRIPT_MODELS)
+    ]
+    if methods is not None:
+        ft = ft[ft["method"].isin(methods)]
+    fit_path = os.path.join(out_dir, "manuscript-fit-table.csv")
+    ft[["method", "computation", "model", "slope", "intercept"]].to_csv(
+        fit_path, index=False
+    )
+    return plot_path, fit_path
+
+
+def write_benchmark_config(
+    taxon_counts: tp.Sequence[int],
+    replicates: int,
+    sequence_length: int,
+    repeats: int,
+    out_dir: str,
+) -> str:
+    """Write ``benchmark-config.yaml`` capturing the sweep parameters the
+    manuscript quotes in its benchmark section (``treeflow_pipeline.manuscript.
+    get_treeflow_manuscript_vars``). ``sample_count`` maps to ``repeats`` -- the
+    number of times each computation is timed on a fixed input."""
+    os.makedirs(out_dir, exist_ok=True)
+    config = dict(
+        full_taxon_counts=list(taxon_counts),
+        replicates=replicates,
+        sequence_length=sequence_length,
+        sample_count=repeats,
+    )
+    path = os.path.join(out_dir, "benchmark-config.yaml")
+    with open(path, "w") as f:
+        yaml.safe_dump(config, f)
+    return path

@@ -230,16 +230,25 @@ class JaxLikelihoodBenchmarkable(bench.LikelihoodBenchmarkable):
             self.log_prob = log_prob
             self.grad = grad
 
+        # JAX dispatches asynchronously: a (jitted) call returns a future
+        # immediately while the computation runs in the background. Without
+        # forcing completion we would time only Python dispatch latency
+        # (~0.2 ms) rather than the real compute (tens of ms), making JAX --
+        # especially jax_jit -- look dramatically, and spuriously, faster than
+        # the native op (which is forced to complete by ``.numpy()``). Block on
+        # the results so JAX is timed on the same footing.
+        self._block = jax.block_until_ready
+
         self.params = params
         branch_lengths = tree.branch_lengths
         self.log_prob(branch_lengths, params)  # trace/compile
         self.grad(branch_lengths, params)
 
     def calculate_likelihoods(self, branch_lengths, params):
-        return self.log_prob(branch_lengths, params)
+        return self._block(self.log_prob(branch_lengths, params))
 
     def calculate_gradients(self, branch_lengths, params):
-        return self.grad(branch_lengths, params)
+        return self._block(self.grad(branch_lengths, params))
 
 
 def bito_available() -> bool:
