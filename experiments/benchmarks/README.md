@@ -31,15 +31,27 @@ optional installs, detected at runtime).
 
 ## Running
 
-Interactively, just run the notebook. To execute it non-interactively with the
-sweep progress streamed live to your terminal (`jupyter nbconvert --execute`
-swallows it), use the helper script:
+Interactively, just run the notebook — it uses the `quick` profile by default
+(minutes). To run the manuscript-scale sweep from the browser, set
+`BENCHMARK_PROFILE=full` in the environment before launching the kernel.
+
+To execute the notebook non-interactively with the sweep progress streamed live
+to your terminal (`jupyter nbconvert --execute` swallows it), use the helper
+script:
 
 ```bash
-python ../run_benchmark.py                 # resume from checkpoints, stream progress
-python ../run_benchmark.py --force          # recompute everything
+python ../run_benchmark.py --profile quick   # minutes; resume from checkpoints
+python ../run_benchmark.py --profile full    # manuscript scale (hours; needs bito+jax)
+python ../run_benchmark.py --force           # recompute everything
 python ../run_benchmark.py --output run.ipynb --timeout 7200
 ```
+
+The two profiles are:
+
+| profile | taxon counts | replicates | sites | repeats |
+| --- | --- | --- | --- | --- |
+| `quick` | 8–128 | 3 | 200 | 10 |
+| `full` (manuscript) | 32–2048 | 10 | 1000 | 100 (eager JAX capped at 512 taxa) |
 
 ### Checkpointing / resumption
 

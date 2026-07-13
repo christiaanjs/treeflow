@@ -13,18 +13,17 @@ carriage-return updates render as a live single-line bar in the terminal.
 
 Examples
 --------
-Run with checkpoint resumption (the default -- already-complete configs are
-skipped)::
+Quick sweep with checkpoint resumption (already-complete configs are skipped)::
 
-    python experiments/run_benchmark.py
+    python experiments/run_benchmark.py --profile quick
 
-Force a full recompute, writing the executed notebook to a copy::
+Full manuscript-scale sweep, writing the executed notebook to a copy::
 
-    python experiments/run_benchmark.py --force --output /tmp/executed.ipynb
+    python experiments/run_benchmark.py --profile full --output /tmp/executed.ipynb
 
-Point the checkpoints elsewhere and cap per-cell time to 2 hours::
+Force a full recompute, checkpoints elsewhere, per-cell time capped at 2 hours::
 
-    python experiments/run_benchmark.py --checkpoint-dir /data/ckpt --timeout 7200
+    python experiments/run_benchmark.py --force --checkpoint-dir /data/ckpt --timeout 7200
 """
 from __future__ import annotations
 
@@ -73,6 +72,14 @@ def main(argv=None) -> int:
         help="per-cell timeout in seconds (default: no limit -- the full sweep can be long)",
     )
     parser.add_argument(
+        "--profile",
+        choices=["quick", "full"],
+        default=None,
+        help="sweep size: 'quick' (minutes, the notebook default) or 'full' "
+        "(manuscript scale, hours). Omit to use the notebook's own default / any "
+        "BENCHMARK_PROFILE already set in the environment.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="recompute every config, ignoring/overwriting the checkpoint cache",
@@ -93,6 +100,8 @@ def main(argv=None) -> int:
     # Drive the notebook's config cell + the sweeps' progress flavour via the
     # environment, which nbclient passes through to the kernel subprocess.
     os.environ["BENCHMARK_TQDM"] = "text"
+    if args.profile is not None:
+        os.environ["BENCHMARK_PROFILE"] = args.profile
     if args.force:
         os.environ["BENCHMARK_FORCE"] = "1"
     if args.checkpoint_dir is not None:
