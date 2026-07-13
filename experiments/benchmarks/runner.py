@@ -28,6 +28,22 @@ _NAN_RATIO_TRANSFORM_TIMES = dict(
 )
 
 
+def _method_included(
+    method: str,
+    taxon_count: int,
+    method_max_taxon_count: tp.Optional[tp.Mapping[str, int]],
+) -> bool:
+    """Whether ``method`` should run at ``taxon_count``. A method listed in
+    ``method_max_taxon_count`` is skipped above its cap (mirroring the old
+    pipeline's ``short_benchmarkables``/``short_taxon_counts``, e.g. running the
+    slow eager-JAX benchmark only up to 512 taxa); methods absent from the
+    mapping always run."""
+    if method_max_taxon_count is None:
+        return True
+    cap = method_max_taxon_count.get(method)
+    return cap is None or taxon_count <= cap
+
+
 def _rows_from_times_by_stat(times_by_stat, taxon_count, seed, method, model):
     rows = []
     for stat, times in times_by_stat.items():
@@ -51,11 +67,18 @@ def run_likelihood_sweep(
     sim_model: dict,
     working_dir: str,
     progress: bool = True,
+    method_max_taxon_count: tp.Optional[tp.Mapping[str, int]] = None,
 ) -> pd.DataFrame:
     """Simulate a tree + alignment per ``(taxon_count, seed)``, then time every
     available likelihood benchmarkable (treeflow, treeflow_native, jax if
     installed, beagle_bito if installed) on that tree's own branch lengths,
     repeated ``repeats`` times, for every model.
+
+    ``method_max_taxon_count`` optionally caps individual methods to a maximum
+    taxon count (e.g. ``{"jax": 512}`` to skip the slow eager-JAX benchmark on
+    large trees, as the old pipeline's ``short_benchmarkables`` did); a skipped
+    config produces no rows, so that method's line simply stops early in the
+    plots.
 
     A ``tqdm`` progress bar (``progress=True``) tracks every
     ``(taxon_count, seed, model, method)`` timing and shows the live per-config
@@ -64,7 +87,11 @@ def run_likelihood_sweep(
     from treeflow.model.phylo_model import PhyloModel
 
     method_names = list(build_likelihood_benchmarkables().keys())
-    total = len(taxon_counts) * len(seeds) * len(models) * len(method_names)
+    total = len(seeds) * len(models) * sum(
+        _method_included(m, tc, method_max_taxon_count)
+        for tc in taxon_counts
+        for m in method_names
+    )
     bar = tqdm(total=total, disable=not progress, desc="likelihood sweep", unit="cfg")
 
     rows = []
@@ -86,6 +113,8 @@ def run_likelihood_sweep(
 
             for model_name, model in models.items():
                 for method, benchmarkable in benchmarkables.items():
+                    if not _method_included(method, taxon_count, method_max_taxon_count):
+                        continue
                     bar.set_postfix_str(
                         f"{taxon_count}taxa seed{seed} {model_name}/{method}"
                     )
@@ -139,11 +168,16 @@ def run_ratio_transform_sweep(
     sim_model: dict,
     working_dir: str,
     progress: bool = True,
+    method_max_taxon_count: tp.Optional[tp.Mapping[str, int]] = None,
 ) -> pd.DataFrame:
     from treeflow.model.phylo_model import PhyloModel
 
     method_names = list(build_ratio_transform_benchmarkables().keys())
-    total = len(taxon_counts) * len(seeds) * len(method_names)
+    total = len(seeds) * sum(
+        _method_included(m, tc, method_max_taxon_count)
+        for tc in taxon_counts
+        for m in method_names
+    )
     bar = tqdm(total=total, disable=not progress, desc="ratio-transform sweep", unit="cfg")
 
     rows = []
@@ -164,6 +198,8 @@ def run_ratio_transform_sweep(
             ratios_np = get_ratios(tensor_tree).numpy()
 
             for method, benchmarkable in benchmarkables.items():
+                if not _method_included(method, taxon_count, method_max_taxon_count):
+                    continue
                 bar.set_postfix_str(f"{taxon_count}taxa seed{seed} {method}")
                 try:
                     times_by_stat = bench.benchmark_ratio_transform(
