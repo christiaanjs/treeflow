@@ -123,14 +123,50 @@ flags reported by the installed TensorFlow (so the C++ ABI matches the running
 runtime). The `.so` files are intentionally git-ignored — they are
 environment-specific and must be built against the local TensorFlow.
 
+### Instruction-set baseline
+
+`build.sh` picks its `-march`/`-mavx*` flags from `TREEFLOW_NATIVE_ARCH`:
+
+* `portable` (default when calling `build.sh` directly, e.g. from the
+  `Dockerfile` or a CI job) — a baseline shared by every supported x86_64 host
+  (`-mavx2`; no flag, i.e. the compiler default, on other architectures). Use
+  this whenever the `.so` might run on a different machine than the one that
+  compiled it.
+* `native` (the default when going through `python -m
+  treeflow.acceleration.native.build`, e.g. local development or the
+  test-fixture auto-build fallback) — `-march=native`, tuned for the exact CPU
+  doing the compiling. Only safe when the machine that builds the op is also
+  the machine that runs it.
+
+**Why this matters:** `-march=native` bakes in whatever instruction-set
+extensions (AVX2, AVX-512, ...) the *compiling* machine's CPU happens to
+support. If the resulting `.so` is later executed on a different CPU that
+lacks one of those extensions, the process crashes with `Fatal Python error:
+Illegal instruction` (SIGILL) the moment the op runs — not a build failure,
+so it surfaces as a mysterious runtime crash. This bit us in CI: the `build`
+and `pytest` jobs run on separate GitHub Actions runners, and Docker's
+`cache-from: type=gha` layer cache could replay a `.so` compiled on one
+runner's CPU into a `pytest` job running on a different runner, causing an
+intermittent SIGILL depending on whether the two runners' CPUs happened to
+match. The `Dockerfile` (and therefore the published image) uses the
+`portable` default for exactly this reason — the image is built once and run
+on arbitrary hardware, so it can never assume build-CPU == run-CPU.
+
+If you want `-march=native`'s extra performance for a build you know will
+only ever run on the machine that compiled it, set
+`TREEFLOW_NATIVE_ARCH=native` before calling `build.sh` directly, or just use
+the Python entry point, which already defaults to it.
+
 ### Docker
 
 The `Dockerfile` builds the op as part of the image: it installs a C++ compiler
-in a single layer, runs `build.sh`, then removes the compiler again, and
-`pip install .` copies the resulting `.so` into site-packages via
-`package_data`. The runtime image therefore ships the native op with no build
-toolchain. The GitHub Actions `pytest` workflow builds the `test` image and runs
-the suite, so the native op (and its tests) are exercised in CI.
+in a single layer, runs `build.sh` (portable instruction-set baseline — see
+above, since this image is published and run on machines other than the one
+that built it), then removes the compiler again, and `pip install .` copies
+the resulting `.so` into site-packages via `package_data`. The runtime image
+therefore ships the native op with no build toolchain. The GitHub Actions
+`pytest` workflow builds the `test` image and runs the suite, so the native op
+(and its tests) are exercised in CI.
 
 ## Usage
 

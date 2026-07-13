@@ -15,7 +15,7 @@ from treeflow.model.phylo_model import (
 from treeflow.model.approximation import (
     get_fixed_topology_mean_field_approximation,
     get_fixed_topology_inverse_autoregressive_flow_approximation,
-    get_inverse_autoregressive_flow_approximation,
+    get_fixed_topology_full_rank_approximation,
 )
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
@@ -38,6 +38,7 @@ from treeflow.cli.inference_common import (
 
 convergence_criterion_classes = {"nonfinite": NonfiniteConvergenceCriterion}
 approximation_builders = dict(
+    full_rank=get_fixed_topology_full_rank_approximation,
     mean_field=get_fixed_topology_mean_field_approximation,
     iaf=get_fixed_topology_inverse_autoregressive_flow_approximation,
 )
@@ -69,7 +70,7 @@ approximation_builders = dict(
     "-va",
     type=click.Choice(list(approximation_builders.keys())),
     required=True,
-    default="mean_field",
+    default="full_rank",
     help="Variational approximation type",
     show_default=True,
 )

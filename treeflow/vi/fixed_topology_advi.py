@@ -14,7 +14,7 @@ from tensorflow_probability.python.math.minimize import (
     _trace_has_converged,
 )
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
-from treeflow.model.approximation import get_fixed_topology_mean_field_approximation
+from treeflow.model.approximation import get_fixed_topology_full_rank_approximation
 from treeflow.vi.util import default_vi_trace_fn
 from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
@@ -38,12 +38,14 @@ def fit_fixed_topology_variational_approximation(
     optimizer: Optimizer,
     num_steps: int,
     trace_fn: tp.Optional[tp.Callable[[MinimizeTraceableQuantities], object]] = None,
-    convergence_criterion: tp.Optional[ConvergenceCriterion] = None,
+    convergence_criterion: tp.Optional[
+        ConvergenceCriterion
+    ] = None,
     init_loc: tp.Optional[object] = None,
     return_full_length_trace: bool = True,
     progress_bar: tp.Union[bool, ProgressBarFunc] = False,
     progress_bar_step: int = 10,
-    approx_fn: ApproximationBuilder = get_fixed_topology_mean_field_approximation,
+    approx_fn: ApproximationBuilder = get_fixed_topology_full_rank_approximation,
     approx_kwargs: tp.Optional[tp.Dict[str, object]] = None,
     use_native: tp.Union[str, bool] = "auto",
     unroll: tp.Union[str, bool] = "auto",
@@ -93,4 +95,6 @@ def fit_fixed_topology_variational_approximation(
     return (approximation, opt_res)
 
 
-__all__ = ["fit_fixed_topology_variational_approximation"]
+__all__ = [
+    "fit_fixed_topology_variational_approximation",
+]
