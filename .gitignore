@@ -111,3 +111,4 @@ examples/demo-out/
 .DS_Store
 
 experiments/benchmarks/data/sim/
+experiments/benchmarks/data/checkpoints/

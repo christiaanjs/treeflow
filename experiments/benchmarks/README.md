@@ -29,6 +29,35 @@ Install the extra dependencies with `pip install -e ".[benchmark]"` (adds
 `pandas`, `matplotlib` and `jupyter`; `phylojax` and `bito` are independent
 optional installs, detected at runtime).
 
+## Running
+
+Interactively, just run the notebook. To execute it non-interactively with the
+sweep progress streamed live to your terminal (`jupyter nbconvert --execute`
+swallows it), use the helper script:
+
+```bash
+python ../run_benchmark.py                 # resume from checkpoints, stream progress
+python ../run_benchmark.py --force          # recompute everything
+python ../run_benchmark.py --output run.ipynb --timeout 7200
+```
+
+### Checkpointing / resumption
+
+Each `(taxon_count, seed, model, method)` config is cached to a per-config CSV
+under `data/checkpoints/<task>/<params-hash>/` as it completes. Re-running the
+notebook (or `run_benchmark.py`) **skips already-complete configs** — and skips
+the tree simulation for a `(taxon_count, seed)` entirely when all of its configs
+are cached — so an interrupted or extended sweep resumes where it left off,
+Snakemake-style. The `<params-hash>` sub-directory keys the cache on the sweep
+parameters that affect timings (sequence length, repeats, models, ...), so
+changing them starts a fresh cache rather than reusing stale results. Pass
+`force=True` (notebook `FORCE_RERUN`, or `run_benchmark.py --force`) to recompute
+and overwrite. The checkpoint directory is git-ignored.
+
+Slow methods can be capped to a maximum taxon count via `METHOD_MAX_TAXON_COUNT`
+(e.g. `{"jax": 512}`, mirroring the old pipeline's `short_benchmarkables`); a
+capped method is skipped above its limit and its line simply stops early.
+
 ## Layout
 
 | module | contents |
@@ -37,8 +66,10 @@ optional installs, detected at runtime).
 | `params.py` | parameter-dict plumbing shared by the benchmarkables |
 | `benchmarking.py` | generic timing harness |
 | `benchmarkables.py` | treeflow / treeflow-native / jax / beagle-bito implementations |
-| `runner.py` | simulate -> benchmark sweep -> long-format `pandas.DataFrame` |
+| `runner.py` | simulate -> benchmark sweep (with per-config checkpointing) -> long-format `pandas.DataFrame` |
+| `../run_benchmark.py` | execute the notebook via nbclient, streaming sweep progress to the terminal |
 | `data/` | `plot-data.csv`, `fit-table.csv` and the summary plots produced by the notebook |
+| `data/checkpoints/` | resumable per-config timing cache (git-ignored) |
 
 ## Notes on the simulation
 

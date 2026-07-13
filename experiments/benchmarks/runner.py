@@ -4,13 +4,23 @@ matching the ``out/plot-data.csv`` produced by the old Snakemake pipeline
 ``time``), plus a ``stat`` column distinguishing the ``mean`` and ``min``
 across repeated timings (see ``benchmarking.repeated_times``).
 """
+import hashlib
+import json
 import os
 import typing as tp
 
 import numpy as np
 import pandas as pd
 import yaml
-from tqdm.auto import tqdm
+
+# Progress bar flavour: interactive sessions get the rich tqdm.auto widget bar,
+# but under nbconvert (or when BENCHMARK_TQDM=text) we want a plain text bar that
+# streams as stderr 'stream' messages -- which run_benchmark.py forwards live to
+# the terminal. Widget bars would not forward as text.
+if os.environ.get("BENCHMARK_TQDM", "").lower() in ("text", "std", "plain"):
+    from tqdm.std import tqdm
+else:
+    from tqdm.auto import tqdm
 
 from benchmarks import benchmarking as bench
 from benchmarks.benchmarkables import (
@@ -18,6 +28,41 @@ from benchmarks.benchmarkables import (
     build_ratio_transform_benchmarkables,
 )
 from benchmarks.simulate import get_ratios, simulate_replicate
+
+# Long-format columns each config contributes (shared by both sweeps and by the
+# per-config checkpoint files).
+_ID_VARS = ["method", "seed", "taxon_count", "model", "stat"]
+_LONG_COLUMNS = _ID_VARS + ["computation", "time"]
+
+
+def _signature(params: dict) -> str:
+    """Short hash of the sweep parameters that affect timings. Used as a
+    checkpoint sub-directory so a run with different parameters (sequence
+    length, repeats, models, ...) doesn't reuse stale cached configs."""
+    payload = json.dumps(params, sort_keys=True, default=str)
+    return hashlib.sha1(payload.encode()).hexdigest()[:12]
+
+
+def _config_checkpoint_path(checkpoint_dir, task, signature, taxon_count, seed, model, method):
+    return os.path.join(
+        checkpoint_dir,
+        task,
+        signature,
+        f"{taxon_count}taxa-{seed}seed-{model}-{method}.csv",
+    )
+
+
+def _write_csv_atomic(frame: pd.DataFrame, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    frame.to_csv(tmp, index=False)
+    os.replace(tmp, path)  # atomic: a half-written file never looks complete
+
+
+def _melt_config(wide_rows) -> pd.DataFrame:
+    return pd.DataFrame(wide_rows).melt(
+        id_vars=_ID_VARS, var_name="computation", value_name="time"
+    )
 
 _NAN_LIKELIHOOD_TIMES = dict(
     mean=bench.LikelihoodTimes(np.nan, np.nan), min=bench.LikelihoodTimes(np.nan, np.nan)
@@ -68,6 +113,8 @@ def run_likelihood_sweep(
     working_dir: str,
     progress: bool = True,
     method_max_taxon_count: tp.Optional[tp.Mapping[str, int]] = None,
+    checkpoint_dir: tp.Optional[str] = None,
+    force: bool = False,
 ) -> pd.DataFrame:
     """Simulate a tree + alignment per ``(taxon_count, seed)``, then time every
     available likelihood benchmarkable (treeflow, treeflow_native, jax if
@@ -80,13 +127,44 @@ def run_likelihood_sweep(
     config produces no rows, so that method's line simply stops early in the
     plots.
 
-    A ``tqdm`` progress bar (``progress=True``) tracks every
-    ``(taxon_count, seed, model, method)`` timing and shows the live per-config
-    min likelihood time; set ``progress=False`` to silence it.
+    ``checkpoint_dir`` enables Snakemake-style resumption: each
+    ``(taxon_count, seed, model, method)`` config is written to its own CSV
+    (under a sub-directory keyed by a hash of the sweep parameters) as it
+    completes, and on a later run an existing config file is loaded instead of
+    recomputed -- and the (potentially expensive) tree simulation for a
+    ``(taxon_count, seed)`` is skipped entirely when all its configs are already
+    cached. Pass ``force=True`` to recompute and overwrite regardless.
+
+    A ``tqdm`` progress bar (``progress=True``) tracks every config and shows the
+    live per-config min likelihood time; set ``progress=False`` to silence it.
     """
     from treeflow.model.phylo_model import PhyloModel
 
     method_names = list(build_likelihood_benchmarkables().keys())
+    signature = _signature(
+        dict(
+            task="likelihood",
+            sequence_length=sequence_length,
+            repeats=repeats,
+            pop_size=pop_size,
+            sampling_window=sampling_window,
+            sim_model=sim_model,
+            models=models,
+            calculate_clock_rate_gradient=calculate_clock_rate_gradient,
+        )
+    )
+
+    def config_path(taxon_count, seed, model_name, method):
+        if checkpoint_dir is None:
+            return None
+        return _config_checkpoint_path(
+            checkpoint_dir, "likelihood", signature, taxon_count, seed, model_name, method
+        )
+
+    def is_cached(taxon_count, seed, model_name, method):
+        path = config_path(taxon_count, seed, model_name, method)
+        return (not force) and path is not None and os.path.exists(path)
+
     total = len(seeds) * len(models) * sum(
         _method_included(m, tc, method_max_taxon_count)
         for tc in taxon_counts
@@ -94,69 +172,83 @@ def run_likelihood_sweep(
     )
     bar = tqdm(total=total, disable=not progress, desc="likelihood sweep", unit="cfg")
 
-    rows = []
+    frames = []
     for taxon_count in taxon_counts:
         benchmarkables = build_likelihood_benchmarkables()
         for seed in seeds:
-            bar.set_postfix_str(f"{taxon_count} taxa, seed {seed}: simulating")
-            tree_dir = os.path.join(working_dir, f"{taxon_count}-taxa", f"{seed}-seed")
-            newick_file, fasta_file, tensor_tree = simulate_replicate(
-                taxon_count=taxon_count,
-                pop_size=pop_size,
-                sampling_window=sampling_window,
-                sim_model=PhyloModel(sim_model),
-                sequence_length=sequence_length,
-                seed=seed,
-                tree_dir=tree_dir,
+            included = [
+                (model_name, method)
+                for model_name in models
+                for method in benchmarkables
+                if _method_included(method, taxon_count, method_max_taxon_count)
+            ]
+            # Simulate only if at least one config for this (taxon_count, seed)
+            # still needs computing -- otherwise every result is loaded from disk.
+            need_compute = any(
+                not is_cached(taxon_count, seed, mn, me) for mn, me in included
             )
-            branch_lengths_np = tensor_tree.branch_lengths.numpy()
+            if need_compute:
+                bar.set_postfix_str(f"{taxon_count} taxa, seed {seed}: simulating")
+                tree_dir = os.path.join(working_dir, f"{taxon_count}-taxa", f"{seed}-seed")
+                newick_file, fasta_file, tensor_tree = simulate_replicate(
+                    taxon_count=taxon_count,
+                    pop_size=pop_size,
+                    sampling_window=sampling_window,
+                    sim_model=PhyloModel(sim_model),
+                    sequence_length=sequence_length,
+                    seed=seed,
+                    tree_dir=tree_dir,
+                )
+                branch_lengths_np = tensor_tree.branch_lengths.numpy()
 
-            for model_name, model in models.items():
-                for method, benchmarkable in benchmarkables.items():
-                    if not _method_included(method, taxon_count, method_max_taxon_count):
-                        continue
+            for model_name, method in included:
+                path = config_path(taxon_count, seed, model_name, method)
+                if is_cached(taxon_count, seed, model_name, method):
                     bar.set_postfix_str(
-                        f"{taxon_count}taxa seed{seed} {model_name}/{method}"
+                        f"{taxon_count}taxa seed{seed} {model_name}/{method}: cached"
                     )
-                    try:
-                        times_by_stat = bench.benchmark_likelihood(
-                            newick_file,
-                            fasta_file,
-                            model,
-                            branch_lengths_np,
-                            benchmarkable,
-                            calculate_clock_rate_gradient=calculate_clock_rate_gradient[
-                                model_name
-                            ],
-                            repeats=repeats,
-                        )
-                        like = times_by_stat["min"].likelihood_time
-                        grad = times_by_stat["min"].gradient_time
-                        bar.set_postfix_str(
-                            f"{taxon_count}taxa seed{seed} {model_name}/{method}: "
-                            f"like {like * 1e3:.2f}ms grad {grad * 1e3:.2f}ms (min)"
-                        )
-                    except Exception as ex:  # pragma: no cover - defensive, keep sweep going
-                        tqdm.write(
-                            f"  {method}/{model_name}/{taxon_count}taxa/seed{seed} "
-                            f"failed: {ex}"
-                        )
-                        times_by_stat = _NAN_LIKELIHOOD_TIMES
-                    rows.extend(
-                        _rows_from_times_by_stat(
-                            times_by_stat, taxon_count, seed, method, model_name
-                        )
-                    )
+                    frames.append(pd.read_csv(path))
                     bar.update(1)
+                    continue
+
+                bar.set_postfix_str(f"{taxon_count}taxa seed{seed} {model_name}/{method}")
+                try:
+                    times_by_stat = bench.benchmark_likelihood(
+                        newick_file,
+                        fasta_file,
+                        models[model_name],
+                        branch_lengths_np,
+                        benchmarkables[method],
+                        calculate_clock_rate_gradient=calculate_clock_rate_gradient[
+                            model_name
+                        ],
+                        repeats=repeats,
+                    )
+                    like = times_by_stat["min"].likelihood_time
+                    grad = times_by_stat["min"].gradient_time
+                    bar.set_postfix_str(
+                        f"{taxon_count}taxa seed{seed} {model_name}/{method}: "
+                        f"like {like * 1e3:.2f}ms grad {grad * 1e3:.2f}ms (min)"
+                    )
+                except Exception as ex:  # pragma: no cover - defensive, keep sweep going
+                    tqdm.write(
+                        f"  {method}/{model_name}/{taxon_count}taxa/seed{seed} "
+                        f"failed: {ex}"
+                    )
+                    times_by_stat = _NAN_LIKELIHOOD_TIMES
+                frame = _melt_config(
+                    _rows_from_times_by_stat(
+                        times_by_stat, taxon_count, seed, method, model_name
+                    )
+                )
+                if path is not None:
+                    _write_csv_atomic(frame, path)
+                frames.append(frame)
+                bar.update(1)
     bar.close()
-    return (
-        pd.DataFrame(rows)
-        .melt(
-            id_vars=["method", "seed", "taxon_count", "model", "stat"],
-            var_name="computation",
-            value_name="time",
-        )
-    )
+    if frames:
+        return pd.concat(frames, ignore_index=True)
+    return pd.DataFrame(columns=_LONG_COLUMNS)
 
 
 def run_ratio_transform_sweep(
@@ -169,10 +261,37 @@ def run_ratio_transform_sweep(
     working_dir: str,
     progress: bool = True,
     method_max_taxon_count: tp.Optional[tp.Mapping[str, int]] = None,
+    checkpoint_dir: tp.Optional[str] = None,
+    force: bool = False,
 ) -> pd.DataFrame:
+    """Time the node-height ratio transform forward pass and its gradient for
+    every available benchmarkable. Supports the same ``method_max_taxon_count``
+    caps and ``checkpoint_dir``/``force`` resumption as ``run_likelihood_sweep``.
+    """
     from treeflow.model.phylo_model import PhyloModel
 
     method_names = list(build_ratio_transform_benchmarkables().keys())
+    signature = _signature(
+        dict(
+            task="ratio_transform",
+            repeats=repeats,
+            pop_size=pop_size,
+            sampling_window=sampling_window,
+            sim_model=sim_model,
+        )
+    )
+
+    def config_path(taxon_count, seed, method):
+        if checkpoint_dir is None:
+            return None
+        return _config_checkpoint_path(
+            checkpoint_dir, "ratio_transform", signature, taxon_count, seed, "none", method
+        )
+
+    def is_cached(taxon_count, seed, method):
+        path = config_path(taxon_count, seed, method)
+        return (not force) and path is not None and os.path.exists(path)
+
     total = len(seeds) * sum(
         _method_included(m, tc, method_max_taxon_count)
         for tc in taxon_counts
@@ -180,30 +299,42 @@ def run_ratio_transform_sweep(
     )
     bar = tqdm(total=total, disable=not progress, desc="ratio-transform sweep", unit="cfg")
 
-    rows = []
+    frames = []
     for taxon_count in taxon_counts:
         benchmarkables = build_ratio_transform_benchmarkables()
         for seed in seeds:
-            bar.set_postfix_str(f"{taxon_count} taxa, seed {seed}: simulating")
-            tree_dir = os.path.join(working_dir, f"{taxon_count}-taxa", f"{seed}-seed")
-            newick_file, _, tensor_tree = simulate_replicate(
-                taxon_count=taxon_count,
-                pop_size=pop_size,
-                sampling_window=sampling_window,
-                sim_model=PhyloModel(sim_model),
-                sequence_length=10,  # sequences unused for this task
-                seed=seed,
-                tree_dir=tree_dir,
-            )
-            ratios_np = get_ratios(tensor_tree).numpy()
+            included = [
+                method
+                for method in benchmarkables
+                if _method_included(method, taxon_count, method_max_taxon_count)
+            ]
+            need_compute = any(not is_cached(taxon_count, seed, me) for me in included)
+            if need_compute:
+                bar.set_postfix_str(f"{taxon_count} taxa, seed {seed}: simulating")
+                tree_dir = os.path.join(working_dir, f"{taxon_count}-taxa", f"{seed}-seed")
+                newick_file, _, tensor_tree = simulate_replicate(
+                    taxon_count=taxon_count,
+                    pop_size=pop_size,
+                    sampling_window=sampling_window,
+                    sim_model=PhyloModel(sim_model),
+                    sequence_length=10,  # sequences unused for this task
+                    seed=seed,
+                    tree_dir=tree_dir,
+                )
+                ratios_np = get_ratios(tensor_tree).numpy()
 
-            for method, benchmarkable in benchmarkables.items():
-                if not _method_included(method, taxon_count, method_max_taxon_count):
+            for method in included:
+                path = config_path(taxon_count, seed, method)
+                if is_cached(taxon_count, seed, method):
+                    bar.set_postfix_str(f"{taxon_count}taxa seed{seed} {method}: cached")
+                    frames.append(pd.read_csv(path))
+                    bar.update(1)
                     continue
+
                 bar.set_postfix_str(f"{taxon_count}taxa seed{seed} {method}")
                 try:
                     times_by_stat = bench.benchmark_ratio_transform(
-                        newick_file, ratios_np, benchmarkable, repeats=repeats
+                        newick_file, ratios_np, benchmarkables[method], repeats=repeats
                     )
                     fwd = times_by_stat["min"].forward_time
                     grad = times_by_stat["min"].gradient_time
@@ -217,19 +348,17 @@ def run_ratio_transform_sweep(
                         f"failed: {ex}"
                     )
                     times_by_stat = _NAN_RATIO_TRANSFORM_TIMES
-                rows.extend(
+                frame = _melt_config(
                     _rows_from_times_by_stat(times_by_stat, taxon_count, seed, method, "none")
                 )
+                if path is not None:
+                    _write_csv_atomic(frame, path)
+                frames.append(frame)
                 bar.update(1)
     bar.close()
-    return (
-        pd.DataFrame(rows)
-        .melt(
-            id_vars=["method", "seed", "taxon_count", "model", "stat"],
-            var_name="computation",
-            value_name="time",
-        )
-    )
+    if frames:
+        return pd.concat(frames, ignore_index=True)
+    return pd.DataFrame(columns=_LONG_COLUMNS)
 
 
 def fit_log_log_lines(plot_data: pd.DataFrame) -> pd.DataFrame:
