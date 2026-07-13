@@ -13,9 +13,17 @@ node-height ratio-transform computations across taxon counts and methods:
 * `treeflow_native` -- the same code with `use_native=True`, routing through
   treeflow's compiled C++ ops (`treeflow.acceleration.native`)
 * `jax`/`jax_jit` -- via [phylojax](https://github.com/christiaanjs/phylojax),
-  if installed
-* `beagle_bito` -- via [bito](https://github.com/phylovi/bito)/BEAGLE, if
+  if installed (both block on results so JAX's asynchronous dispatch does not
+  hide compute time in the timings)
+* `beagle_bito` -- via [bito](https://github.com/phylovi/bito)/BEAGLE, driven
+  through TreeFlow's `tf.function` wrapper (so timings include the same
+  TensorFlow dispatch/marshalling overhead as the `treeflow` methods), if
   installed
+* `beagle_bito_direct` -- the same BEAGLE/bito instance driven *directly*
+  (branch lengths written into bito's own state array, `inst.log_likelihoods()`
+  / `inst.phylo_gradients()` called straight through), bypassing the TensorFlow
+  wrapper to isolate BEAGLE's raw compute; if installed. This is the series the
+  manuscript uses for bito/BEAGLE.
 
 Install the extra dependencies with `pip install -e ".[benchmark]"` (adds
 `pandas`, `matplotlib` and `jupyter`; `phylojax` and `bito` are independent

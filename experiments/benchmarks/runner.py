@@ -196,10 +196,12 @@ def fit_log_log_lines(plot_data: pd.DataFrame) -> pd.DataFrame:
 _MANUSCRIPT_COMPUTATION_RENAME = {"gradient_time": "phylo_gradients_time"}
 _MANUSCRIPT_COMPUTATIONS = ["likelihood_time", "phylo_gradients_time"]
 _MANUSCRIPT_MODELS = ["jc", "full"]
-# Methods shown in the manuscript figure/table. jax_jit is intentionally
-# excluded (the manuscript frames JAX as eager execution); it stays in the
-# notebook's own exploratory plots.
-MANUSCRIPT_METHODS = ["treeflow", "treeflow_native", "beagle_bito", "jax"]
+# Methods shown in the manuscript figure/table. The direct bito benchmarkable
+# (beagle_bito_direct) is used as the single "bito/BEAGLE" series -- matching the
+# old pipeline and giving BEAGLE's compute without TensorFlow wrapper overhead;
+# the tf.function-wrapped beagle_bito and jax_jit stay in the notebook's own
+# exploratory plots (jax_jit excluded because the manuscript frames JAX as eager).
+MANUSCRIPT_METHODS = ["treeflow", "treeflow_native", "beagle_bito_direct", "jax"]
 
 
 def write_manuscript_data(

@@ -268,20 +268,29 @@ def build_bito_benchmarkables():
     from treeflow.model.phylo_model import get_subst_model_params
 
     class BeagleLikelihoodBenchmarkable(bench.LikelihoodBenchmarkable):
+        """BEAGLE/bito likelihood driven through the TreeFlow ``tf.function``
+        wrapper (``treeflow.acceleration.bito.beagle.phylogenetic_likelihood``),
+        so timings include TensorFlow's per-call graph-dispatch and tensor <->
+        numpy marshalling overhead -- the same footing as the ``treeflow``
+        methods."""
+
         def initialize(self, newick_file, fasta_file, model, calculate_clock_rate_gradient):
-            phylo_model = PhyloModel(model)
-            subst_model = get_subst_model(phylo_model.subst_model)
+            self.phylo_model = PhyloModel(model)
+            self.calculate_clock_rate_gradient = calculate_clock_rate_gradient
+            subst_model = get_subst_model(self.phylo_model.subst_model)
             subst_params, _ = get_return_value_of_empty_generator(
-                get_subst_model_params(phylo_model.subst_model, phylo_model.subst_params)
+                get_subst_model_params(
+                    self.phylo_model.subst_model, self.phylo_model.subst_params
+                )
             )
             log_prob, self.inst = phylogenetic_likelihood(
                 fasta_file,
                 subst_model,
                 newick_file=newick_file,
                 dated=True,
-                clock_rate=phylo_model.clock_params["clock_rate"],
-                site_model=phylo_model.site_model,
-                site_model_params=phylo_model.site_params,
+                clock_rate=self.phylo_model.clock_params["clock_rate"],
+                site_model=self.phylo_model.site_model,
+                site_model_params=self.phylo_model.site_params,
                 **subst_params,
             )
             self.log_prob = tf.function(lambda branch_lengths: log_prob(branch_lengths))
@@ -305,6 +314,68 @@ def build_bito_benchmarkables():
         def calculate_gradients(self, branch_lengths, params):
             return self.grad(branch_lengths).numpy()
 
+    class BeagleDirectLikelihoodBenchmarkable(BeagleLikelihoodBenchmarkable):
+        """BEAGLE/bito likelihood driven *directly* on the bito instance,
+        bypassing the TreeFlow ``tf.function`` wrapper. Branch lengths are
+        written into bito's own (in-place) state array and
+        ``inst.log_likelihoods()`` / ``inst.phylo_gradients()`` are called
+        straight through, so this isolates BEAGLE's compute from the TensorFlow
+        graph-dispatch and tensor<->numpy marshalling overhead that
+        ``beagle_bito`` incurs -- a lower bound on what bito can deliver.
+        Ported from the old ``treeflow_benchmarks/bito_direct.py``."""
+
+        def initialize(self, newick_file, fasta_file, model, calculate_clock_rate_gradient):
+            super().initialize(newick_file, fasta_file, model, calculate_clock_rate_gradient)
+            # A mutable numpy view into bito's internal branch-length state; the
+            # final entry is the root's (unused) branch, so only [:-1] is set.
+            self.branch_length_state = np.array(
+                self.inst.tree_collection.trees[0].branch_lengths, copy=False
+            )
+
+        def calculate_likelihoods(self, branch_lengths, params):
+            self.branch_length_state[:-1] = branch_lengths
+            return np.array(self.inst.log_likelihoods())[0]
+
+        def _extract_substitution_model_grads(self, bito_gradient, subst_grad_dict):
+            subst_model = self.phylo_model.subst_model
+            if subst_model == "gtr":
+                subst_grad_dict["rates"] = np.array(
+                    bito_gradient["substitution_model"]
+                )[:-2]
+            elif subst_model == "hky":
+                subst_grad_dict["kappa"] = np.array(
+                    bito_gradient["substitution_model"]
+                )[0]
+            if subst_model != "jc":
+                subst_grad_dict["frequencies"] = np.array(
+                    bito_gradient["substitution_model"]
+                )[-4:]
+
+        def calculate_gradients(self, branch_lengths, params):
+            self.branch_length_state[:-1] = branch_lengths
+            gradient = self.inst.phylo_gradients()[0]
+            branch_gradient_array = np.array(gradient.gradient["branch_lengths"])
+            param_gradient = dict(
+                clock_model_params=dict(),
+                subst_model_params=dict(),
+                site_model_params=dict(),
+            )
+            if (
+                self.calculate_clock_rate_gradient
+                and "clock_rate" in params["clock_model_params"]
+            ):
+                param_gradient["clock_model_params"]["clock_rate"] = np.array(
+                    gradient.gradient["clock_model"]
+                )
+            if "site_weibull_concentration" in params["site_model_params"]:
+                param_gradient["site_model_params"][
+                    "site_weibull_concentration"
+                ] = np.array(gradient.gradient["site_model"])
+            self._extract_substitution_model_grads(
+                gradient.gradient, param_gradient["subst_model_params"]
+            )
+            return [branch_gradient_array[:-1], param_gradient]
+
     class BitoRatioTransformBenchmarkable(bench.RatioTransformBenchmarkable):
         def initialize(self, newick_file):
             self.inst = get_instance(newick_file, dated=True)
@@ -323,6 +394,7 @@ def build_bito_benchmarkables():
 
     return dict(
         likelihood=BeagleLikelihoodBenchmarkable(),
+        likelihood_direct=BeagleDirectLikelihoodBenchmarkable(),
         ratio_transform=BitoRatioTransformBenchmarkable(),
     )
 
@@ -345,7 +417,9 @@ def build_likelihood_benchmarkables() -> tp.Dict[str, bench.LikelihoodBenchmarka
         benchmarkables["jax"] = JaxLikelihoodBenchmarkable(jit=False)
         benchmarkables["jax_jit"] = JaxLikelihoodBenchmarkable(jit=True)
     if bito_available():
-        benchmarkables["beagle_bito"] = build_bito_benchmarkables()["likelihood"]
+        bito_benchmarkables = build_bito_benchmarkables()
+        benchmarkables["beagle_bito"] = bito_benchmarkables["likelihood"]
+        benchmarkables["beagle_bito_direct"] = bito_benchmarkables["likelihood_direct"]
     return benchmarkables
 
 
