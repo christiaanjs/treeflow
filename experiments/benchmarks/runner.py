@@ -10,6 +10,7 @@ import typing as tp
 import numpy as np
 import pandas as pd
 import yaml
+from tqdm.auto import tqdm
 
 from benchmarks import benchmarking as bench
 from benchmarks.benchmarkables import (
@@ -49,18 +50,28 @@ def run_likelihood_sweep(
     repeats: int,
     sim_model: dict,
     working_dir: str,
+    progress: bool = True,
 ) -> pd.DataFrame:
     """Simulate a tree + alignment per ``(taxon_count, seed)``, then time every
     available likelihood benchmarkable (treeflow, treeflow_native, jax if
     installed, beagle_bito if installed) on that tree's own branch lengths,
     repeated ``repeats`` times, for every model.
+
+    A ``tqdm`` progress bar (``progress=True``) tracks every
+    ``(taxon_count, seed, model, method)`` timing and shows the live per-config
+    min likelihood time; set ``progress=False`` to silence it.
     """
     from treeflow.model.phylo_model import PhyloModel
+
+    method_names = list(build_likelihood_benchmarkables().keys())
+    total = len(taxon_counts) * len(seeds) * len(models) * len(method_names)
+    bar = tqdm(total=total, disable=not progress, desc="likelihood sweep", unit="cfg")
 
     rows = []
     for taxon_count in taxon_counts:
         benchmarkables = build_likelihood_benchmarkables()
         for seed in seeds:
+            bar.set_postfix_str(f"{taxon_count} taxa, seed {seed}: simulating")
             tree_dir = os.path.join(working_dir, f"{taxon_count}-taxa", f"{seed}-seed")
             newick_file, fasta_file, tensor_tree = simulate_replicate(
                 taxon_count=taxon_count,
@@ -75,6 +86,9 @@ def run_likelihood_sweep(
 
             for model_name, model in models.items():
                 for method, benchmarkable in benchmarkables.items():
+                    bar.set_postfix_str(
+                        f"{taxon_count}taxa seed{seed} {model_name}/{method}"
+                    )
                     try:
                         times_by_stat = bench.benchmark_likelihood(
                             newick_file,
@@ -87,14 +101,25 @@ def run_likelihood_sweep(
                             ],
                             repeats=repeats,
                         )
+                        like = times_by_stat["min"].likelihood_time
+                        grad = times_by_stat["min"].gradient_time
+                        bar.set_postfix_str(
+                            f"{taxon_count}taxa seed{seed} {model_name}/{method}: "
+                            f"like {like * 1e3:.2f}ms grad {grad * 1e3:.2f}ms (min)"
+                        )
                     except Exception as ex:  # pragma: no cover - defensive, keep sweep going
-                        print(f"  {method}/{model_name}/{taxon_count}taxa/seed{seed} failed: {ex}")
+                        tqdm.write(
+                            f"  {method}/{model_name}/{taxon_count}taxa/seed{seed} "
+                            f"failed: {ex}"
+                        )
                         times_by_stat = _NAN_LIKELIHOOD_TIMES
                     rows.extend(
                         _rows_from_times_by_stat(
                             times_by_stat, taxon_count, seed, method, model_name
                         )
                     )
+                    bar.update(1)
+    bar.close()
     return (
         pd.DataFrame(rows)
         .melt(
@@ -113,13 +138,19 @@ def run_ratio_transform_sweep(
     repeats: int,
     sim_model: dict,
     working_dir: str,
+    progress: bool = True,
 ) -> pd.DataFrame:
     from treeflow.model.phylo_model import PhyloModel
+
+    method_names = list(build_ratio_transform_benchmarkables().keys())
+    total = len(taxon_counts) * len(seeds) * len(method_names)
+    bar = tqdm(total=total, disable=not progress, desc="ratio-transform sweep", unit="cfg")
 
     rows = []
     for taxon_count in taxon_counts:
         benchmarkables = build_ratio_transform_benchmarkables()
         for seed in seeds:
+            bar.set_postfix_str(f"{taxon_count} taxa, seed {seed}: simulating")
             tree_dir = os.path.join(working_dir, f"{taxon_count}-taxa", f"{seed}-seed")
             newick_file, _, tensor_tree = simulate_replicate(
                 taxon_count=taxon_count,
@@ -133,16 +164,28 @@ def run_ratio_transform_sweep(
             ratios_np = get_ratios(tensor_tree).numpy()
 
             for method, benchmarkable in benchmarkables.items():
+                bar.set_postfix_str(f"{taxon_count}taxa seed{seed} {method}")
                 try:
                     times_by_stat = bench.benchmark_ratio_transform(
                         newick_file, ratios_np, benchmarkable, repeats=repeats
                     )
+                    fwd = times_by_stat["min"].forward_time
+                    grad = times_by_stat["min"].gradient_time
+                    bar.set_postfix_str(
+                        f"{taxon_count}taxa seed{seed} {method}: "
+                        f"fwd {fwd * 1e3:.2f}ms grad {grad * 1e3:.2f}ms (min)"
+                    )
                 except Exception as ex:  # pragma: no cover
-                    print(f"  {method}/ratio_transform/{taxon_count}taxa/seed{seed} failed: {ex}")
+                    tqdm.write(
+                        f"  {method}/ratio_transform/{taxon_count}taxa/seed{seed} "
+                        f"failed: {ex}"
+                    )
                     times_by_stat = _NAN_RATIO_TRANSFORM_TIMES
                 rows.extend(
                     _rows_from_times_by_stat(times_by_stat, taxon_count, seed, method, "none")
                 )
+                bar.update(1)
+    bar.close()
     return (
         pd.DataFrame(rows)
         .melt(
