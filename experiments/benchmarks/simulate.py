@@ -52,6 +52,10 @@ from benchmarks.params import get_return_value_of_empty_generator
 _BASE_ORDER = "ACGT"
 _ONE_HOT_TO_BASE = {tuple(row): base for row, base in zip(np.eye(4), _BASE_ORDER)}
 
+# Sibling filename, alongside a replicate's tree.newick/sequences.fasta (see
+# ``simulate_replicate``), that bito-based benchmarkables read tip dates from.
+DATES_CSV_FILENAME = "dates.csv"
+
 
 def simulate_sampling_times(
     taxon_count: int, sampling_window: float, rng: np.random.Generator
@@ -182,6 +186,28 @@ def write_newick(tree: NumpyRootedTree, taxon_names: tp.Sequence[str], path: str
     )
 
 
+def write_dates_csv(
+    sampling_times: np.ndarray, taxon_names: tp.Sequence[str], path: str
+) -> None:
+    """Write a headerless 2-column CSV of quoted taxon name / date pairs, in the
+    format bito's ``parse_dates_from_csv`` expects.
+
+    Taxon names here (``taxon_{i}``) end in a plain index, not a real sampling
+    date, so bito's own ``parse_dates_from_taxon_names`` (which reads the
+    number after a taxon name's last underscore) would silently misread that
+    index as a date -- see ``RootedTree::InitializeTimeTreeUsingBranchLengths``,
+    which then rejects the resulting tip heights as inconsistent with the
+    tree's actual branch lengths. Writing the true sampling times out-of-band
+    avoids that collision entirely. bito recovers each tip's height as
+    ``max(date) - date``, so writing ``-sampling_time`` here makes bito's
+    recovered height equal ``sampling_time`` up to a constant shared shift --
+    harmless, since only branch-length *differences* affect the benchmarks.
+    """
+    with open(path, "w") as f:
+        for name, sampling_time in zip(taxon_names, sampling_times):
+            f.write(f'"{name}",{float(-sampling_time)!r}\n')
+
+
 def get_ratios(tree: TensorflowRootedTree) -> tf.Tensor:
     """Inverse-transform ``tree``'s own node heights into ratio space -- the
     single, fixed input used to benchmark the ratio-transform forward pass and
@@ -204,7 +230,10 @@ def simulate_replicate(
 ) -> tp.Tuple[str, str, TensorflowRootedTree]:
     """Simulate one tree + alignment, writing them to ``tree_dir`` as newick and
     FASTA files (so bito/BEAGLE-based benchmarkables, which need files on disk,
-    can use them too). Returns ``(newick_file, fasta_file, tensor_tree)``.
+    can use them too), plus a sibling ``dates.csv`` (see ``write_dates_csv``)
+    that bito-based benchmarkables use to recover tip heights without relying
+    on bito's own taxon-name date parsing. Returns ``(newick_file, fasta_file,
+    tensor_tree)``.
     """
     import os
 
@@ -218,6 +247,8 @@ def simulate_replicate(
     os.makedirs(tree_dir, exist_ok=True)
     newick_file = os.path.join(tree_dir, "tree.newick")
     fasta_file = os.path.join(tree_dir, "sequences.fasta")
+    dates_csv = os.path.join(tree_dir, DATES_CSV_FILENAME)
     write_newick(numpy_tree, taxon_names, newick_file)
     write_fasta(encoded, taxon_names, fasta_file)
+    write_dates_csv(sampling_times, taxon_names, dates_csv)
     return newick_file, fasta_file, tensor_tree

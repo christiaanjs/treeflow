@@ -5,11 +5,13 @@ from treeflow.tree.rooted.numpy_rooted_tree import NumpyRootedTree
 from treeflow.tree.topology.numpy_tree_topology import NumpyTreeTopology
 
 
-def get_instance(newick_file, dated=True, name="treeflow"):
+def get_instance(newick_file, dated=True, name="treeflow", dates_csv=None):
 
     inst = bito.rooted_instance(name)
     inst.read_newick_file(newick_file)
-    if dated:
+    if dates_csv is not None:
+        inst.parse_dates_from_csv(dates_csv, True)
+    elif dated:
         inst.parse_dates_from_taxon_names(True)
     else:
         inst.set_dates_to_be_constant(True)

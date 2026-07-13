@@ -262,10 +262,22 @@ def bito_available() -> bool:
 
 def build_bito_benchmarkables():
     """Only call once ``bito_available()`` is True."""
+    import os
+
     from treeflow.acceleration.bito.beagle import phylogenetic_likelihood
     from treeflow.acceleration.bito.instance import get_instance
     from treeflow.acceleration.bito.ratio_transform import ratios_to_node_heights
     from treeflow.model.phylo_model import get_subst_model_params
+
+    from benchmarks.simulate import DATES_CSV_FILENAME
+
+    def _dates_csv_for(newick_file):
+        """The ``dates.csv`` ``simulate_replicate`` wrote alongside
+        ``newick_file`` (see ``benchmarks.simulate.write_dates_csv``). Simulated
+        taxa are named ``taxon_{i}``, whose trailing index bito's own
+        ``parse_dates_from_taxon_names`` would misread as a date, so bito-based
+        benchmarkables read tip dates from this CSV instead."""
+        return os.path.join(os.path.dirname(newick_file), DATES_CSV_FILENAME)
 
     class BeagleLikelihoodBenchmarkable(bench.LikelihoodBenchmarkable):
         """BEAGLE/bito likelihood driven through the TreeFlow ``tf.function``
@@ -283,11 +295,11 @@ def build_bito_benchmarkables():
                     self.phylo_model.subst_model, self.phylo_model.subst_params
                 )
             )
+            inst = get_instance(newick_file, dates_csv=_dates_csv_for(newick_file))
             log_prob, self.inst = phylogenetic_likelihood(
                 fasta_file,
                 subst_model,
-                newick_file=newick_file,
-                dated=True,
+                inst=inst,
                 clock_rate=self.phylo_model.clock_params["clock_rate"],
                 site_model=self.phylo_model.site_model,
                 site_model_params=self.phylo_model.site_params,
@@ -378,7 +390,7 @@ def build_bito_benchmarkables():
 
     class BitoRatioTransformBenchmarkable(bench.RatioTransformBenchmarkable):
         def initialize(self, newick_file):
-            self.inst = get_instance(newick_file, dated=True)
+            self.inst = get_instance(newick_file, dates_csv=_dates_csv_for(newick_file))
             self.tree = self.inst.tree_collection.trees[0]
             self.anchor_heights = np.array(self.tree.node_heights, copy=False)
 
