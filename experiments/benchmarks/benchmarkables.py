@@ -37,10 +37,26 @@ from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
 
 class TreeflowLikelihoodBenchmarkable(bench.LikelihoodBenchmarkable):
     """TensorFlow-graph likelihood/gradient, optionally routed through the
-    native C++ pruning op (``use_native=True``)."""
+    native C++ pruning op (``use_native=True``).
 
-    def __init__(self, use_native: tp.Union[str, bool] = False):
+    ``unroll`` controls the pure-TensorFlow traversal strategy. It defaults to
+    ``"while_loop"`` -- a ``tf.while_loop`` over a ``TensorArray``, whose graph
+    size is *independent* of the taxon count -- rather than treeflow's default
+    ``"auto"`` (which, for a concrete topology, resolves to a straight-line
+    graph with one op per node). At large taxon counts that unrolled graph, and
+    especially its recorded gradient, explodes in trace time and memory and kills
+    the kernel (e.g. ~1.2 GB extra already at 256 taxa, growing with taxon
+    count); the ``while_loop`` path stays flat and is the "TensorArray-based
+    postorder traversal" the manuscript describes. ``use_native=True`` uses the
+    native op and ignores ``unroll``."""
+
+    def __init__(
+        self,
+        use_native: tp.Union[str, bool] = False,
+        unroll: tp.Union[str, bool] = "while_loop",
+    ):
         self.use_native = use_native
+        self.unroll = unroll
 
     def initialize(self, newick_file, fasta_file, model, calculate_clock_rate_gradient):
         self.tree = convert_tree_to_tensor(parse_newick(newick_file))
@@ -55,6 +71,7 @@ class TreeflowLikelihoodBenchmarkable(bench.LikelihoodBenchmarkable):
             phylo_model, calculate_clock_rate_gradient
         )
         use_native = self.use_native
+        unroll = self.unroll
 
         def log_prob(branch_lengths, gradient_params):
             tree = unrooted_tree.with_branch_lengths(branch_lengths)
@@ -74,6 +91,7 @@ class TreeflowLikelihoodBenchmarkable(bench.LikelihoodBenchmarkable):
                 clock_model_rates,
                 pattern_counts=pattern_counts,
                 use_native=use_native,
+                unroll=unroll,
             )
             return seq_dist.log_prob(sequences_encoded)
 
@@ -110,16 +128,27 @@ class TreeflowLikelihoodBenchmarkable(bench.LikelihoodBenchmarkable):
 
 class TreeflowRatioTransformBenchmarkable(bench.RatioTransformBenchmarkable):
     """Node-height ratio transform forward/gradient, optionally routed through
-    the native C++ op (``use_native=True``)."""
+    the native C++ op (``use_native=True``). ``unroll`` defaults to
+    ``"while_loop"`` for the same taxon-count-independent-graph reason as
+    ``TreeflowLikelihoodBenchmarkable`` (the pure-TensorFlow preorder traversal
+    otherwise unrolls one op per node and blows up at large trees)."""
 
-    def __init__(self, use_native: tp.Union[str, bool] = False):
+    def __init__(
+        self,
+        use_native: tp.Union[str, bool] = False,
+        unroll: tp.Union[str, bool] = "while_loop",
+    ):
         self.use_native = use_native
+        self.unroll = unroll
 
     def initialize(self, newick_file):
         tree = convert_tree_to_tensor(parse_newick(newick_file))
         anchor_heights = get_anchor_heights_tensor(tree.topology, tree.sampling_times)
         self.bij = NodeHeightRatioBijector(
-            topology=tree.topology, anchor_heights=anchor_heights, use_native=self.use_native
+            topology=tree.topology,
+            anchor_heights=anchor_heights,
+            use_native=self.use_native,
+            unroll=self.unroll,
         )
         self.forward = tf.function(self.bij.forward)
 
