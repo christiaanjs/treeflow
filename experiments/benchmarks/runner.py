@@ -73,6 +73,9 @@ _NAN_RATIO_TRANSFORM_TIMES = dict(
 )
 
 
+ForceType = tp.Union[bool, tp.Collection[str]]
+
+
 def _method_included(
     method: str,
     taxon_count: int,
@@ -87,6 +90,15 @@ def _method_included(
         return True
     cap = method_max_taxon_count.get(method)
     return cap is None or taxon_count <= cap
+
+
+def _method_forced(method: str, force: ForceType) -> bool:
+    """Whether ``method``'s cached results should be ignored and recomputed.
+    ``force`` is either a bool (force all / none) or a collection of method
+    names to force selectively (leaving the rest cached)."""
+    if isinstance(force, bool):
+        return force
+    return method in force
 
 
 def _rows_from_times_by_stat(times_by_stat, taxon_count, seed, method, model):
@@ -114,7 +126,7 @@ def run_likelihood_sweep(
     progress: bool = True,
     method_max_taxon_count: tp.Optional[tp.Mapping[str, int]] = None,
     checkpoint_dir: tp.Optional[str] = None,
-    force: bool = False,
+    force: ForceType = False,
 ) -> pd.DataFrame:
     """Simulate a tree + alignment per ``(taxon_count, seed)``, then time every
     available likelihood benchmarkable (treeflow, treeflow_native, jax if
@@ -133,7 +145,9 @@ def run_likelihood_sweep(
     completes, and on a later run an existing config file is loaded instead of
     recomputed -- and the (potentially expensive) tree simulation for a
     ``(taxon_count, seed)`` is skipped entirely when all its configs are already
-    cached. Pass ``force=True`` to recompute and overwrite regardless.
+    cached. ``force`` recomputes and overwrites regardless of the cache: pass
+    ``True`` to force every method, or a collection of method names (e.g.
+    ``["treeflow", "jax"]``) to force only those and keep the rest cached.
 
     A ``tqdm`` progress bar (``progress=True``) tracks every config and shows the
     live per-config min likelihood time; set ``progress=False`` to silence it.
@@ -163,7 +177,11 @@ def run_likelihood_sweep(
 
     def is_cached(taxon_count, seed, model_name, method):
         path = config_path(taxon_count, seed, model_name, method)
-        return (not force) and path is not None and os.path.exists(path)
+        return (
+            not _method_forced(method, force)
+            and path is not None
+            and os.path.exists(path)
+        )
 
     total = len(seeds) * len(models) * sum(
         _method_included(m, tc, method_max_taxon_count)
@@ -262,11 +280,12 @@ def run_ratio_transform_sweep(
     progress: bool = True,
     method_max_taxon_count: tp.Optional[tp.Mapping[str, int]] = None,
     checkpoint_dir: tp.Optional[str] = None,
-    force: bool = False,
+    force: ForceType = False,
 ) -> pd.DataFrame:
     """Time the node-height ratio transform forward pass and its gradient for
     every available benchmarkable. Supports the same ``method_max_taxon_count``
-    caps and ``checkpoint_dir``/``force`` resumption as ``run_likelihood_sweep``.
+    caps and ``checkpoint_dir``/``force`` resumption as ``run_likelihood_sweep``
+    (``force`` is a bool or a collection of method names to force selectively).
     """
     from treeflow.model.phylo_model import PhyloModel
 
@@ -290,7 +309,11 @@ def run_ratio_transform_sweep(
 
     def is_cached(taxon_count, seed, method):
         path = config_path(taxon_count, seed, method)
-        return (not force) and path is not None and os.path.exists(path)
+        return (
+            not _method_forced(method, force)
+            and path is not None
+            and os.path.exists(path)
+        )
 
     total = len(seeds) * sum(
         _method_included(m, tc, method_max_taxon_count)

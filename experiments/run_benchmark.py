@@ -24,6 +24,10 @@ Full manuscript-scale sweep, writing the executed notebook to a copy::
 Force a full recompute, checkpoints elsewhere, per-cell time capped at 2 hours::
 
     python experiments/run_benchmark.py --force --checkpoint-dir /data/ckpt --timeout 7200
+
+Recompute only some benchmarkables, keeping the rest cached::
+
+    python experiments/run_benchmark.py --force-method treeflow --force-method jax
 """
 from __future__ import annotations
 
@@ -85,6 +89,15 @@ def main(argv=None) -> int:
         help="recompute every config, ignoring/overwriting the checkpoint cache",
     )
     parser.add_argument(
+        "--force-method",
+        action="append",
+        metavar="METHOD",
+        default=None,
+        help="recompute only this benchmarkable (e.g. treeflow, treeflow_native, "
+        "jax, beagle_bito_direct), keeping the others cached. Repeatable. Ignored "
+        "if --force is given.",
+    )
+    parser.add_argument(
         "--checkpoint-dir",
         default=None,
         help="directory for the resumable per-config checkpoint cache "
@@ -104,6 +117,8 @@ def main(argv=None) -> int:
         os.environ["BENCHMARK_PROFILE"] = args.profile
     if args.force:
         os.environ["BENCHMARK_FORCE"] = "1"
+    elif args.force_method:
+        os.environ["BENCHMARK_FORCE_METHODS"] = ",".join(args.force_method)
     if args.checkpoint_dir is not None:
         os.environ["BENCHMARK_CHECKPOINT_DIR"] = args.checkpoint_dir
 

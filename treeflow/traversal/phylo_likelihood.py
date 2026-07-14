@@ -90,7 +90,10 @@ def phylogenetic_likelihood(
     unroll
         Forwarded to :func:`postorder_node_traversal`: ``"auto"`` unrolls when the
         topology is statically known, ``True`` forces it, ``False`` keeps the dynamic
-        ``tf.while_loop``.
+        ``tf.while_loop``. Note the unrolled modes build an O(taxon_count) graph whose
+        value+gradient memory grows with the taxon count (and can OOM on large trees);
+        pass ``False``/``"while_loop"`` for large trees. See
+        :func:`postorder_node_traversal` for details.
     """
 
     def mapping(child_output, node_input, topology_data):

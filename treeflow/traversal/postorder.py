@@ -17,6 +17,20 @@ TOutputStructure = tp.TypeVar("TOutputStructure")
 #                    faster than "while_loop" once compiled.
 #   "while_loop"  -- AutoGraph `tf.while_loop` over a TensorArray. Needs nothing
 #                    static; O(1) graph.
+#
+# Memory / graph size (important for large trees):
+#   Both "unrolled" and "tensorarray" *unroll the traversal at trace time*, so the
+#   graph contains O(node_count) = O(taxon_count) ops -- one iteration's worth of
+#   ops per node. Reverse-mode autodiff (a GradientTape / tf.gradients over the
+#   traversal) then records an activation for every one of those ops, so building
+#   and holding the value+gradient graph costs O(taxon_count * per_node_activation)
+#   memory *on top of* the runtime tensors. For a deep alignment this grows fast:
+#   empirically the unrolled JC gradient adds ~1.2 GB already at 256 taxa and keeps
+#   growing, enough to OOM/kill a kernel by ~2000 taxa. "while_loop" keeps the graph
+#   O(1) (the loop body is traced once and iterated at runtime, with the TensorArray
+#   holding the partials), so its graph-construction memory is independent of the
+#   taxon count -- prefer it (or the native op) for large trees or when memory is
+#   constrained, even though it is slower per call than the unrolled forms.
 UNROLL_MODES = ("unrolled", "tensorarray", "while_loop")
 
 
@@ -126,6 +140,17 @@ def postorder_node_traversal(
           topology (or its size) varies per call or is very large.
         - ``"auto"``: pick the fastest feasible -- ``"unrolled"`` if the values are
           static, else ``"tensorarray"`` if the count is static, else ``"while_loop"``.
+
+        Memory notes (important for large trees): ``"unrolled"`` and
+        ``"tensorarray"`` unroll the traversal at trace time into O(taxon_count)
+        graph ops, and a value+gradient records an activation per op, so building
+        and holding that graph costs O(taxon_count) memory beyond the runtime
+        tensors. This grows quickly with a deep alignment -- large enough to
+        exhaust memory and kill the process on trees of a few thousand taxa (see
+        the module-level ``UNROLL_MODES`` note for measured figures). ``"while_loop"``
+        keeps the graph O(1) regardless of taxon count, so prefer it (or the native
+        op) for large trees or memory-constrained runs; note ``"auto"`` optimises
+        for speed, not memory, and will pick an unrolled mode for a static topology.
 
         XLA / ``jit_compile`` notes (empirically verified):
 

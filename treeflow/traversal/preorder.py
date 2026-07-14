@@ -49,6 +49,15 @@ def preorder_traversal(
         - ``"auto"``: ``"unrolled"`` if values static, else ``"tensorarray"`` if count
           static, else ``"while_loop"``.
 
+        Memory notes (important for large trees): ``"unrolled"`` and ``"tensorarray"``
+        unroll the traversal at trace time into O(taxon_count) graph ops, and a
+        value+gradient records an activation per op, so the graph's construction
+        memory grows linearly with the taxon count and can exhaust memory on trees of
+        a few thousand taxa. ``"while_loop"`` keeps the graph O(1); prefer it (or the
+        native op) for large trees. ``"auto"`` optimises for speed, not memory, and
+        picks an unrolled mode for a static topology. See the ``UNROLL_MODES`` note in
+        ``treeflow.traversal.postorder`` for measured figures.
+
         XLA / ``jit_compile`` notes (empirically verified): ``"unrolled"`` is the only
         mode that XLA-compiles for **value+gradient** -- under ``jit_compile`` always
         use it (a static-value topology), because the TensorArray modes' backward pass

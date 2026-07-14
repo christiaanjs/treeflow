@@ -63,8 +63,12 @@ are cached — so an interrupted or extended sweep resumes where it left off,
 Snakemake-style. The `<params-hash>` sub-directory keys the cache on the sweep
 parameters that affect timings (sequence length, repeats, models, ...), so
 changing them starts a fresh cache rather than reusing stale results. Pass
-`force=True` (notebook `FORCE_RERUN`, or `run_benchmark.py --force`) to recompute
-and overwrite. The checkpoint directory is git-ignored.
+`force=True` (notebook `FORCE`, or `run_benchmark.py --force`) to recompute and
+overwrite everything, or force only specific benchmarkables — a list of method
+names in the notebook (`FORCE = ["treeflow"]`), or repeated
+`run_benchmark.py --force-method treeflow --force-method jax` — to recompute
+those while keeping the rest cached (handy after fixing or tweaking one method).
+The checkpoint directory is git-ignored.
 
 Slow methods can be capped to a maximum taxon count via `METHOD_MAX_TAXON_COUNT`
 (e.g. `{"jax": 512}`, mirroring the old pipeline's `short_benchmarkables`); a
