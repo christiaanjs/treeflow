@@ -167,6 +167,7 @@ def run_likelihood_sweep(
             calculate_clock_rate_gradient=calculate_clock_rate_gradient,
         )
     )
+    print(f"Likelihood sweep signature: {signature} (for checkpointing)")
 
     def config_path(taxon_count, seed, model_name, method):
         if checkpoint_dir is None:
