@@ -1,5 +1,23 @@
 # TreeFlow examples
 
+## Running the notebooks
+
+The notebooks run interactively as usual. To execute one non-interactively with
+its variational-inference progress bar streamed live to the terminal (plain
+`jupyter nbconvert --execute` hides it until each cell finishes), use the runner
+script:
+
+```bash
+python run_example.py carnivores            # writes carnivores.executed.ipynb
+python run_example.py rates-and-dates       # writes rates-and-dates.executed.ipynb
+python run_example.py all --inplace         # run both, overwriting in place
+python run_example.py carnivores --timeout 14400
+```
+
+It drives the notebook with an `nbclient` client that forwards cell output as it
+arrives, so the (text) `tqdm` bars are visible while the run is in progress. This
+mirrors `experiments/run_benchmark.py`.
+
 ## H3N2
 
 [`h3n2-vi.sh`](h3n2-vi.sh) uses TreeFlow's variational inference command line interface to estimate dates and model parameters on an alignment of 980 influenza genomes, taken from:

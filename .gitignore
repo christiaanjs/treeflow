@@ -112,3 +112,6 @@ examples/demo-out/
 
 experiments/benchmarks/data/sim/
 experiments/benchmarks/data/checkpoints/
+
+# executed-notebook copies produced by examples/run_example.py
+*.executed.ipynb
