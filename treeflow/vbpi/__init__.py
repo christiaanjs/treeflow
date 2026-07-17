@@ -28,12 +28,21 @@ from treeflow.vbpi.likelihood import (
 )
 from treeflow.vbpi.mcmc import (
     PhylogeneticMCMCResults,
+    TimeTreeMCMCResults,
     TopologyMetropolisHastings,
+    sample_phylogenetic_time_trees,
     sample_phylogenetic_topologies,
     sample_topology_chain,
 )
 from treeflow.vbpi.sbn import SampledTopologies, SubsplitBayesianNetwork
 from treeflow.vbpi.support import SubsplitSupport, all_rooted_parent_indices
+from treeflow.vbpi.timetree import (
+    NodeHeightRatioModel,
+    build_time_tree,
+    coalescent_prior,
+    time_tree_jc_log_likelihood,
+    yule_prior,
+)
 from treeflow.vbpi.vimco import VimcoObjective, vimco_surrogate
 
 __all__ = [
@@ -50,4 +59,12 @@ __all__ = [
     "sample_topology_chain",
     "sample_phylogenetic_topologies",
     "PhylogeneticMCMCResults",
+    # Time-tree components
+    "NodeHeightRatioModel",
+    "build_time_tree",
+    "coalescent_prior",
+    "yule_prior",
+    "time_tree_jc_log_likelihood",
+    "sample_phylogenetic_time_trees",
+    "TimeTreeMCMCResults",
 ]

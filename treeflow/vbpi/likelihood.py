@@ -36,13 +36,11 @@ from treeflow.tree.topology.tensorflow_tree_topology import (
     numpy_topology_to_tensor,
 )
 
-_JC_EIGEN_CACHE: tp.Dict[tf.DType, tp.Any] = {}
-
-
 def _jc_eigen(dtype: tf.DType):
-    if dtype not in _JC_EIGEN_CACHE:
-        _JC_EIGEN_CACHE[dtype] = JC().eigen(JC.frequencies(dtype=dtype), dtype=dtype)
-    return _JC_EIGEN_CACHE[dtype]
+    # Not cached: the eigendecomposition is a handful of tf.constants, and
+    # caching them would capture tensors created inside whichever tf.function
+    # first built them, making them unusable ("out of scope") from a later graph.
+    return JC().eigen(JC.frequencies(dtype=dtype), dtype=dtype)
 
 
 def jc_frequencies(dtype: tf.DType = DEFAULT_FLOAT_DTYPE_TF) -> tf.Tensor:

@@ -183,6 +183,33 @@ def propose_nni(
     return new_parent, new_branch
 
 
+def propose_nni_internal(
+    parent_indices: np.ndarray,
+    internal_values: np.ndarray,
+    taxon_count: int,
+    rng: np.random.Generator,
+):
+    """Sample one uniform NNI neighbour, carrying a per-*internal-node* vector.
+
+    ``internal_values`` has length ``n-1`` and is indexed in internal-node space
+    (entry ``i`` belongs to node ``n+i``). It is reindexed through the NNI
+    relabelling and returned alongside the new topology. This is used to carry the
+    unconstrained node-height latent ``z`` of a time tree through a topology move
+    -- because the node-height-ratio transform maps any ``z`` to a *valid* tree,
+    the reattached tree is always a legal time tree.
+    """
+    edge_nodes = _internal_edge_nodes(taxon_count)
+    c = edge_nodes[rng.integers(len(edge_nodes))]
+    swap_b = bool(rng.integers(2))
+    moved = _apply_nni(parent_indices, c, swap_b)
+    new_parent, old_to_new = canonicalize_parent_indices(moved, taxon_count)
+    node_count = 2 * taxon_count - 1
+    new_values = np.empty_like(internal_values)
+    for node in range(taxon_count, node_count):  # internal nodes
+        new_values[old_to_new[node] - taxon_count] = internal_values[node - taxon_count]
+    return new_parent, new_values
+
+
 # ---------------------------------------------------------------------------
 # TransitionKernel over topologies
 # ---------------------------------------------------------------------------
@@ -441,14 +468,173 @@ def sample_phylogenetic_topologies(
     )
 
 
+class TimeTreeMCMCResults(tp.NamedTuple):
+    topologies: np.ndarray  # [num_results, 2n-2]
+    node_heights: np.ndarray  # [num_results, n-1]
+    log_posterior: np.ndarray  # [num_results]
+    topology_accept_rate: float
+    height_accept_rate: float
+
+
+def sample_phylogenetic_time_trees(
+    leaf_partials: np.ndarray,
+    taxon_count: int,
+    num_results: int,
+    num_burnin_steps: int = 0,
+    prior: str = "coalescent",
+    pop_size: float = 1.0,
+    birth_rate: float = 1.0,
+    clock_rate: float = 1.0,
+    height_proposal_scale: float = 0.2,
+    init_parent_indices: tp.Optional[np.ndarray] = None,
+    init_z: tp.Optional[np.ndarray] = None,
+    thin: int = 1,
+    seed: tp.Optional[int] = None,
+) -> TimeTreeMCMCResults:
+    """Metropolis-within-Gibbs over the joint posterior of a **time tree**.
+
+    The tree is rooted and ultrametric; its internal-node heights are represented
+    by the unconstrained node-height-ratio latent ``z`` (via TreeFlow's
+    ``NodeHeightRatioChainBijector``), and the prior is an existing TreeFlow
+    time-tree distribution -- ``"coalescent"`` (constant-size
+    :class:`ConstantCoalescent`) or ``"yule"`` (:class:`Yule`).
+
+    Each sweep does an NNI topology move that carries ``z`` through the
+    relabelling (the ratio transform maps ``z`` to a valid tree for *any*
+    topology, so the reattached tree is always legal) followed by a random-walk
+    update of ``z``. Both operate in the unconstrained ``z`` space, so the target
+    density carries the transform's log-det-Jacobian.
+
+    Parameters
+    ----------
+    leaf_partials
+        ``[n, n_sites, 4]`` leaf state partials.
+    prior
+        ``"coalescent"`` or ``"yule"``.
+    pop_size, birth_rate
+        Parameter of the chosen prior.
+    clock_rate
+        Strict-clock rate mapping time to expected substitutions.
+    height_proposal_scale
+        Std of the Gaussian random walk on ``z``.
+    """
+    import tensorflow as tf
+
+    from treeflow.bijectors.node_height_ratio_bijector import (
+        NodeHeightRatioChainBijector,
+    )
+    from treeflow.vbpi.likelihood import make_jc_log_likelihood_fn
+    from treeflow.vbpi.timetree import (
+        as_topology,
+        build_time_tree,
+        coalescent_prior,
+        yule_prior,
+    )
+
+    rng = np.random.default_rng(seed)
+    n = int(taxon_count)
+    node_count = 2 * n - 1
+    dtype = DEFAULT_FLOAT_DTYPE_TF
+
+    log_likelihood_fn = make_jc_log_likelihood_fn(leaf_partials)
+    if prior == "coalescent":
+        prior_dist = coalescent_prior(n, tf.constant(pop_size, dtype=dtype))
+    elif prior == "yule":
+        prior_dist = yule_prior(n, tf.constant(birth_rate, dtype=dtype))
+    else:
+        raise ValueError(f"prior must be 'coalescent' or 'yule', got {prior!r}")
+    clock = tf.constant(clock_rate, dtype=dtype)
+
+    # The whole target -- ratio transform, its log-det-Jacobian, the native
+    # likelihood and the tree prior -- is one tf.function, traced once and then
+    # called with each proposed topology's index tensors (no retrace across
+    # topologies of the same size). Eager evaluation is ~100x slower.
+    @tf.function
+    def target_fn(topology, z):
+        bijector = NodeHeightRatioChainBijector(topology, use_native=False)
+        heights = bijector.forward(z)
+        fldj = bijector.forward_log_det_jacobian(z, event_ndims=1)
+        tree = build_time_tree(topology, heights)
+        loglik = log_likelihood_fn(topology, clock * tree.branch_lengths)
+        logprior = prior_dist.log_prob(tree)
+        return loglik + logprior + fldj, heights
+
+    def log_target(topology, z):
+        value, heights = target_fn(topology, tf.constant(z, dtype=dtype))
+        return float(value), heights
+
+    # Initial state.
+    if init_parent_indices is None:
+        parent = np.empty(node_count - 1, dtype=np.int32)
+        parent[0] = n
+        parent[1] = n
+        for k in range(2, n):
+            parent[k] = n + k - 1
+        for k in range(n, node_count - 1):
+            parent[k] = k + 1
+        parent, _ = canonicalize_parent_indices(parent, n)
+    else:
+        parent = np.asarray(init_parent_indices, dtype=np.int32).copy()
+    z = (
+        np.zeros(n - 1, dtype=DEFAULT_FLOAT_DTYPE_NP)
+        if init_z is None
+        else np.asarray(init_z, dtype=DEFAULT_FLOAT_DTYPE_NP).copy()
+    )
+
+    topology = as_topology(parent)
+    cur_lp, cur_heights = log_target(topology, z)
+
+    topo_accepts = 0
+    height_accepts = 0
+    total_sweeps = num_burnin_steps + num_results * thin
+    kept_topologies = np.empty((num_results, node_count - 1), dtype=np.int32)
+    kept_heights = np.empty((num_results, n - 1), dtype=DEFAULT_FLOAT_DTYPE_NP)
+    kept_logpost = np.empty(num_results, dtype=np.float64)
+    kept = 0
+
+    for sweep in range(total_sweeps):
+        # --- NNI topology move (carrying z; symmetric proposal). ---
+        prop_parent, prop_z = propose_nni_internal(parent, z, n, rng)
+        prop_topology = as_topology(prop_parent)
+        prop_lp, prop_heights = log_target(prop_topology, prop_z)
+        if np.log(rng.random()) < (prop_lp - cur_lp):
+            parent, z, topology = prop_parent, prop_z, prop_topology
+            cur_lp, cur_heights = prop_lp, prop_heights
+            topo_accepts += 1
+
+        # --- Height random-walk move on z (holding topology). ---
+        prop_z = z + rng.normal(0.0, height_proposal_scale, size=z.shape)
+        prop_lp, prop_heights = log_target(topology, prop_z)
+        if np.log(rng.random()) < (prop_lp - cur_lp):
+            z, cur_lp, cur_heights = prop_z, prop_lp, prop_heights
+            height_accepts += 1
+
+        if sweep >= num_burnin_steps and (sweep - num_burnin_steps) % thin == 0:
+            kept_topologies[kept] = parent
+            kept_heights[kept] = cur_heights.numpy()
+            kept_logpost[kept] = cur_lp
+            kept += 1
+
+    return TimeTreeMCMCResults(
+        topologies=kept_topologies,
+        node_heights=kept_heights,
+        log_posterior=kept_logpost,
+        topology_accept_rate=topo_accepts / max(total_sweeps, 1),
+        height_accept_rate=height_accepts / max(total_sweeps, 1),
+    )
+
+
 __all__ = [
     "canonicalize_parent_indices",
     "rooted_nni_neighbours",
     "num_nni_neighbours",
     "propose_nni",
+    "propose_nni_internal",
     "TopologyMetropolisHastings",
     "TopologyMHResults",
     "sample_topology_chain",
     "sample_phylogenetic_topologies",
     "PhylogeneticMCMCResults",
+    "sample_phylogenetic_time_trees",
+    "TimeTreeMCMCResults",
 ]
