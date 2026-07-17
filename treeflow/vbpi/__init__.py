@@ -22,6 +22,16 @@ Components
     :func:`vimco_surrogate` -- the VIMCO gradient estimator.
 """
 from treeflow.vbpi.branch_model import SplitLognormalBranchModel
+from treeflow.vbpi.likelihood import (
+    make_jc_log_likelihood_fn,
+    rooted_jc_log_likelihood,
+)
+from treeflow.vbpi.mcmc import (
+    PhylogeneticMCMCResults,
+    TopologyMetropolisHastings,
+    sample_phylogenetic_topologies,
+    sample_topology_chain,
+)
 from treeflow.vbpi.sbn import SampledTopologies, SubsplitBayesianNetwork
 from treeflow.vbpi.support import SubsplitSupport, all_rooted_parent_indices
 from treeflow.vbpi.vimco import VimcoObjective, vimco_surrogate
@@ -34,4 +44,10 @@ __all__ = [
     "SplitLognormalBranchModel",
     "vimco_surrogate",
     "VimcoObjective",
+    "rooted_jc_log_likelihood",
+    "make_jc_log_likelihood_fn",
+    "TopologyMetropolisHastings",
+    "sample_topology_chain",
+    "sample_phylogenetic_topologies",
+    "PhylogeneticMCMCResults",
 ]
