@@ -9,7 +9,7 @@ from treeflow.vbpi.likelihood import (
     rooted_jc_log_likelihood,
 )
 
-from conftest import random_parent_indices
+from vbpi_test_helpers import random_parent_indices
 
 
 def numpy_felsenstein(parent_indices, leaf_partials, branch_lengths):

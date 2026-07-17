@@ -15,7 +15,7 @@ from treeflow.vbpi.mcmc import (
 from treeflow.vbpi.sbn import SubsplitBayesianNetwork
 from treeflow.vbpi.support import SubsplitSupport, all_rooted_parent_indices
 
-from conftest import random_parent_indices, simulate_jc_alignment
+from vbpi_test_helpers import random_parent_indices, simulate_jc_alignment
 
 
 # ---------------------------------------------------------------------------
