@@ -33,9 +33,11 @@ def _ensure_native_built():
             pytest.fail(message, pytrace=False)
         pytest.skip(message, allow_module_level=True)
 
+    from treeflow.acceleration.native import sbn as native_sbn
     from treeflow.acceleration.native.build import (
         build,
         build_node_height_ratio,
+        build_sbn,
     )
 
     if not os.path.exists(native.library_path()):
@@ -48,9 +50,15 @@ def _ensure_native_built():
             build_node_height_ratio()
         except Exception as e:  # pragma: no cover - environment dependent
             unavailable(f"Could not build native ratio op: {e}")
+    if not os.path.exists(native_sbn.library_path()):
+        try:
+            build_sbn()
+        except Exception as e:  # pragma: no cover - environment dependent
+            unavailable(f"Could not build native SBN op: {e}")
     try:
         native.load_op_library()
         native_ratio.load_op_library()
+        native_sbn.load_op_library()
     except Exception as e:  # pragma: no cover
         unavailable(f"Could not load native op: {e}")
 

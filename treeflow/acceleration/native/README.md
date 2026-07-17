@@ -108,11 +108,42 @@ heights = native_ratios_to_node_heights(
 )
 ```
 
+## Subsplit Bayesian network sampler op
+
+The **SBN topology sampler** (`SbnSample` / `treeflow.acceleration.native.sbn`)
+draws whole rooted tree topologies from a subsplit Bayesian network /
+conditional clade distribution — the variational family VBPI places over
+topologies (see [`treeflow/vbpi`](../../vbpi)). Unlike the other two ops it has
+**no gradient**: topologies are discrete, so the SBN's parameter gradients flow
+through the differentiable `log_prob` (pure TensorFlow), and only the forward
+draw is compiled.
+
+Sampling a topology is an inherently *sequential* traversal of the SBN's
+pointer-array (CSR) support: start at the root clade, draw one of its candidate
+child subsplits from the pre-normalised conditional probabilities, and recurse
+into each non-leaf child clade. That sequential walk is a poor fit for
+vectorised TensorFlow but a natural fit for a compiled kernel (it shards the
+independent per-sample draws across threads), exactly like the other traversal
+ops here. It is the compiled counterpart of the NumPy reference walk in
+`SubsplitBayesianNetwork._sample_numpy`, and is selected via
+`sample_topologies(..., use_native=True)` (or `"auto"`).
+
+```python
+from treeflow.vbpi import SubsplitBayesianNetwork, SubsplitSupport
+
+sbn = SubsplitBayesianNetwork(support)
+samples = sbn.sample_topologies(1000, seed=0, use_native="auto")
+# samples.parent_indices  [n, 2n-2]   treeflow topologies
+# samples.candidate_indices [n, n-1]  chosen SBN parameter per internal node
+# samples.node_clade_ids  [n, 2n-1]   per-node clade id (for branch params)
+```
+
 ## Building
 
 ```bash
 bash treeflow/acceleration/native/build.sh                  # all ops
 bash treeflow/acceleration/native/build.sh node_height_ratio_op  # just one
+bash treeflow/acceleration/native/build.sh sbn_op                # the SBN sampler
 # or
 python -m treeflow.acceleration.native.build
 ```
