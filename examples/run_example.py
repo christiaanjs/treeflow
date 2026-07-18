@@ -26,6 +26,7 @@ Run a notebook by path with a 4-hour per-cell timeout::
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -113,7 +114,39 @@ def main(argv=None) -> int:
         default="python3",
         help="Jupyter kernel name (default: python3)",
     )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=None,
+        help="VI optimisation iterations (carnivores; sets TREEFLOW_EXAMPLE_NUM_STEPS). "
+        "Default: the notebook's own value.",
+    )
+    parser.add_argument(
+        "--n-runs",
+        type=int,
+        default=None,
+        help="number of independent VI runs (carnivores; sets TREEFLOW_EXAMPLE_N_RUNS). "
+        "Default: the notebook's own value.",
+    )
+    parser.add_argument(
+        "--n-samples",
+        type=int,
+        default=None,
+        help="posterior samples drawn per run (carnivores; sets TREEFLOW_EXAMPLE_N_SAMPLES). "
+        "Default: the notebook's own value.",
+    )
     args = parser.parse_args(argv)
+
+    # Injected into the kernel environment; the example notebooks read these with
+    # a default of their in-notebook value, so a browser run with nothing set is
+    # unchanged. Handy for a quick smoke run, e.g. --num-steps 200 --n-runs 2.
+    for value, env_name in (
+        (args.num_steps, "TREEFLOW_EXAMPLE_NUM_STEPS"),
+        (args.n_runs, "TREEFLOW_EXAMPLE_N_RUNS"),
+        (args.n_samples, "TREEFLOW_EXAMPLE_N_SAMPLES"),
+    ):
+        if value is not None:
+            os.environ[env_name] = str(value)
 
     if args.notebook == "all":
         notebooks = [_KNOWN[name] for name in sorted(_KNOWN)]

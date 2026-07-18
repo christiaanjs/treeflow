@@ -14,6 +14,15 @@ python run_example.py all --inplace         # run both, overwriting in place
 python run_example.py carnivores --timeout 14400
 ```
 
+For a quick smoke run of the carnivores example, shrink the variational-inference
+workload with `--num-steps`, `--n-runs` and `--n-samples` (these set the
+`TREEFLOW_EXAMPLE_NUM_STEPS` / `_N_RUNS` / `_N_SAMPLES` environment variables the
+notebook reads; unset, it uses its full defaults, so browser runs are unchanged):
+
+```bash
+python run_example.py carnivores --num-steps 200 --n-runs 2 --n-samples 40
+```
+
 It drives the notebook with an `nbclient` client that forwards cell output as it
 arrives, so the (text) `tqdm` bars are visible while the run is in progress. This
 mirrors `experiments/run_benchmark.py`.
