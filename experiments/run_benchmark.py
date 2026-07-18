@@ -77,11 +77,11 @@ def main(argv=None) -> int:
     )
     parser.add_argument(
         "--profile",
-        choices=["quick", "full"],
+        choices=["ci", "quick", "full"],
         default=None,
-        help="sweep size: 'quick' (minutes, the notebook default) or 'full' "
-        "(manuscript scale, hours). Omit to use the notebook's own default / any "
-        "BENCHMARK_PROFILE already set in the environment.",
+        help="sweep size: 'ci' (a tiny smoke-test run), 'quick' (minutes, the "
+        "notebook default) or 'full' (manuscript scale, hours). Omit to use the "
+        "notebook's own default / any BENCHMARK_PROFILE already set in the environment.",
     )
     parser.add_argument(
         "--force",

@@ -48,11 +48,48 @@ jobs:
       - name: Run pytest (${{ matrix.name }})
         run: docker run --rm --workdir /app ${{ matrix.docker_env }} treeflow-test:ci pytest ${{ matrix.pytest_args }}
 
+  notebooks:
+    # Smoke-test that the example notebooks and the benchmark notebook run end to
+    # end, using the smallest possible workload (env-injected VI step counts and
+    # the benchmark's "ci" profile) so this stays fast and only catches breakage.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++
+
+      - name: Install treeflow (with test + benchmark extras)
+        run: |
+          python -m pip install --upgrade pip setuptools --ignore-installed
+          python -m pip install -e ".[test,benchmark]"
+
+      - name: Build native op
+        run: bash treeflow/acceleration/native/build.sh
+
+      - name: Smoke-run example notebooks
+        run: |
+          python examples/run_example.py all \
+            --num-steps 30 --n-runs 1 --n-samples 20 --timeout 1800
+
+      - name: Smoke-run benchmark notebook
+        run: |
+          python experiments/run_benchmark.py --profile ci --timeout 1800
+
   test:
     if: always()
-    needs: pytest
+    needs: [pytest, notebooks]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          result="${{ needs.pytest.result }}"
-          if [[ "$result" == "success" ]]; then exit 0; else exit 1; fi
+          if [[ "${{ needs.pytest.result }}" == "success" \
+             && "${{ needs.notebooks.result }}" == "success" ]]; then
+            exit 0
+          else
+            exit 1
+          fi

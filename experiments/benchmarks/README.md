@@ -50,8 +50,13 @@ The two profiles are:
 
 | profile | taxon counts | replicates | sites | repeats |
 | --- | --- | --- | --- | --- |
+| `ci` | 8–16 | 1 | 100 | 3 |
 | `quick` | 8–128 | 3 | 200 | 10 |
 | `full` (manuscript) | 32–2048 | 10 | 1000 | 100 (eager JAX capped at 512 taxa) |
+
+The `ci` profile is a minimal smoke run used by the `notebooks` CI job (in the
+`Run tests` workflow), which executes this notebook and the example notebooks
+end to end to catch breakage.
 
 ### Checkpointing / resumption
 
