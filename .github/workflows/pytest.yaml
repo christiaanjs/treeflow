@@ -52,34 +52,32 @@ jobs:
     # Smoke-test that the example notebooks and the benchmark notebook run end to
     # end, using the smallest possible workload (env-injected VI step counts and
     # the benchmark's "ci" profile) so this stays fast and only catches breakage.
+    # Runs in the same test image as the pytest jobs: its base already carries
+    # matplotlib + jupyterlab (which brings ipykernel/nbclient/nbformat) from
+    # requirements.txt and the prebuilt native op, plus pandas from the test extra.
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Load test image
+        uses: docker/build-push-action@v6
         with:
-          python-version: "3.11"
-
-      - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y g++
-
-      - name: Install treeflow (with test + benchmark extras)
-        run: |
-          python -m pip install --upgrade pip setuptools --ignore-installed
-          python -m pip install -e ".[test,benchmark]"
-
-      - name: Build native op
-        run: bash treeflow/acceleration/native/build.sh
-
+          context: .
+          platforms: linux/amd64
+          target: test
+          load: true
+          tags: treeflow-test:ci
+          cache-from: type=gha
       - name: Smoke-run example notebooks
         run: |
-          python examples/run_example.py all \
+          docker run --rm --workdir /app treeflow-test:ci \
+            python examples/run_example.py all \
             --num-steps 30 --n-runs 1 --n-samples 20 --timeout 1800
-
       - name: Smoke-run benchmark notebook
         run: |
-          python experiments/run_benchmark.py --profile ci --timeout 1800
+          docker run --rm --workdir /app treeflow-test:ci \
+            python experiments/run_benchmark.py --profile ci --timeout 1800
 
   test:
     if: always()
