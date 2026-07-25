@@ -433,7 +433,13 @@ _MANUSCRIPT_MODELS = ["jc", "full"]
 # old pipeline and giving BEAGLE's compute without TensorFlow wrapper overhead;
 # the tf.function-wrapped beagle_bito and jax_jit stay in the notebook's own
 # exploratory plots (jax_jit excluded because the manuscript frames JAX as eager).
-MANUSCRIPT_METHODS = ["treeflow", "treeflow_native", "beagle_bito_direct", "jax"]
+MANUSCRIPT_METHODS = [
+    "treeflow",
+    "treeflow_native",
+    "beagle_bito_direct",
+    "jax",
+    "jax_jit",
+]
 
 
 def write_manuscript_data(
