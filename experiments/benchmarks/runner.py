@@ -491,17 +491,30 @@ def write_benchmark_config(
     sequence_length: int,
     repeats: int,
     out_dir: str,
+    stat: str = "min",
 ) -> str:
     """Write ``benchmark-config.yaml`` capturing the sweep parameters the
     manuscript quotes in its benchmark section (``treeflow_pipeline.manuscript.
-    get_treeflow_manuscript_vars``). ``sample_count`` maps to ``repeats`` -- the
-    number of times each computation is timed on a fixed input."""
+    get_treeflow_manuscript_vars``).
+
+    ``repeat_count`` is ``repeats``: the number of times each computation is
+    timed on a single fixed input. ``timing_stat`` is the reduction applied
+    across those repeats to give the one number reported per configuration
+    (matching the ``stat`` passed to ``write_manuscript_data``), so the reported
+    time is the cost of a *single* evaluation.
+
+    Note this differs from the old Snakemake pipeline's ``sample_count``, which
+    counted the distinct trees in a batch that was timed as one loop; the number
+    reported there was therefore the total for the whole batch. The key is
+    deliberately renamed so the two cannot be silently confused.
+    """
     os.makedirs(out_dir, exist_ok=True)
     config = dict(
         full_taxon_counts=list(taxon_counts),
         replicates=replicates,
         sequence_length=sequence_length,
-        sample_count=repeats,
+        repeat_count=repeats,
+        timing_stat=stat,
     )
     path = os.path.join(out_dir, "benchmark-config.yaml")
     with open(path, "w") as f:

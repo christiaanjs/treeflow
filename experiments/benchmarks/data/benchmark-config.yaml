@@ -6,6 +6,7 @@ full_taxon_counts:
 - 512
 - 1024
 - 2048
+repeat_count: 100
 replicates: 10
-sample_count: 100
 sequence_length: 1000
+timing_stat: min
