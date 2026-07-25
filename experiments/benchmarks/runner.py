@@ -431,8 +431,8 @@ _MANUSCRIPT_MODELS = ["jc", "full"]
 # Methods shown in the manuscript figure/table. The direct bito benchmarkable
 # (beagle_bito_direct) is used as the single "bito/BEAGLE" series -- matching the
 # old pipeline and giving BEAGLE's compute without TensorFlow wrapper overhead;
-# the tf.function-wrapped beagle_bito and jax_jit stay in the notebook's own
-# exploratory plots (jax_jit excluded because the manuscript frames JAX as eager).
+# the tf.function-wrapped beagle_bito stays in the notebook's own exploratory
+# plots. Both JAX variants are shown: eager (jax) and jit-compiled (jax_jit).
 MANUSCRIPT_METHODS = [
     "treeflow",
     "treeflow_native",
