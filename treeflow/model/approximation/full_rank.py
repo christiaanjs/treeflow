@@ -128,7 +128,12 @@ def get_full_rank_approximation(
         total_dim,
     )
     distribution = tfd.TransformedDistribution(base_dist, chain_bijector)
-    variables_dict = {v.name: v for v in distribution.trainable_variables}
+    # Collect the trainable variables directly rather than via
+    # ``distribution.trainable_variables``. The affine bijector above holds the
+    # only trainable variables in the chain, and walking the whole chain with
+    # ``tf.Module``'s flattening trips over the tuple-wrapped bijector list on
+    # some TensorFlow/Python combinations.
+    variables_dict = {v.name: v for v in (loc_var, raw_var)}
     return distribution, variables_dict
 
 
