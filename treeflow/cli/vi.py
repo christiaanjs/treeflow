@@ -16,6 +16,7 @@ from treeflow.model.approximation import (
     get_fixed_topology_mean_field_approximation,
     get_fixed_topology_inverse_autoregressive_flow_approximation,
     get_fixed_topology_full_rank_approximation,
+    get_fixed_topology_root_full_rank_approximation,
 )
 from treeflow.vi.fixed_topology_advi import fit_fixed_topology_variational_approximation
 from treeflow.tree.rooted.tensorflow_rooted_tree import convert_tree_to_tensor
@@ -42,6 +43,7 @@ approximation_builders = dict(
     full_rank=get_fixed_topology_full_rank_approximation,
     mean_field=get_fixed_topology_mean_field_approximation,
     iaf=get_fixed_topology_inverse_autoregressive_flow_approximation,
+    root_full_rank=get_fixed_topology_root_full_rank_approximation,
 )
 
 

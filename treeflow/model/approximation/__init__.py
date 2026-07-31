@@ -10,3 +10,7 @@ from .full_rank import (
     get_full_rank_approximation,
     get_fixed_topology_full_rank_approximation,
 )
+from .root_full_rank import (
+    get_root_full_rank_approximation,
+    get_fixed_topology_root_full_rank_approximation,
+)
