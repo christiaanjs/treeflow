@@ -126,6 +126,18 @@ def treeflow_vi():
     ),
 )
 @click.option(
+    "--max-trace-coords",
+    required=False,
+    type=click.IntRange(min=1),
+    help=(
+        "If set, --trace-output records only up to this many randomly-selected "
+        "coordinates per variational parameter at each step, instead of the full "
+        "tensor. Keeps trace memory bounded regardless of parameter size (e.g. a "
+        "full-rank scale matrix, which is quadratic in the number of free model "
+        "dimensions), at the cost of a coarser trace for diagnostics."
+    ),
+)
+@click.option(
     "--samples-output",
     required=False,
     type=click.Path(),
@@ -191,6 +203,7 @@ def run(
     seed,
     trace_output,
     resume_from_trace,
+    max_trace_coords,
     samples_output,
     tree_samples_output,
     n_output_samples,
@@ -302,6 +315,7 @@ def run(
         approx_fn=approximation_builders[variational_approximation],
         approx_kwargs=approx_kwargs,
         resume_from_variables=resume_from_variables,
+        max_trace_coords=max_trace_coords,
     )
     approx, trace = vi_res
     print("Inference complete")

@@ -54,6 +54,19 @@ By default this draws one subplot per variational parameter (`--full`, the defau
 which is useful for comparing several runs side by side. See `treeflow_vi plot --help` for
 the full set of options (e.g. `--coords-per-var`, `--tree-vars`, `--tree-coords`).
 
+### Trace memory for large models
+
+By default `--trace-output` records the *entire* value of every variational parameter at
+every step, so the trace is O(steps × parameter size). For approximations with large
+parameters — most notably `full_rank`, whose scale matrix is D × D in the number of free
+model dimensions D — this can dominate memory use for long runs on large datasets (e.g. it
+is infeasible for a many-hundred-taxon tree run for tens of thousands of steps). Pass
+`--max-trace-coords N` to instead record only up to `N` randomly-selected coordinates of
+each parameter at each step (parameters with at most `N` elements, e.g. most scalars, are
+still traced in full). This trades a coarser trace for O(steps × N) memory regardless of
+how large any individual parameter is, and works with both `--trace-output` and
+`treeflow_vi plot`.
+
 For the ELBO trace itself, a minimal plot:
 
 ```python

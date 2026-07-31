@@ -215,3 +215,45 @@ def test_vi_plot(test_data_dir, trace_output_path, tmp_path):
     )
     assert sample_res.exit_code == 0
     assert sample_plot_path.exists()
+
+
+def test_vi_max_trace_coords(test_data_dir, trace_output_path):
+    import pickle
+    import numpy as np
+
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+
+    runner = CliRunner()
+    max_trace_coords = 3
+    res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "full_rank",
+            "--max-trace-coords", str(max_trace_coords),
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert res.exit_code == 0
+
+    with open(trace_output_path, "rb") as f:
+        trace = pickle.load(f)
+
+    # Every traced variable's per-step coordinate count is capped at
+    # max_trace_coords (small variables below the cap are still traced in full).
+    saw_capped_variable = False
+    for value in trace.parameters.values():
+        arr = np.asarray(value)
+        n_coords = int(np.prod(arr.shape[1:]))
+        assert n_coords <= max_trace_coords
+        if n_coords == max_trace_coords:
+            saw_capped_variable = True
+    # full_rank's D x D scale matrix should be large enough to actually get
+    # capped for this test to be meaningful.
+    assert saw_capped_variable

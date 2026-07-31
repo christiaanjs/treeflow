@@ -15,7 +15,7 @@ from tensorflow_probability.python.math.minimize import (
 )
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.model.approximation import get_fixed_topology_full_rank_approximation
-from treeflow.vi.util import default_vi_trace_fn
+from treeflow.vi.util import default_vi_trace_fn, get_sampled_vi_trace_fn
 from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
 
@@ -50,6 +50,7 @@ def fit_fixed_topology_variational_approximation(
     use_native: tp.Union[str, bool] = "auto",
     unroll: tp.Union[str, bool] = "auto",
     resume_from_variables: tp.Optional[tp.Dict[str, object]] = None,
+    max_trace_coords: tp.Optional[int] = None,
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
     if approx_kwargs is None:
@@ -78,7 +79,14 @@ def fit_fixed_topology_variational_approximation(
                 )
 
     if trace_fn is None:
-        trace_fn = partial(default_vi_trace_fn, variables_dict=variables_dict)
+        if max_trace_coords is None:
+            trace_fn = partial(default_vi_trace_fn, variables_dict=variables_dict)
+        else:
+            trace_fn = get_sampled_vi_trace_fn(
+                variables_dict,
+                max_trace_coords=max_trace_coords,
+                seed=vi_kwargs.get("seed"),
+            )
 
     if return_full_length_trace:
         augmented_trace_fn = trace_fn
