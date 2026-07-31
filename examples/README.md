@@ -35,6 +35,11 @@ mirrors `experiments/run_benchmark.py`.
 
 It uses the model specified in [`h3n2-model.yaml`](h3n2-model.yaml).
 
+[`h3n2-vi-multi-run.sh`](h3n2-vi-multi-run.sh) runs the same analysis 4 times (60,000
+iterations each) with different seeds, to compare the fitted approximations/ELBOs across
+runs. Wall-clock timing for each run is appended to
+`demo-out/h3n2-multi-run-timing.csv`.
+
 ## Rates and dates
 [`rates-and-dates.ipynb`](rates-and-dates.ipynb) is a Jupyter notebook that demonstrates TreeFlow's variational inference and model comparison API. We also provide a YAML version of the model definition in [`rates-and-dates-model.yaml`](rates-and-dates-model.yaml).
 
