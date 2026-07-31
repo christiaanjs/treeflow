@@ -49,6 +49,7 @@ def fit_fixed_topology_variational_approximation(
     approx_kwargs: tp.Optional[tp.Dict[str, object]] = None,
     use_native: tp.Union[str, bool] = "auto",
     unroll: tp.Union[str, bool] = "auto",
+    resume_from_variables: tp.Optional[tp.Dict[str, object]] = None,
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
     if approx_kwargs is None:
@@ -65,6 +66,16 @@ def fit_fixed_topology_variational_approximation(
         unroll=unroll,
         **approx_kwargs,
     )
+
+    if resume_from_variables is not None:
+        # Warm-start the freshly-built approximation's variables (matched by name,
+        # e.g. from the last step of a previously saved `VIResults.parameters`
+        # trace) so optimisation continues rather than restarting from scratch.
+        for name, variable in variables_dict.items():
+            if name in resume_from_variables:
+                variable.assign(
+                    tf.cast(resume_from_variables[name], variable.dtype)
+                )
 
     if trace_fn is None:
         trace_fn = partial(default_vi_trace_fn, variables_dict=variables_dict)

@@ -70,6 +70,7 @@ def test_vi(
     runner = CliRunner()
     n_output_samples = 10
     args = [
+        "run",
         "-i", fasta_file,
         "-t", newick_file,
         "-n", str(10),
@@ -94,3 +95,123 @@ def test_vi(
 
     trees = dendropy.TreeList.get(path=tree_samples_output_path, schema="nexus")
     assert len(trees) == n_output_samples
+
+
+def test_vi_resume_from_trace(test_data_dir, trace_output_path, tmp_path):
+    import pickle
+    import numpy as np
+
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+    resumed_trace_path = tmp_path / "resumed-trace.pickle"
+
+    runner = CliRunner()
+    first_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert first_res.exit_code == 0
+
+    resumed_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--resume-from-trace", str(trace_output_path),
+            "--trace-output", str(resumed_trace_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert resumed_res.exit_code == 0
+    assert "Resuming from trace" in resumed_res.stdout
+
+    with open(trace_output_path, "rb") as f:
+        first_trace = pickle.load(f)
+    with open(resumed_trace_path, "rb") as f:
+        resumed_trace = pickle.load(f)
+
+    fresh_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "-s", "1",
+            "--trace-output", str(tmp_path / "fresh-trace.pickle"),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert fresh_res.exit_code == 0
+    with open(tmp_path / "fresh-trace.pickle", "rb") as f:
+        fresh_trace = pickle.load(f)
+
+    # The resumed run should start (much) closer to where the first run left off
+    # than a freshly-initialised run does.
+    for name, first_final in first_trace.parameters.items():
+        resumed_start = np.asarray(resumed_trace.parameters[name])[0]
+        fresh_start = np.asarray(fresh_trace.parameters[name])[0]
+        first_final = np.asarray(first_final)[-1]
+        resumed_dist = np.linalg.norm(resumed_start - first_final)
+        fresh_dist = np.linalg.norm(fresh_start - first_final)
+        assert resumed_dist < fresh_dist
+
+
+def test_vi_plot(test_data_dir, trace_output_path, tmp_path):
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+
+    runner = CliRunner()
+    run_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert run_res.exit_code == 0
+
+    full_plot_path = tmp_path / "full.png"
+    full_res = runner.invoke(
+        treeflow_vi,
+        ["plot", "-t", str(trace_output_path), "-o", str(full_plot_path)],
+        catch_exceptions=False,
+    )
+    assert full_res.exit_code == 0
+    assert full_plot_path.exists()
+
+    sample_plot_path = tmp_path / "sample.png"
+    sample_res = runner.invoke(
+        treeflow_vi,
+        [
+            "plot",
+            "-t", str(trace_output_path),
+            "-o", str(sample_plot_path),
+            "--sample",
+            "--title", "test run",
+        ],
+        catch_exceptions=False,
+    )
+    assert sample_res.exit_code == 0
+    assert sample_plot_path.exists()

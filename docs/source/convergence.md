@@ -26,7 +26,7 @@ estimate stops improving is the simplest convergence check.
 For a proper diagnosis, save the full optimisation trace with `--trace-output`:
 
 ```sh
-treeflow_vi \
+treeflow_vi run \
     --input alignment.fasta \
     --topology tree.nwk \
     --model-file model.yaml \
@@ -42,7 +42,19 @@ The trace is pickled as a `treeflow.vi.util.VIResults` named tuple with two fiel
 * `parameters` — the values of the variational parameters at each step, which can be
   plotted to check that they have stopped drifting.
 
-A minimal plot of the ELBO trace:
+The `treeflow_vi plot` subcommand plots the parameter traces directly from a saved trace
+file, using the `treeflow.vi.plotting.plot_parameter_traces` helper:
+
+```sh
+treeflow_vi plot --trace trace.pkl --output trace.png
+```
+
+By default this draws one subplot per variational parameter (`--full`, the default). Pass
+`--sample` to instead draw a small representative set of coordinates into a single axis,
+which is useful for comparing several runs side by side. See `treeflow_vi plot --help` for
+the full set of options (e.g. `--coords-per-var`, `--tree-vars`, `--tree-coords`).
+
+For the ELBO trace itself, a minimal plot:
 
 ```python
 import pickle
@@ -66,6 +78,28 @@ You have a converged run when:
 If either is still changing at the end of the run, increase `--num-steps` (and, if the
 trace is very noisy or unstable, decrease the learning rate with `--learning-rate`) and
 run again.
+
+## Resuming a run from a saved trace
+
+If a run turns out not to have converged, or was interrupted, it can be continued rather
+than restarted from scratch with `--resume-from-trace`, pointing at a trace saved by an
+earlier `--trace-output`:
+
+```sh
+treeflow_vi run \
+    --input alignment.fasta \
+    --topology tree.nwk \
+    --model-file model.yaml \
+    --num-steps 40000 \
+    --resume-from-trace trace.pkl \
+    --trace-output trace-continued.pkl
+```
+
+This warm-starts the variational parameters from the last step of the given trace, so
+optimisation continues from where the previous run left off instead of from a fresh
+initialisation. The resumed run must use the same `--variational-approximation`, model and
+topology as the run that produced the trace; the optimizer state itself (e.g. Adam moment
+estimates) is not restored, only the variational parameters.
 
 ## Convergence criteria and the `--convergence-criterion` option
 

@@ -34,7 +34,7 @@ check that variational inference has converged.
             * On Linux `docker ps | grep treeflow | awk '{print $1}' | xargs docker kill` will stop all TreeFlow containers
     * To run one of [TreeFlow's command line applications](cli):
         * `docker run treeflow {command}`
-        * You may want to mount a data directory for input/output e.g. `docker run -v /home/dev/repo/data:/app/data treeflow_vi -i data/alignment.fasta -t data/topology.nwk --tree-samples-output data/tree-results.nexus`
+        * You may want to mount a data directory for input/output e.g. `docker run -v /home/dev/repo/data:/app/data treeflow_vi run -i data/alignment.fasta -t data/topology.nwk --tree-samples-output data/tree-results.nexus`
         
 ### With local Docker image
 
