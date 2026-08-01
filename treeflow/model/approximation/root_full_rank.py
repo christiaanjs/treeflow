@@ -14,8 +14,14 @@ from treeflow.model.event_shape_bijector import (
 )
 from treeflow.model.approximation.full_rank import _FullRankAffineBijector
 
+# Keys used for the two pieces the tree variable's unconstrained representation
+# is split into. They are not model variable names, so they are prefixed to
+# avoid any possible collision with one.
+_ROOT_KEY = "__tree_root__"
+_RATIOS_KEY = "__tree_ratios__"
 
-class _RatioMeanFieldBijector(tfb.Bijector):
+
+class _MeanFieldAffineBijector(tfb.Bijector):
     """Elementwise affine (shift + softplus-scale) transform for independent
     mean-field coordinates. Stores the raw variables directly (as
     ``_FullRankAffineBijector`` does) and recomputes the transform on every
@@ -24,7 +30,7 @@ class _RatioMeanFieldBijector(tfb.Bijector):
     bijector-construction time and breaks gradient flow to ``raw_scale``.
     """
 
-    def __init__(self, loc, raw_scale, name="RatioMeanField"):
+    def __init__(self, loc, raw_scale, name="MeanFieldAffine"):
         self.loc = loc
         self.raw_scale = raw_scale
         super().__init__(forward_min_event_ndims=1, name=name)
@@ -47,24 +53,35 @@ def get_root_full_rank_approximation(
     topology_pins: tp.Dict[str, TensorflowTreeTopology],
     init_loc=None,
     dtype=DEFAULT_FLOAT_DTYPE_TF,
-    joint_bijector_func: tp.Callable[
-        [tfd.JointDistribution], tfb.Composition
-    ] = None,
+    joint_bijector_func: tp.Callable[[tfd.JointDistribution], tfb.Composition] = None,
     event_shape_fn=None,
     tree_vars: tp.Iterable[str] = ("tree",),
+    mean_field_vars: tp.Iterable[str] = (),
 ) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Variable]]:
-    """A hybrid approximation: the tree's root height and every non-tree model
-    variable share one full-rank Gaussian block (so the correlations between
-    e.g. clock rate, population size and root height that a mean-field
-    approximation misses can be captured), while the tree's other
-    (non-root) node-height ratios are approximated independently
-    (mean-field). This targets the specific optimisation/approximation
-    difficulty a full covariance over the whole (high-dimensional) set of
-    node heights can run into, while keeping the correlations that matter
-    most for the scalar model parameters.
+    """A hybrid approximation: the tree's root height and (by default) every
+    non-tree model variable share one full-rank Gaussian block -- capturing the
+    correlations between e.g. clock rate, population size and root height that
+    a mean-field approximation misses -- while the tree's other (non-root)
+    node-height ratios are approximated independently (mean-field). This
+    targets the specific optimisation/approximation difficulty a full
+    covariance over the whole (high-dimensional) set of node heights runs into,
+    while keeping the correlations that matter most for the scalar model
+    parameters.
 
-    Requires a single fixed-topology tree variable, identified as the one
-    name in ``tree_vars`` present in the model.
+    Requires a single fixed-topology tree variable, identified as the one name
+    in ``tree_vars`` present in the model.
+
+    Parameters
+    ----------
+    mean_field_vars
+        Names of additional (non-tree) model variables to exclude from the
+        full-covariance block and approximate independently. The full-rank
+        block's parameter count is quadratic in its dimension, so variables
+        whose dimension grows with the tree -- a per-branch relaxed clock rate,
+        or the per-branch ``kappa`` of the carnivores lineage-variation model --
+        make the full-rank block as expensive and as hard to fit as a
+        whole-tree full-rank approximation. Naming them here keeps the block
+        confined to the (few) parameters that are shared across the tree.
     """
     if joint_bijector_func is None:
         from treeflow.model.event_shape_bijector import get_default_event_space_bijector
@@ -73,7 +90,10 @@ def get_root_full_rank_approximation(
     if event_shape_fn is None:
         event_shape_fn = default_event_shape_fn
 
-    event_shape_and_space_bijector, base_event_shape = get_event_shape_and_space_bijector(
+    (
+        event_shape_and_space_bijector,
+        base_event_shape,
+    ) = get_event_shape_and_space_bijector(
         model,
         joint_bijector_func=joint_bijector_func,
         event_shape_fn=event_shape_fn,
@@ -101,17 +121,31 @@ def get_root_full_rank_approximation(
             f"variables {names}"
         )
     tree_name = tree_names[0]
-    tree_position = names.index(tree_name)
-    other_names = [n for n in names if n != tree_name]
-    other_sizes = [base_event_shape[n].num_elements() for n in other_names]
+
+    mean_field_names = [n for n in names if n in mean_field_vars]
+    if tree_name in mean_field_names:
+        raise ValueError(
+            f"The tree variable {tree_name!r} cannot be listed in "
+            "mean_field_vars; its non-root coordinates are always mean-field "
+            "and its root is always in the full-rank block"
+        )
+    unknown = sorted(set(mean_field_vars) - set(names))
+    if unknown:
+        raise ValueError(
+            f"mean_field_vars {unknown} are not model variables; model "
+            f"variables are {names}"
+        )
+    full_rank_names = [
+        n for n in names if n != tree_name and n not in mean_field_names
+    ]
 
     # `NodeHeightRatioBijector`'s unconstrained representation is always
     # (taxon_count - 2) ratio coordinates followed by 1 root coordinate, so
-    # the tree variable's total unconstrained size (already computed above)
-    # is enough to recover the ratio/root split -- no need to look anything
-    # up by name in `topology_pins` (whose keys are each tree distribution's
-    # own `tree_name` attribute, not necessarily the same as the model's
-    # variable name used in `base_event_shape`).
+    # the tree variable's total unconstrained size is enough to recover the
+    # ratio/root split -- no need to look anything up by name in
+    # `topology_pins` (whose keys are each tree distribution's own `tree_name`
+    # attribute, not necessarily the same as the model's variable name used in
+    # `base_event_shape`).
     tree_total_size = base_event_shape[tree_name].num_elements()
     if tree_total_size < 2:
         raise ValueError(
@@ -121,68 +155,94 @@ def get_root_full_rank_approximation(
         )
     n_ratios = tree_total_size - 1
 
-    full_rank_size = sum(other_sizes) + 1  # non-tree variables + the tree root
-    total_dim = full_rank_size + n_ratios
+    sizes = {n: base_event_shape[n].num_elements() for n in names}
+    sizes[_ROOT_KEY] = 1
+    sizes[_RATIOS_KEY] = n_ratios
 
-    # ---- Full-rank block: every non-tree variable, plus the tree root ----
-    # `NodeHeightRatioBijector` puts the root as the *last* unconstrained
-    # coordinate of the tree variable (see its `_inverse`), so this is
-    # `init_loc_1d[tree_name][..., -1:]`.
-    other_flat_inits = [init_loc_1d[n] for n in other_names]
-    root_init = None if init_loc_1d[tree_name] is None else init_loc_1d[tree_name][..., -1:]
-    fr_loc_pieces = [
-        tf.zeros(sz, dtype=dtype) if val is None else tf.cast(tf.reshape(val, [-1]), dtype)
-        for val, sz in zip(other_flat_inits + [root_init], other_sizes + [1])
-    ]
-    fr_loc_init = tf.concat(fr_loc_pieces, axis=0)
-    fr_loc_var = tf.Variable(fr_loc_init, name="root_full_rank_loc")
+    # Unconstrained initial values, keyed the same way. The root is the *last*
+    # unconstrained coordinate of the tree variable (see
+    # `NodeHeightRatioBijector._inverse`), the ratios are everything before it.
+    tree_init = init_loc_1d[tree_name]
+    inits = dict(init_loc_1d)
+    inits[_ROOT_KEY] = None if tree_init is None else tree_init[..., -1:]
+    inits[_RATIOS_KEY] = None if tree_init is None else tree_init[..., :-1]
 
+    # The two blocks, as ordered lists of the pieces each is built from.
+    full_rank_keys = full_rank_names + [_ROOT_KEY]
+    mean_field_keys = mean_field_names + [_RATIOS_KEY]
+    full_rank_size = sum(sizes[k] for k in full_rank_keys)
+    mean_field_size = sum(sizes[k] for k in mean_field_keys)
+    total_dim = full_rank_size + mean_field_size
+
+    def loc_init_for(keys):
+        pieces = [
+            tf.zeros(sizes[k], dtype=dtype)
+            if inits[k] is None
+            else tf.cast(tf.reshape(inits[k], [-1]), dtype)
+            for k in keys
+        ]
+        return tf.concat(pieces, axis=0)
+
+    # softplus_inverse(1) = log(exp(1) - 1) ~= 0.541, so the initial scale is 1
+    # on the diagonal and 0 off it.
     softplus_inv1 = tf.cast(
         tf.math.log(tf.exp(tf.ones([], dtype=tf.float32)) - 1.0), dtype
     )
-    fr_raw_scale_init = tf.linalg.diag(tf.fill([full_rank_size], softplus_inv1))
-    fr_raw_var = tf.Variable(fr_raw_scale_init, name="root_full_rank_scale_raw")
+
+    # ---- Full-rank block: the shared model parameters plus the tree root ----
+    fr_loc_var = tf.Variable(loc_init_for(full_rank_keys), name="root_full_rank_loc")
+    fr_raw_var = tf.Variable(
+        tf.linalg.diag(tf.fill([full_rank_size], softplus_inv1)),
+        name="root_full_rank_scale_raw",
+    )
     full_rank_bijector = _FullRankAffineBijector(
         fr_loc_var, fr_raw_var, name="RootFullRankAffine"
     )
 
-    # ---- Mean-field block: the tree's other (ratio) coordinates ----
-    ratio_init = None if init_loc_1d[tree_name] is None else init_loc_1d[tree_name][..., :-1]
-    ratio_loc_init = (
-        tf.zeros(n_ratios, dtype=dtype)
-        if ratio_init is None
-        else tf.cast(tf.reshape(ratio_init, [-1]), dtype)
+    # ---- Mean-field block: the tree's ratios, plus any excluded variables ----
+    mf_loc_var = tf.Variable(
+        loc_init_for(mean_field_keys), name="root_full_rank_mean_field_loc"
     )
-    ratio_loc_var = tf.Variable(ratio_loc_init, name="root_full_rank_ratio_loc")
-    ratio_raw_scale_var = tf.Variable(
-        tf.fill([n_ratios], softplus_inv1), name="root_full_rank_ratio_scale_raw"
+    mf_raw_var = tf.Variable(
+        tf.fill([mean_field_size], softplus_inv1),
+        name="root_full_rank_mean_field_scale_raw",
     )
-    ratio_bijector = _RatioMeanFieldBijector(ratio_loc_var, ratio_raw_scale_var)
+    mean_field_bijector = _MeanFieldAffineBijector(mf_loc_var, mf_raw_var)
 
     blockwise_bijector = tfb.Blockwise(
-        [full_rank_bijector, ratio_bijector], block_sizes=[full_rank_size, n_ratios]
+        [full_rank_bijector, mean_field_bijector],
+        block_sizes=[full_rank_size, mean_field_size],
     )
 
-    # `blockwise_bijector` outputs, in order: [other_names[0], ..., other_names[-1],
-    # tree_root, tree_ratios]. `Split` (below) instead needs, in `names` order,
-    # each variable's whole contiguous slice -- i.e. the tree's slice
-    # (ratios then root, matching NodeHeightRatioBijector's convention) at
-    # `tree_position`, not at the end. `Permute` reorders coordinates
-    # (forward(x)[i] = x[permutation[i]], verified empirically) to fix this up;
-    # it is volume-preserving, so it does not affect the log-det-Jacobian.
-    offset_before_tree = sum(base_event_shape[n].num_elements() for n in names[:tree_position])
-    S = full_rank_size - 1
-    permutation = []
-    for i in range(total_dim):
-        if i < offset_before_tree:
-            permutation.append(i)
-        elif i < offset_before_tree + n_ratios:
-            permutation.append(S + 1 + (i - offset_before_tree))
-        elif i == offset_before_tree + n_ratios:
-            permutation.append(S)
+    # `blockwise_bijector` emits its pieces in block order (all of the
+    # full-rank block, then all of the mean-field block). `Split` (below)
+    # instead needs each variable's whole contiguous slice laid out in `names`
+    # order, with the tree's slice being its ratios followed by its root
+    # (`NodeHeightRatioBijector`'s convention). `Permute` reorders coordinates
+    # to fix this up (`forward(x)[i] = x[permutation[i]]`, verified
+    # empirically); it is volume-preserving, so it does not contribute to the
+    # log-det-Jacobian.
+    source_offsets = {}
+    offset = 0
+    for key in full_rank_keys + mean_field_keys:
+        source_offsets[key] = offset
+        offset += sizes[key]
+
+    target_keys = []
+    for n in names:
+        if n == tree_name:
+            target_keys += [_RATIOS_KEY, _ROOT_KEY]
         else:
-            permutation.append(i - n_ratios - 1)
-    permute_bijector = tfb.Permute(permutation=tf.constant(permutation, dtype=tf.int32))
+            target_keys.append(n)
+    permutation = [
+        i
+        for key in target_keys
+        for i in range(source_offsets[key], source_offsets[key] + sizes[key])
+    ]
+    assert sorted(permutation) == list(range(total_dim))
+    permute_bijector = tfb.Permute(
+        permutation=tf.constant(permutation, dtype=tf.int32)
+    )
 
     # Build the split+restructure chain (same pattern as full_rank.py) to go
     # from the single (now correctly ordered) flat vector to the dict of
@@ -213,19 +273,10 @@ def get_root_full_rank_approximation(
         total_dim,
     )
     distribution = tfd.TransformedDistribution(base_dist, chain_bijector)
-    # Built explicitly (rather than from `distribution.trainable_variables`):
-    # `tfb.Scale(tf.math.softplus(ratio_raw_scale_var))` passes a *computed*
-    # tensor as the bijector's `scale` parameter rather than the variable
-    # itself, so `ratio_raw_scale_var` is not discoverable via tf.Module's
-    # attribute-based variable tracking (unlike `_FullRankAffineBijector`,
-    # which stores `loc`/`raw_scale` as direct attributes). It still receives
-    # gradients correctly -- this only affects which variables get collected.
-    created_variables = [
-        fr_loc_var,
-        fr_raw_var,
-        ratio_loc_var,
-        ratio_raw_scale_var,
-    ]
+    # Collected explicitly rather than from `distribution.trainable_variables`
+    # so the returned dict is guaranteed complete regardless of how tf.Module's
+    # attribute-based variable tracking traverses the bijector chain.
+    created_variables = [fr_loc_var, fr_raw_var, mf_loc_var, mf_raw_var]
     variables_dict = {v.name: v for v in created_variables}
     return distribution, variables_dict
 
@@ -238,6 +289,7 @@ def get_fixed_topology_root_full_rank_approximation(
     use_native="auto",
     unroll="auto",
     tree_vars: tp.Iterable[str] = ("tree",),
+    mean_field_vars: tp.Iterable[str] = (),
 ) -> tp.Tuple[tfd.Distribution, tp.Dict[str, tf.Variable]]:
     bijector_func = partial(
         get_fixed_topology_joint_bijector,
@@ -256,6 +308,7 @@ def get_fixed_topology_root_full_rank_approximation(
         joint_bijector_func=bijector_func,
         event_shape_fn=event_shape_fn,
         tree_vars=tree_vars,
+        mean_field_vars=mean_field_vars,
     )
 
 

@@ -85,6 +85,14 @@ def treeflow_vi():
     show_default=True,
 )
 @click.option(
+    "--mean-field-vars",
+    required=False,
+    type=str,
+    help="Comma-separated model variables to keep out of the full-covariance "
+    "block (root_full_rank only), e.g. a per-branch relaxed clock rate whose "
+    "dimension grows with the tree",
+)
+@click.option(
     "-n",
     "--num-steps",
     required=True,
@@ -200,6 +208,7 @@ def run(
     optimizer,
     model_file,
     variational_approximation,
+    mean_field_vars,
     learning_rate,
     init_values,
     seed,
@@ -292,6 +301,21 @@ def run(
         approx_kwargs = dict(hidden_units_per_layer=tree.taxon_count)
     else:
         approx_kwargs = dict()
+
+    if mean_field_vars:
+        if variational_approximation != "root_full_rank":
+            raise click.ClickException(
+                "--mean-field-vars is only meaningful for the root_full_rank "
+                f"approximation, not {variational_approximation}"
+            )
+        names = [name.strip() for name in mean_field_vars.split(",") if name.strip()]
+        unknown = sorted(set(names) - model_names)
+        if unknown:
+            raise click.ClickException(
+                f"--mean-field-vars {unknown} are not model variables; model "
+                f"variables are {sorted(model_names)}"
+            )
+        approx_kwargs["mean_field_vars"] = names
 
     if resume_from_trace is None:
         resume_from_variables = None
