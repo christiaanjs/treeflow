@@ -14,6 +14,8 @@ Submodules
 
    treeflow.traversal.anchor_heights
    treeflow.traversal.phylo_likelihood
+   treeflow.traversal.phylo_likelihood_dispatch
    treeflow.traversal.postorder
    treeflow.traversal.preorder
    treeflow.traversal.ratio_transform
+   treeflow.traversal.sample_ctmc

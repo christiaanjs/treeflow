@@ -13,3 +13,4 @@ Subpackages
    :maxdepth: 1
 
    treeflow.acceleration.bito
+   treeflow.acceleration.native

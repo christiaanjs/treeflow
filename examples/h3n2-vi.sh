@@ -1,4 +1,4 @@
-treeflow_vi -s 1 \
+treeflow_vi run -s 1 \
     -i demo-data/h3n2.fasta \
     -m h3n2-model.yaml \
     -t demo-data/h3n2.nwk \

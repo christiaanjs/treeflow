@@ -1,0 +1,12 @@
+full_taxon_counts:
+- 32
+- 64
+- 128
+- 256
+- 512
+- 1024
+- 2048
+repeat_count: 100
+replicates: 10
+sequence_length: 1000
+timing_stat: min

@@ -45,6 +45,10 @@ COPY . .
 # and removed within a single layer to keep the runtime image lean. The compiled
 # .so files are then picked up by `pip install .` via package_data and copied
 # into site-packages.
+#
+# build.sh defaults to a portable instruction-set baseline (not -march=native)
+# because this image is published and run on machines other than the one that
+# built it — see treeflow/acceleration/native/README.md#instruction-set-baseline.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ \
     && bash treeflow/acceleration/native/build.sh \

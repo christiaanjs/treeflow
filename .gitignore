@@ -71,6 +71,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+.jupyter_ystore.db
 
 # pyenv
 .python-version
@@ -109,3 +110,9 @@ venv.bak/
 
 examples/demo-out/
 .DS_Store
+
+experiments/benchmarks/data/sim/
+experiments/benchmarks/data/checkpoints/
+
+# executed-notebook copies produced by examples/run_example.py
+*.executed.ipynb

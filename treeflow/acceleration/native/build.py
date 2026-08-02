@@ -9,6 +9,13 @@ without leaving the Python toolchain (e.g. from setup hooks or CI). By default
 it builds every op; individual ops can be built via :func:`build` (the
 phylogenetic likelihood) and :func:`build_node_height_ratio` (the node-height
 ratio transform).
+
+Unlike ``build.sh`` invoked directly (which defaults to a portable instruction
+set), this wrapper defaults to ``TREEFLOW_NATIVE_ARCH=native``: this entry
+point is for building on the machine that will also run the ops (local dev,
+`pip install -e .`, the auto-build fallback in test fixtures), so it is safe
+to compile for that machine's exact CPU. Set ``TREEFLOW_NATIVE_ARCH=portable``
+before calling to opt back into the portable baseline.
 """
 import os
 import subprocess
@@ -19,7 +26,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 def _run_build(*targets: str) -> None:
     script = os.path.join(_HERE, "build.sh")
-    subprocess.run(["bash", script, *targets], check=True)
+    env = os.environ.copy()
+    env.setdefault("TREEFLOW_NATIVE_ARCH", "native")
+    subprocess.run(["bash", script, *targets], check=True, env=env)
 
 
 def build() -> str:

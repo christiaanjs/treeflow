@@ -48,11 +48,46 @@ jobs:
       - name: Run pytest (${{ matrix.name }})
         run: docker run --rm --workdir /app ${{ matrix.docker_env }} treeflow-test:ci pytest ${{ matrix.pytest_args }}
 
+  notebooks:
+    # Smoke-test that the example notebooks and the benchmark notebook run end to
+    # end, using the smallest possible workload (env-injected VI step counts and
+    # the benchmark's "ci" profile) so this stays fast and only catches breakage.
+    # Runs in the same test image as the pytest jobs: its base already carries
+    # matplotlib + jupyterlab (which brings ipykernel/nbclient/nbformat) from
+    # requirements.txt and the prebuilt native op, plus pandas from the test extra.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Load test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          target: test
+          load: true
+          tags: treeflow-test:ci
+          cache-from: type=gha
+      - name: Smoke-run example notebooks
+        run: |
+          docker run --rm --workdir /app treeflow-test:ci \
+            python examples/run_example.py all \
+            --num-steps 30 --n-runs 1 --n-samples 20 --timeout 1800
+      - name: Smoke-run benchmark notebook
+        run: |
+          docker run --rm --workdir /app treeflow-test:ci \
+            python experiments/run_benchmark.py --profile ci --timeout 1800
+
   test:
     if: always()
-    needs: pytest
+    needs: [pytest, notebooks]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          result="${{ needs.pytest.result }}"
-          if [[ "$result" == "success" ]]; then exit 0; else exit 1; fi
+          if [[ "${{ needs.pytest.result }}" == "success" \
+             && "${{ needs.notebooks.result }}" == "success" ]]; then
+            exit 0
+          else
+            exit 1
+          fi

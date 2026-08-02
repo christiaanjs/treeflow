@@ -70,6 +70,7 @@ def test_vi(
     runner = CliRunner()
     n_output_samples = 10
     args = [
+        "run",
         "-i", fasta_file,
         "-t", newick_file,
         "-n", str(10),
@@ -94,3 +95,209 @@ def test_vi(
 
     trees = dendropy.TreeList.get(path=tree_samples_output_path, schema="nexus")
     assert len(trees) == n_output_samples
+
+
+def test_vi_resume_from_trace(test_data_dir, trace_output_path, tmp_path):
+    import pickle
+    import numpy as np
+
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+    resumed_trace_path = tmp_path / "resumed-trace.pickle"
+
+    runner = CliRunner()
+    first_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert first_res.exit_code == 0
+
+    resumed_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--resume-from-trace", str(trace_output_path),
+            "--trace-output", str(resumed_trace_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert resumed_res.exit_code == 0
+    assert "Resuming from trace" in resumed_res.stdout
+
+    with open(trace_output_path, "rb") as f:
+        first_trace = pickle.load(f)
+    with open(resumed_trace_path, "rb") as f:
+        resumed_trace = pickle.load(f)
+
+    fresh_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "-s", "1",
+            "--trace-output", str(tmp_path / "fresh-trace.pickle"),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert fresh_res.exit_code == 0
+    with open(tmp_path / "fresh-trace.pickle", "rb") as f:
+        fresh_trace = pickle.load(f)
+
+    # The resumed run should start (much) closer to where the first run left off
+    # than a freshly-initialised run does.
+    for name, first_final in first_trace.parameters.items():
+        resumed_start = np.asarray(resumed_trace.parameters[name])[0]
+        fresh_start = np.asarray(fresh_trace.parameters[name])[0]
+        first_final = np.asarray(first_final)[-1]
+        resumed_dist = np.linalg.norm(resumed_start - first_final)
+        fresh_dist = np.linalg.norm(fresh_start - first_final)
+        assert resumed_dist < fresh_dist
+
+
+def test_vi_plot(test_data_dir, trace_output_path, tmp_path):
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+
+    runner = CliRunner()
+    run_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert run_res.exit_code == 0
+
+    full_plot_path = tmp_path / "full.png"
+    full_res = runner.invoke(
+        treeflow_vi,
+        ["plot", "-t", str(trace_output_path), "-o", str(full_plot_path)],
+        catch_exceptions=False,
+    )
+    assert full_res.exit_code == 0
+    assert full_plot_path.exists()
+
+    sample_plot_path = tmp_path / "sample.png"
+    sample_res = runner.invoke(
+        treeflow_vi,
+        [
+            "plot",
+            "-t", str(trace_output_path),
+            "-o", str(sample_plot_path),
+            "--sample",
+            "--title", "test run",
+        ],
+        catch_exceptions=False,
+    )
+    assert sample_res.exit_code == 0
+    assert sample_plot_path.exists()
+
+
+def test_vi_max_trace_coords(test_data_dir, trace_output_path):
+    import pickle
+    import numpy as np
+
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+
+    runner = CliRunner()
+    max_trace_coords = 3
+    res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "full_rank",
+            "--max-trace-coords", str(max_trace_coords),
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert res.exit_code == 0
+
+    with open(trace_output_path, "rb") as f:
+        trace = pickle.load(f)
+
+    # Every traced variable's per-step coordinate count is capped at
+    # max_trace_coords (small variables below the cap are still traced in full).
+    saw_capped_variable = False
+    for value in trace.parameters.values():
+        arr = np.asarray(value)
+        n_coords = int(np.prod(arr.shape[1:]))
+        assert n_coords <= max_trace_coords
+        if n_coords == max_trace_coords:
+            saw_capped_variable = True
+    # full_rank's D x D scale matrix should be large enough to actually get
+    # capped for this test to be meaningful.
+    assert saw_capped_variable
+
+    # The trace records which coordinates it kept, so plots can label them by
+    # coordinate rather than by position in the trace.
+    assert set(trace.parameter_coords) == set(trace.parameters)
+    for name, coords in trace.parameter_coords.items():
+        n_coords = int(np.prod(np.asarray(trace.parameters[name]).shape[1:]))
+        assert len(coords.indices) == n_coords
+        assert list(coords.indices) == sorted(set(coords.indices))
+        # The last coordinate -- the root, for a node-height vector -- is
+        # always kept.
+        assert coords.indices[-1] == coords.size - 1
+
+
+def test_vi_plot_subsampled_trace(test_data_dir, trace_output_path, tmp_path):
+    """`plot` works on a trace written with `run --max-trace-coords`."""
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+
+    runner = CliRunner()
+    run_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--max-trace-coords", "2",
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert run_res.exit_code == 0
+
+    for layout, filename in [("--full", "full.png"), ("--sample", "sample.png")]:
+        plot_path = tmp_path / filename
+        res = runner.invoke(
+            treeflow_vi,
+            ["plot", "-t", str(trace_output_path), "-o", str(plot_path), layout],
+            catch_exceptions=False,
+        )
+        assert res.exit_code == 0
+        assert plot_path.exists()

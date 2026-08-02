@@ -14,8 +14,12 @@ from tensorflow_probability.python.math.minimize import (
     _trace_has_converged,
 )
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
-from treeflow.model.approximation import get_fixed_topology_mean_field_approximation
-from treeflow.vi.util import default_vi_trace_fn
+from treeflow.model.approximation import get_fixed_topology_full_rank_approximation
+from treeflow.vi.util import (
+    VIResults,
+    default_vi_trace_fn,
+    get_sampled_vi_trace_fn,
+)
 from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
 
@@ -38,15 +42,19 @@ def fit_fixed_topology_variational_approximation(
     optimizer: Optimizer,
     num_steps: int,
     trace_fn: tp.Optional[tp.Callable[[MinimizeTraceableQuantities], object]] = None,
-    convergence_criterion: tp.Optional[ConvergenceCriterion] = None,
+    convergence_criterion: tp.Optional[
+        ConvergenceCriterion
+    ] = None,
     init_loc: tp.Optional[object] = None,
     return_full_length_trace: bool = True,
     progress_bar: tp.Union[bool, ProgressBarFunc] = False,
     progress_bar_step: int = 10,
-    approx_fn: ApproximationBuilder = get_fixed_topology_mean_field_approximation,
+    approx_fn: ApproximationBuilder = get_fixed_topology_full_rank_approximation,
     approx_kwargs: tp.Optional[tp.Dict[str, object]] = None,
     use_native: tp.Union[str, bool] = "auto",
     unroll: tp.Union[str, bool] = "auto",
+    resume_from_variables: tp.Optional[tp.Dict[str, object]] = None,
+    max_trace_coords: tp.Optional[int] = None,
     **vi_kwargs,
 ) -> tp.Tuple[Distribution, object]:
     if approx_kwargs is None:
@@ -64,8 +72,25 @@ def fit_fixed_topology_variational_approximation(
         **approx_kwargs,
     )
 
+    if resume_from_variables is not None:
+        # Warm-start the freshly-built approximation's variables (matched by name,
+        # e.g. from the last step of a previously saved `VIResults.parameters`
+        # trace) so optimisation continues rather than restarting from scratch.
+        for name, variable in variables_dict.items():
+            if name in resume_from_variables:
+                variable.assign(
+                    tf.cast(resume_from_variables[name], variable.dtype)
+                )
+
     if trace_fn is None:
-        trace_fn = partial(default_vi_trace_fn, variables_dict=variables_dict)
+        if max_trace_coords is None:
+            trace_fn = partial(default_vi_trace_fn, variables_dict=variables_dict)
+        else:
+            trace_fn = get_sampled_vi_trace_fn(
+                variables_dict,
+                max_trace_coords=max_trace_coords,
+                seed=vi_kwargs.get("seed"),
+            )
 
     if return_full_length_trace:
         augmented_trace_fn = trace_fn
@@ -90,7 +115,16 @@ def fit_fixed_topology_variational_approximation(
     else:
         opt_res = _truncate_at_has_converged(trace)
 
+    # A subsampling trace_fn records only some coordinates of each variable;
+    # carry the map back to variable coordinates with the results so that
+    # diagnostics can interpret them (see `TracedCoordinates`).
+    traced_coordinates = getattr(trace_fn, "traced_coordinates", None)
+    if traced_coordinates is not None and isinstance(opt_res, VIResults):
+        opt_res = opt_res._replace(parameter_coords=traced_coordinates)
+
     return (approximation, opt_res)
 
 
-__all__ = ["fit_fixed_topology_variational_approximation"]
+__all__ = [
+    "fit_fixed_topology_variational_approximation",
+]
