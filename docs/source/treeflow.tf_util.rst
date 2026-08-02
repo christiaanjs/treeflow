@@ -14,5 +14,6 @@ Submodules
 
    treeflow.tf_util.attrs
    treeflow.tf_util.dtype_util
+   treeflow.tf_util.graph
    treeflow.tf_util.linear_operator_upper_triangular
    treeflow.tf_util.vectorize

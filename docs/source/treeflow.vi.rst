@@ -22,6 +22,8 @@ Submodules
    :maxdepth: 1
 
    treeflow.vi.fixed_topology_advi
+   treeflow.vi.hmc
    treeflow.vi.marginal_likelihood
+   treeflow.vi.plotting
    treeflow.vi.progress_bar
    treeflow.vi.util

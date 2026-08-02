@@ -8,7 +8,8 @@ increasing and the parameters of the variational approximation have settled.
 
 The main tool for checking that is the `treeflow_vi plot` subcommand, which draws the
 optimisation trajectory of every variational parameter from a saved trace. It is a thin
-wrapper around `treeflow.vi.plotting.plot_parameter_traces`, which can also be called
+wrapper around `plot_parameter_traces` from the
+[`treeflow.vi.plotting`](treeflow.vi.plotting.rst) module, which can also be called
 directly from Python.
 
 ## Saving a trace
@@ -165,6 +166,9 @@ fig.tight_layout()
 Other keyword arguments mirror the CLI options: `coords_per_var`, `tree_vars`,
 `tree_coords`, `max_individual_lines`, `ncols`, and `figsize_per_plot` for the size of each
 subplot in a created full-layout figure. An empty `parameter_trace` raises `ValueError`.
+The full signature is in the [`treeflow.vi.plotting`](treeflow.vi.plotting.rst) API
+reference, and the trace containers in
+[`treeflow.vi.util`](treeflow.vi.util.rst) (`VIResults`, `TracedCoordinates`).
 
 For a trace written with `--max-trace-coords`, pass `parameter_coords=trace.parameter_coords`
 alongside `trace.parameters` — that is what lets coordinates be labelled by their index in
