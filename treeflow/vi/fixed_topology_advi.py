@@ -15,7 +15,11 @@ from tensorflow_probability.python.math.minimize import (
 )
 from treeflow.tree.topology.tensorflow_tree_topology import TensorflowTreeTopology
 from treeflow.model.approximation import get_fixed_topology_full_rank_approximation
-from treeflow.vi.util import default_vi_trace_fn, get_sampled_vi_trace_fn
+from treeflow.vi.util import (
+    VIResults,
+    default_vi_trace_fn,
+    get_sampled_vi_trace_fn,
+)
 from treeflow.vi.progress_bar import make_progress_bar_trace_fn, ProgressBarFunc
 
 
@@ -110,6 +114,13 @@ def fit_fixed_topology_variational_approximation(
         opt_res = trace
     else:
         opt_res = _truncate_at_has_converged(trace)
+
+    # A subsampling trace_fn records only some coordinates of each variable;
+    # carry the map back to variable coordinates with the results so that
+    # diagnostics can interpret them (see `TracedCoordinates`).
+    traced_coordinates = getattr(trace_fn, "traced_coordinates", None)
+    if traced_coordinates is not None and isinstance(opt_res, VIResults):
+        opt_res = opt_res._replace(parameter_coords=traced_coordinates)
 
     return (approximation, opt_res)
 

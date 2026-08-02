@@ -1,47 +1,84 @@
 import typing as tp
 
 
+def _coordinate_indices(n_traced: int, coords) -> tp.Tuple[object, int]:
+    """Resolve trace positions to variable coordinate indices.
+
+    Returns ``(indices, size)``, where ``indices[p]`` is the coordinate of the
+    variable held at position ``p`` of the trace and ``size`` is the variable's
+    full flattened size. For a full trace (``coords is None``) the two coincide.
+    """
+    import numpy as np
+
+    if coords is None:
+        return np.arange(n_traced), n_traced
+    indices = np.asarray(coords.indices)
+    if indices.shape[0] != n_traced:
+        raise ValueError(
+            f"parameter_coords holds {indices.shape[0]} coordinate indices for a "
+            f"trace of {n_traced} coordinates."
+        )
+    return indices, int(coords.size)
+
+
 def _sampled_coordinates(
     name: str,
     n_coords: int,
     tree_vars: tp.Iterable[str],
     coords_per_var: int,
     tree_coords: int,
+    coords=None,
 ) -> tp.List[tp.Tuple[str, int]]:
-    """Pick a small, representative set of ``(label, coordinate_index)`` pairs.
+    """Pick a small, representative set of ``(label, trace_position)`` pairs.
 
     - Scalar variables contribute their single coordinate.
     - Variables whose name contains any entry of ``tree_vars`` are treated as
-      node-height vectors: the **last** coordinate is taken to be the root and is
-      always included, plus up to ``tree_coords - 1`` evenly-spaced internal-node
-      coordinates.
+      node-height vectors: the root — the variable's **last** coordinate — is
+      included whenever it was traced, plus up to ``tree_coords - 1``
+      evenly-spaced internal-node coordinates.
     - Any other vector variable contributes ``coords_per_var`` evenly-spaced
       coordinates.
+
+    Labels report the coordinate's index *in the variable*. These are positions
+    in the trace only when the variable was traced in full; ``coords`` (a
+    ``TracedCoordinates``) supplies the mapping for a trace that recorded a
+    subset of coordinates, so that e.g. the root is labelled as the root
+    wherever it actually landed in the trace, rather than the last traced
+    coordinate being labelled as the root regardless.
     """
     import numpy as np
 
     base = name.split(":")[0]
-    if n_coords <= 1:
+    indices, size = _coordinate_indices(n_coords, coords)
+    if size <= 1:
         return [(base, 0)]
 
-    is_tree = any(t in name for t in tree_vars)
-    if is_tree:
-        root = n_coords - 1
-        n_internal = max(min(tree_coords, n_coords) - 1, 0)
-        internal = np.unique(
-            np.linspace(0, n_coords - 2, n_internal, dtype=int)
-        ).tolist() if n_internal else []
-        pairs = [(f"{base}[node {i}]", int(i)) for i in internal]
-        pairs.append((f"{base}[root]", root))
+    if any(t in name for t in tree_vars):
+        # The root is the variable's last coordinate; it may sit anywhere in a
+        # subsampled trace, and (for a trace not produced by
+        # `get_sampled_vi_trace_fn`) may be missing altogether.
+        root_positions = np.flatnonzero(indices == size - 1)
+        internal_positions = np.setdiff1d(np.arange(n_coords), root_positions)
+        n_internal = max(min(tree_coords, n_coords) - len(root_positions), 0)
+        if n_internal and len(internal_positions):
+            internal = internal_positions[
+                np.unique(
+                    np.linspace(0, len(internal_positions) - 1, n_internal, dtype=int)
+                )
+            ]
+        else:
+            internal = []
+        pairs = [(f"{base}[node {int(indices[p])}]", int(p)) for p in internal]
+        pairs += [(f"{base}[root]", int(p)) for p in root_positions]
         return pairs
 
     k = min(coords_per_var, n_coords)
-    idx = np.unique(np.linspace(0, n_coords - 1, k, dtype=int))
-    return [(f"{base}[{int(i)}]", int(i)) for i in idx]
+    positions = np.unique(np.linspace(0, n_coords - 1, k, dtype=int))
+    return [(f"{base}[{int(indices[p])}]", int(p)) for p in positions]
 
 
 def _plot_sampled_traces(parameter_trace, ax, tree_vars, coords_per_var, tree_coords,
-                         title):
+                         title, parameter_coords):
     """Draw a representative sample of coordinate trajectories into one axis."""
     import numpy as np
     import matplotlib.pyplot as plt
@@ -55,7 +92,12 @@ def _plot_sampled_traces(parameter_trace, ax, tree_vars, coords_per_var, tree_co
         flat = arr.reshape(num_steps, -1)
         steps = np.arange(num_steps)
         for label, j in _sampled_coordinates(
-            name, flat.shape[1], tree_vars, coords_per_var, tree_coords
+            name,
+            flat.shape[1],
+            tree_vars,
+            coords_per_var,
+            tree_coords,
+            coords=None if parameter_coords is None else parameter_coords.get(name),
         ):
             ax.plot(steps, flat[:, j], lw=1.0, label=label)
 
@@ -80,6 +122,7 @@ def plot_parameter_traces(
     ncols: int = 3,
     axes=None,
     figsize_per_plot: tp.Tuple[float, float] = (4.0, 2.5),
+    parameter_coords: tp.Optional[tp.Mapping[str, object]] = None,
 ):
     """Plot the optimisation trajectory of each variational parameter.
 
@@ -130,6 +173,14 @@ def plot_parameter_traces(
         axes: optional pre-existing flat/2-D array of matplotlib ``Axes`` to draw
             the full layout into. A new figure is created when omitted.
         figsize_per_plot: ``(width, height)`` per subplot for the created figure.
+        parameter_coords: for a trace that recorded only a subset of each
+            variable's coordinates (``VIResults.parameter_coords``, as produced
+            by ``get_sampled_vi_trace_fn``), the mapping ``name ->
+            TracedCoordinates`` giving which coordinates those are. Coordinates
+            are then labelled by their index in the variable rather than their
+            position in the trace, and the root of a node-height vector is
+            identified wherever it landed. Omit (or pass the empty
+            ``parameter_coords`` of a full trace), where the two are the same.
 
     Returns:
         The single ``Axes`` drawn into when ``sample=True``, otherwise the flat
@@ -143,9 +194,20 @@ def plot_parameter_traces(
     if n == 0:
         raise ValueError("parameter_trace is empty; nothing to plot.")
 
+    # A full trace carries no coordinate map (`VIResults.parameter_coords` is
+    # then the empty structure `()`); positions are coordinates.
+    if not parameter_coords:
+        parameter_coords = None
+
     if sample:
         return _plot_sampled_traces(
-            parameter_trace, ax, tree_vars, coords_per_var, tree_coords, title
+            parameter_trace,
+            ax,
+            tree_vars,
+            coords_per_var,
+            tree_coords,
+            title,
+            parameter_coords,
         )
 
     if axes is None:
@@ -184,7 +246,10 @@ def plot_parameter_traces(
                 ax.plot(steps, flat[:, j], lw=0.5, alpha=0.5)
             ax.legend(fontsize=6, loc="best")
 
-        ax.set_title(f"{name}  ({n_coords})", fontsize=8)
+        coords = None if parameter_coords is None else parameter_coords.get(name)
+        _, size = _coordinate_indices(n_coords, coords)
+        count = f"{n_coords}" if size == n_coords else f"{n_coords} of {size}"
+        ax.set_title(f"{name}  ({count})", fontsize=8)
         ax.tick_params(labelsize=7)
 
     # Hide any unused axes in the grid.

@@ -257,3 +257,47 @@ def test_vi_max_trace_coords(test_data_dir, trace_output_path):
     # full_rank's D x D scale matrix should be large enough to actually get
     # capped for this test to be meaningful.
     assert saw_capped_variable
+
+    # The trace records which coordinates it kept, so plots can label them by
+    # coordinate rather than by position in the trace.
+    assert set(trace.parameter_coords) == set(trace.parameters)
+    for name, coords in trace.parameter_coords.items():
+        n_coords = int(np.prod(np.asarray(trace.parameters[name]).shape[1:]))
+        assert len(coords.indices) == n_coords
+        assert list(coords.indices) == sorted(set(coords.indices))
+        # The last coordinate -- the root, for a node-height vector -- is
+        # always kept.
+        assert coords.indices[-1] == coords.size - 1
+
+
+def test_vi_plot_subsampled_trace(test_data_dir, trace_output_path, tmp_path):
+    """`plot` works on a trace written with `run --max-trace-coords`."""
+    newick_file = str(test_data_dir / "hello.nwk")
+    fasta_file = str(test_data_dir / "hello.fasta")
+
+    runner = CliRunner()
+    run_res = runner.invoke(
+        treeflow_vi,
+        [
+            "run",
+            "-i", fasta_file,
+            "-t", newick_file,
+            "-n", "5",
+            "-va", "mean_field",
+            "--max-trace-coords", "2",
+            "--trace-output", str(trace_output_path),
+            "--no-progress-bar",
+        ],
+        catch_exceptions=False,
+    )
+    assert run_res.exit_code == 0
+
+    for layout, filename in [("--full", "full.png"), ("--sample", "sample.png")]:
+        plot_path = tmp_path / filename
+        res = runner.invoke(
+            treeflow_vi,
+            ["plot", "-t", str(trace_output_path), "-o", str(plot_path), layout],
+            catch_exceptions=False,
+        )
+        assert res.exit_code == 0
+        assert plot_path.exists()

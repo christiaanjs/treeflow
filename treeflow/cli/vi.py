@@ -140,11 +140,13 @@ def treeflow_vi():
     required=False,
     type=click.IntRange(min=1),
     help=(
-        "If set, --trace-output records only up to this many randomly-selected "
-        "coordinates per variational parameter at each step, instead of the full "
-        "tensor. Keeps trace memory bounded regardless of parameter size (e.g. a "
-        "full-rank scale matrix, which is quadratic in the number of free model "
-        "dimensions), at the cost of a coarser trace for diagnostics."
+        "If set, --trace-output records only up to this many coordinates per "
+        "variational parameter at each step (its last coordinate -- the root, for "
+        "a node-height vector -- plus a random selection of the rest), instead of "
+        "the full tensor. Keeps trace memory bounded regardless of parameter size "
+        "(e.g. a full-rank scale matrix, which is quadratic in the number of free "
+        "model dimensions), at the cost of a coarser trace for diagnostics. "
+        "`treeflow_vi plot` labels such traces by parameter coordinate."
     ),
 )
 @click.option(
@@ -495,6 +497,9 @@ def plot(
         title=title,
         max_individual_lines=max_individual_lines,
         ncols=ncols,
+        # `None` unless the trace was written with `run --max-trace-coords`, in
+        # which case it maps traced positions back to variable coordinates.
+        parameter_coords=vi_results.parameter_coords,
     )
     figure = np.atleast_1d(axes)[0].figure
 
