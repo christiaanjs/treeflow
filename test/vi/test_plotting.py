@@ -1,7 +1,3 @@
-import matplotlib
-
-matplotlib.use("Agg")
-
 import numpy as np
 import pytest
 
@@ -10,6 +6,19 @@ from treeflow.vi.util import TracedCoordinates
 
 NUM_STEPS = 7
 NUM_COORDS = 10
+
+
+@pytest.fixture(autouse=True)
+def agg_backend():
+    """Select a headless backend, importing matplotlib at test time.
+
+    `treeflow.vi.plotting` imports matplotlib inside its functions rather than at
+    module scope, so it is an optional dependency of the package; keeping the
+    import out of module scope here means collecting this file does not need it
+    either, and these tests skip instead of erroring where it is missing.
+    """
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
 
 
 def _trace(coord_indices):
