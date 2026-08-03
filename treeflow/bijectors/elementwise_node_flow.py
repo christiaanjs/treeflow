@@ -36,15 +36,32 @@ invertible (no root finding), and all the identity at zero raw parameters:
     flow's benefit comes from the nonlinearity rather than from the tree
     structure, and a useful family in its own right.
 
-On tails and the transforms downstream. The flow's coordinates are pushed
-through a sigmoid (the non-root height ratios) or an exponential (the root
-height) before the ratio transform, so linear tails in flow space mean
-logit-normal ratios and a lognormal root -- the same tail behaviour the existing
-mean-field and full-rank approximations have. The spline therefore does not make
-the tails *worse*; it leaves them alone and reshapes the bulk, where its window
-sits, and each node's learnable affine pre-conditioning is what aligns that
-window with the node's own bulk. Reshaping the tails is what ``"sinh_arcsinh"``
-is for, and the two can be stacked by using more than one flow layer.
+On tails, and on near-polytomies. The flow's coordinates are pushed through a
+sigmoid (the non-root height ratios) or an exponential (the root height) before
+the ratio transform, so **mass near a ratio of 0 or 1 -- a branch of length
+close to zero, i.e. a near-polytomy -- is exactly mass in the tail of the
+coordinate**, and the tail *class* is what decides how much of it there can be.
+Writing ``P(r > 1 - e)`` for the mass within ``e`` of the boundary:
+
+* a Gaussian coordinate gives a logit-normal ratio, whose ``log P`` falls like
+  ``-(log 1/e)^2``: the local exponent ``d log P / d log e`` keeps growing
+  (measured: 7, 14, 28, 55 as ``e`` goes 1e-2, 1e-4, 1e-8, 1e-16);
+* the ``"spline"`` is the identity outside its window, so it reproduces that
+  decay *exactly* -- it reshapes the bulk and contributes nothing at the
+  boundary;
+* ``"sinh_arcsinh"`` does change the class. With ``tailweight`` near 2 the
+  exponent is constant (measured: ~1.15 across the same range), i.e. a genuine
+  power law ``P ~ e^a`` -- Beta-like mass piled against the boundary, which is
+  what a near-polytomy needs. Larger ``tailweight`` lowers ``a`` further.
+
+Note that applying a spline *after* the sigmoid instead -- reshaping the ratio in
+``(0, 1)`` rather than the coordinate in ``R`` -- does not help with this: a
+spline with bounded positive slopes is bi-Lipschitz on ``[0, 1]``, so it can move
+the constant (measured: ~40x more mass at ``e = 1e-2``) but leaves the exponent
+where it was. The placement is not what limits boundary mass; the tail class is.
+So for a posterior with near-zero branch lengths, reach for ``"sinh_arcsinh"``
+(or stack it with a spline layer, which is what ``num_layers > 1`` allows),
+rather than moving the nonlinearity into constrained space.
 """
 
 import typing as tp
