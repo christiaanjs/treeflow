@@ -161,6 +161,7 @@ def get_tree_flow_approximation(
     parameter_approximation: str = "mean_field",
     auxiliary_vars: tp.Optional[tp.Iterable[str]] = None,
     node_feature_vars: tp.Iterable[str] = (),
+    linear_cross_coupling: bool = False,
     num_layers: int = 1,
     order: str = DEFAULT_ORDER,
     nonlinearity: str = DEFAULT_NONLINEARITY,
@@ -190,6 +191,26 @@ def get_tree_flow_approximation(
         flow. Defaults to all of them; pass ``()`` for an unconditional flow, or
         a subset to keep the conditioner small when the model has a variable
         whose dimension grows with the tree.
+    linear_cross_coupling
+        Add a dense **linear** term carrying the parameter block into every tree
+        coordinate: ``y_tree += W @ y_parameters``. The flow's auxiliary
+        conditioning models the parameter-tree dependence by modulating the
+        flow's per-node parameters through a small network, which is flexible but
+        nonlinear; this instead adds plain linear correlation between every
+        parameter and every node height, which is what a joint Gaussian would
+        have and what ``root_full_rank`` provides for the root alone.
+
+        With ``parameter_approximation="full_rank"``, ``nonlinearity="affine"``
+        and ``auxiliary_vars=()`` the whole approximation becomes a **structured
+        joint Gaussian**: full covariance among the non-tree parameters,
+        tree-structured covariance among the node heights, and dense
+        parameter-height cross-covariance -- linear correlation everywhere, in
+        ``parameter^2 + parameter * node + O(node)`` parameters rather than the
+        ``(parameter + node)^2`` of a full covariance.
+
+        The term is a shift by a function of the parameter block only, so the
+        Jacobian stays block-triangular and the density stays exact. It starts at
+        zero, preserving the identity initialisation.
     node_feature_vars
         Names of non-tree variables to feed the flow's *per-node* conditioner --
         per-branch or per-internal-node quantities such as a relaxed clock's
@@ -407,12 +428,31 @@ def get_tree_flow_approximation(
     )
     created_variables += list(flow_parameters.trainable_variables)
 
+    if linear_cross_coupling and parameter_size > 0:
+        cross_weight = tf.Variable(
+            tf.zeros([parameter_size, tree_size], dtype=dtype),
+            name="tree_flow_cross_weight",
+        )
+        created_variables.append(cross_weight)
+    else:
+        cross_weight = None
+
     def tree_bijector_fn(y_parameters):
         flow = flow_template.copy_with_inputs(
             auxiliary_input=auxiliary_input_fn(y_parameters),
             node_input=node_input_fn(y_parameters),
         )
-        return tfb.Chain([tree_affine_bijector, flow])
+        bijectors = [tree_affine_bijector, flow]
+        if cross_weight is not None:
+            # Applied last (Chain runs its list right-to-left): a shift of the
+            # tree coordinates by a linear function of the parameter block.
+            bijectors.insert(
+                0,
+                tfb.Shift(
+                    tf.linalg.matvec(cross_weight, y_parameters, transpose_a=True)
+                ),
+            )
+        return tfb.Chain(bijectors)
 
     coupling_bijector = _TreeFlowCouplingBijector(
         parameter_bijector, tree_bijector_fn, parameter_size, tree_size
