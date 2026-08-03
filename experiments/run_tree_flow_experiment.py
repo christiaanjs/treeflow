@@ -65,6 +65,8 @@ _PARAMETERS = {
     "mcmc_chains": "TREEFLOW_TREE_FLOW_MCMC_CHAINS",
     "mcmc_thin": "TREEFLOW_TREE_FLOW_MCMC_THIN",
     "mcmc_min_ess": "TREEFLOW_TREE_FLOW_MCMC_MIN_ESS",
+    "convergence_rtol": "TREEFLOW_TREE_FLOW_CONVERGENCE_RTOL",
+    "convergence_min_steps": "TREEFLOW_TREE_FLOW_CONVERGENCE_MIN_STEPS",
     "fit_steps": "TREEFLOW_TREE_FLOW_FIT_STEPS",
 }
 
@@ -195,6 +197,18 @@ def main(argv=None) -> int:
         type=float,
         default=None,
         help="effective sample size the reference chain must reach to pass its check",
+    )
+    parser.add_argument(
+        "--convergence-rtol",
+        type=float,
+        default=None,
+        help="relative ELBO-decrease tolerance a fit must fall below to stop early",
+    )
+    parser.add_argument(
+        "--convergence-min-steps",
+        type=int,
+        default=None,
+        help="steps a fit must run before the convergence criterion can stop it",
     )
     parser.add_argument(
         "--fit-steps",
