@@ -6,7 +6,7 @@ from treeflow.model.phylo_model import (
     PhyloModel,
     DEFAULT_TREE_VAR_NAME,
 )
-from treeflow.vi.hmc import fit_fixed_topology_hmc, KERNEL_HMC, KERNEL_NUTS
+from treeflow.mcmc.hmc import fit_fixed_topology_hmc, KERNEL_HMC, KERNEL_NUTS
 from treeflow.tree.rooted.tensorflow_rooted_tree import TensorflowRootedTree
 
 NUM_RESULTS = 5

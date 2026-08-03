@@ -11,7 +11,7 @@ from treeflow.model.phylo_model import (
     DEFAULT_TREE_VAR_NAME,
     PhyloModelParseError,
 )
-from treeflow.vi.hmc import (
+from treeflow.mcmc.hmc import (
     fit_fixed_topology_hmc,
     KERNEL_HMC,
     KERNEL_NUTS,
