@@ -8,9 +8,10 @@ arrives, so the ``tqdm`` progress bars of the VI fits and the MCMC reference
 chain are visible while the notebook runs rather than only after each cell
 finishes.
 
-Every size in ``tree_normalizing_flow.ipynb`` -- optimisation steps, ELBO
-samples, and the reference chain's length, burn-in and number of chains -- is
-read from an environment variable with the notebook's own value as the default,
+Every size in ``tree_normalizing_flow.ipynb`` -- the simulated dataset's taxa and
+sites, optimisation steps, ELBO samples, and the reference chain's length,
+burn-in and number of chains -- is read from an environment variable with the
+notebook's own value as the default,
 so the flags below change what the run does without editing the notebook. A
 browser run with nothing set is unchanged.
 
@@ -20,7 +21,7 @@ A quick smoke run (minutes rather than hours), writing an executed copy
 alongside the notebook::
 
     python experiments/run_tree_flow_experiment.py tree-flow \\
-        --num-steps 100 --mcmc-results 500 --mcmc-burnin 200
+        --taxa 8 --sites 200 --num-steps 100 --mcmc-results 500 --mcmc-burnin 200
 
 The full run, overwriting the notebook with its executed outputs::
 
@@ -50,6 +51,10 @@ _KNOWN = {
 
 # Command-line flag -> the environment variable the notebook reads.
 _PARAMETERS = {
+    "taxa": "TREEFLOW_TREE_FLOW_TAXON_COUNT",
+    "sites": "TREEFLOW_TREE_FLOW_SITE_COUNT",
+    "sampling_window": "TREEFLOW_TREE_FLOW_SAMPLING_WINDOW",
+    "data_seed": "TREEFLOW_TREE_FLOW_DATA_SEED",
     "num_steps": "TREEFLOW_TREE_FLOW_NUM_STEPS",
     "learning_rate": "TREEFLOW_TREE_FLOW_LEARNING_RATE",
     "sample_size": "TREEFLOW_TREE_FLOW_SAMPLE_SIZE",
@@ -137,6 +142,21 @@ def main(argv=None) -> int:
         help="per-cell timeout in seconds (default: no limit -- these runs are long)",
     )
     parser.add_argument("--kernel", default="python3", help="Jupyter kernel name")
+    parser.add_argument(
+        "--taxa", type=int, default=None, help="taxa in the simulated dataset"
+    )
+    parser.add_argument(
+        "--sites", type=int, default=None, help="sites in the simulated alignment"
+    )
+    parser.add_argument(
+        "--sampling-window",
+        type=float,
+        default=None,
+        help="time window the simulated tips are sampled over (0 for contemporaneous)",
+    )
+    parser.add_argument(
+        "--data-seed", type=int, default=None, help="seed for the simulated dataset"
+    )
     parser.add_argument(
         "--num-steps", type=int, default=None, help="VI optimisation steps per fit"
     )
