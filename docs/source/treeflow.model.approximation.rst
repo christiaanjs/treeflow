@@ -17,3 +17,4 @@ Submodules
    treeflow.model.approximation.iaf
    treeflow.model.approximation.mean_field
    treeflow.model.approximation.root_full_rank
+   treeflow.model.approximation.tree_flow

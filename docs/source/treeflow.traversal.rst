@@ -19,3 +19,4 @@ Submodules
    treeflow.traversal.preorder
    treeflow.traversal.ratio_transform
    treeflow.traversal.sample_ctmc
+   treeflow.traversal.tree_affine
