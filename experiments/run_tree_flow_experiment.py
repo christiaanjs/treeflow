@@ -47,6 +47,7 @@ _EXPERIMENTS_DIR = Path(__file__).resolve().parent
 _KNOWN = {
     "tree-flow": _EXPERIMENTS_DIR / "tree_normalizing_flow.ipynb",
     "boundary-mass": _EXPERIMENTS_DIR / "tree_flow_boundary_mass.ipynb",
+    "geometry": _EXPERIMENTS_DIR / "tree_likelihood_geometry.ipynb",
 }
 
 # Command-line flag -> the environment variable the notebook reads.
@@ -68,6 +69,12 @@ _PARAMETERS = {
     "convergence_rtol": "TREEFLOW_TREE_FLOW_CONVERGENCE_RTOL",
     "convergence_min_steps": "TREEFLOW_TREE_FLOW_CONVERGENCE_MIN_STEPS",
     "fit_steps": "TREEFLOW_TREE_FLOW_FIT_STEPS",
+    # tree_likelihood_geometry.ipynb
+    "geometry_taxa": "TREEFLOW_GEOMETRY_TAXON_COUNT",
+    "geometry_sites": "TREEFLOW_GEOMETRY_SITE_COUNTS",
+    "geometry_grid": "TREEFLOW_GEOMETRY_GRID",
+    "geometry_map_steps": "TREEFLOW_GEOMETRY_MAP_STEPS",
+    "geometry_mcmc_results": "TREEFLOW_GEOMETRY_MCMC_RESULTS",
 }
 
 
@@ -209,6 +216,26 @@ def main(argv=None) -> int:
         type=int,
         default=None,
         help="steps a fit must run before the convergence criterion can stop it",
+    )
+    parser.add_argument(
+        "--geometry-taxa", type=int, default=None, help="taxa in the geometry notebook"
+    )
+    parser.add_argument(
+        "--geometry-sites",
+        default=None,
+        help="comma-separated sequence lengths for the geometry notebook",
+    )
+    parser.add_argument(
+        "--geometry-grid", type=int, default=None, help="points per axis in each surface"
+    )
+    parser.add_argument(
+        "--geometry-map-steps", type=int, default=None, help="steps for each MAP fit"
+    )
+    parser.add_argument(
+        "--geometry-mcmc-results",
+        type=int,
+        default=None,
+        help="samples in the geometry notebook's relaxed-clock reference chain",
     )
     parser.add_argument(
         "--fit-steps",
