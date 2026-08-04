@@ -2,6 +2,7 @@ import typing as tp
 from typing_extensions import Protocol
 from functools import partial
 import tqdm
+import tensorflow as tf
 from tensorflow_probability.python.math.minimize import MinimizeTraceableQuantities
 
 
@@ -62,5 +63,51 @@ def make_progress_bar_trace_fn(
             tqdm_instance=tqdm_instance,
             update_step=update_step,
         )
+
+    return ProgressBarTraceFunctionContextManager(tqdm_instance, wrapped_trace_fn)
+
+
+def _default_hmc_trace_fn(current_state, kernel_results):
+    return kernel_results
+
+
+def make_hmc_progress_bar_trace_fn(
+    trace_fn: tp.Callable,
+    num_results: int,
+    num_burnin_steps: int,
+    progress_bar: tp.Union[ProgressBarFunc, bool] = True,
+    update_step: int = 10,
+):
+    if isinstance(progress_bar, bool):
+        if progress_bar:
+            tqdm_instance = tqdm.tqdm(total=num_results)
+        else:
+            tqdm_instance = None
+    else:
+        tqdm_instance = progress_bar(total=num_results)
+
+    if tqdm_instance is None:
+        return ProgressBarTraceFunctionContextManager(None, trace_fn)
+
+    step_var = tf.Variable(0, trainable=False, dtype=tf.int32)
+
+    # Get progress bar to include burn-in steps
+    total = num_results
+
+    def wrapped_trace_fn(current_state, kernel_results):
+        new_step = step_var.assign_add(1)
+
+        def _update(step):
+            s = int(step)
+            if (s % update_step == 0 and tqdm_instance.n < s) or s == total:
+                tqdm_instance.update(min(update_step, total - tqdm_instance.n))
+            return s
+
+        # Pass new_step (the assign_add output tensor) so py_function is
+        # ordered after the increment.  Assign the result back to step_var to
+        # form a stateful chain (assign_add → py_function → assign) that TF
+        # cannot prune during graph optimisation.
+        step_var.assign(tf.py_function(_update, [new_step], tf.int32))
+        return trace_fn(current_state, kernel_results)
 
     return ProgressBarTraceFunctionContextManager(tqdm_instance, wrapped_trace_fn)

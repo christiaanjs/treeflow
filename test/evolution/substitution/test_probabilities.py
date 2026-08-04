@@ -1,4 +1,3 @@
-from cgitb import reset
 import pytest
 from numpy.testing import assert_allclose
 import tensorflow as tf

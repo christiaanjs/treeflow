@@ -91,8 +91,6 @@ class LeafCTMC(Distribution):
         )
 
     def _sample_n(self, n, seed=None):
-        if self.transition_probs_tree.topology.has_batch_dimensions():
-            raise NotImplementedError("Topology batching not yet supported")
         batch_shape = self.batch_shape_tensor()
         transition_probs = self._broadcast_transition_probs(
             tf.concat([[n], batch_shape], axis=0)

@@ -11,6 +11,11 @@ from treeflow.model.event_shape_bijector import (
     get_unconstrained_init_values,
     get_fixed_topology_event_shape,
 )
+from treeflow.vi.progress_bar import (
+    make_hmc_progress_bar_trace_fn,
+    ProgressBarFunc,
+    _default_hmc_trace_fn,
+)
 
 HMCResults = namedtuple("HMCResults", ("samples", "trace"))
 
@@ -29,6 +34,9 @@ def fit_fixed_topology_hmc(
     init_state: tp.Optional[tp.Dict[str, object]] = None,
     seed: tp.Optional[int] = None,
     kernel: str = KERNEL_HMC,
+    progress_bar: tp.Union[bool, ProgressBarFunc] = False,
+    progress_bar_step: int = 10,
+    use_tf_function: bool = True,
 ) -> HMCResults:
     """Run Hamiltonian Monte Carlo for fixed-topology Bayesian phylogenetic inference.
 
@@ -56,6 +64,16 @@ def fit_fixed_topology_hmc(
         Optional integer random seed.
     kernel
         Kernel type: ``"hmc"`` (default) or ``"nuts"``.
+    progress_bar
+        If ``True``, display a ``tqdm`` progress bar over all steps
+        (burn-in + sampling).  Pass a callable ``(total, ...) -> tqdm.tqdm``
+        to supply a custom bar.  Defaults to ``False``.
+    progress_bar_step
+        Number of steps between progress bar updates.  Defaults to ``10``.
+    use_tf_function
+        If ``True`` (default), wrap ``sample_chain`` in ``tf.function`` for
+        significantly faster execution.  Disable for debugging or when eager
+        execution is required.
 
     Returns
     -------
@@ -120,13 +138,28 @@ def fit_fixed_topology_hmc(
     else:
         mcmc_kernel = inner_kernel
 
-    samples_unconstrained, trace = tfp.mcmc.sample_chain(
-        num_results=num_results,
-        num_burnin_steps=num_burnin_steps,
-        current_state=init_parts,
-        kernel=mcmc_kernel,
-        seed=seed,
-    )
+    with make_hmc_progress_bar_trace_fn(
+        _default_hmc_trace_fn,
+        num_results,
+        num_burnin_steps,
+        progress_bar,
+        update_step=progress_bar_step,
+    ) as progress_trace_fn:
+
+        def _run_chain():
+            return tfp.mcmc.sample_chain(
+                num_results=num_results,
+                num_burnin_steps=num_burnin_steps,
+                current_state=init_parts,
+                kernel=mcmc_kernel,
+                seed=seed,
+                trace_fn=progress_trace_fn,
+            )
+
+        if use_tf_function:
+            _run_chain = tf.function(_run_chain)
+
+        samples_unconstrained, trace = _run_chain()
 
     # Transform samples back to constrained space
     samples_dict = dict(zip(names, samples_unconstrained))

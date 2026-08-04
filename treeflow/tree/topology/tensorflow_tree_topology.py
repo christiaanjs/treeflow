@@ -140,16 +140,119 @@ class TensorflowTreeTopology(TensorflowTreeTopologyAttrs):
         self._taxon_set = state[1]
 
 
+def compute_preorder_indices(child_indices: tf.Tensor) -> tf.Tensor:
+    """
+    Compute preorder (DFS) traversal indices from child_indices, in pure TF.
+
+    Implements an iterative pre-order DFS: the root is pushed onto a stack
+    first; at each step the top node is popped and recorded; for internal
+    nodes the right child is pushed then the left child so that the left
+    child is visited first.
+
+    Parameters
+    ----------
+    child_indices : tf.Tensor
+        Shape ``[..., node_count, 2]``.  Leaf nodes have child value ``-1``.
+        ``node_count`` (``child_indices.shape[-2]``) must be statically known.
+
+    Returns
+    -------
+    tf.Tensor
+        Preorder indices, shape ``[..., node_count]``, dtype ``tf.int32``.
+    """
+    static_nc = child_indices.shape[-2]
+    if static_nc is None:
+        raise ValueError(
+            "node_count (child_indices.shape[-2]) must be statically known"
+        )
+    node_count = int(static_nc)
+    root = node_count - 1
+
+    unbatched = child_indices.shape.rank == 2
+    if unbatched:
+        child_indices = tf.expand_dims(child_indices, 0)
+
+    n_total = tf.shape(child_indices)[0]  # may be a dynamic tensor
+    nc_tf = tf.constant(node_count, dtype=tf.int32)
+    neg1 = tf.constant(-1, dtype=tf.int32)
+
+    s_idx = tf.range(n_total, dtype=tf.int32)
+    zeros = tf.zeros_like(s_idx)
+    ones = tf.ones_like(s_idx)
+
+    # Initialise DFS stack with root at position 0
+    stack = tf.fill(tf.stack([n_total, nc_tf]), neg1)
+    stack = tf.tensor_scatter_nd_update(
+        stack,
+        tf.stack([s_idx, zeros], axis=1),
+        tf.fill(tf.expand_dims(n_total, 0), tf.constant(root, dtype=tf.int32)),
+    )
+    stack_size = tf.ones_like(s_idx)
+    preorder = tf.zeros(tf.stack([n_total, nc_tf]), dtype=tf.int32)
+    preorder_pos = tf.zeros_like(s_idx)
+
+    # Exactly node_count iterations suffice: each visit pops 1, internal nodes
+    # push 2 children, giving net 0 for internal and -1 for leaves; the tree
+    # has n leaves and n-1 internal nodes so the stack empties after node_count steps.
+    for _ in range(node_count):
+        # Pop top of stack
+        top_pos = stack_size - 1
+        current_node = tf.gather_nd(stack, tf.stack([s_idx, top_pos], axis=1))
+        stack_size = stack_size - 1
+
+        # Record current node in preorder output
+        preorder = tf.tensor_scatter_nd_update(
+            preorder,
+            tf.stack([s_idx, preorder_pos], axis=1),
+            current_node,
+        )
+        preorder_pos = preorder_pos + 1
+
+        # Gather children of current node
+        child0 = tf.gather_nd(
+            child_indices, tf.stack([s_idx, current_node, zeros], axis=1)
+        )
+        child1 = tf.gather_nd(
+            child_indices, tf.stack([s_idx, current_node, ones], axis=1)
+        )
+        is_internal = tf.not_equal(child0, neg1)
+
+        # Push right child (child1) first so left child (child0) is popped first
+        push1_pos = stack_size
+        cur1 = tf.gather_nd(stack, tf.stack([s_idx, push1_pos], axis=1))
+        stack = tf.tensor_scatter_nd_update(
+            stack,
+            tf.stack([s_idx, push1_pos], axis=1),
+            tf.where(is_internal, child1, cur1),
+        )
+        stack_size = tf.where(is_internal, stack_size + 1, stack_size)
+
+        # Push left child (child0)
+        push0_pos = stack_size
+        cur0 = tf.gather_nd(stack, tf.stack([s_idx, push0_pos], axis=1))
+        stack = tf.tensor_scatter_nd_update(
+            stack,
+            tf.stack([s_idx, push0_pos], axis=1),
+            tf.where(is_internal, child0, cur0),
+        )
+        stack_size = tf.where(is_internal, stack_size + 1, stack_size)
+
+    if unbatched:
+        return preorder[0]
+    return preorder
+
+
 def numpy_topology_to_tensor(
     topology: tp.Union[NumpyTreeTopology, StaticNumpyTreeTopology], dtype=tf.int32
 ) -> TensorflowTreeTopology:
     parent_indices = topology.parent_indices
     child_indices = np_top_ops.get_child_indices(parent_indices)
-    preorder_indices = np_top_ops.get_preorder_indices(child_indices)
+    child_indices_tf = tf.constant(child_indices, dtype=dtype)
+    preorder_indices = compute_preorder_indices(child_indices_tf)
     return TensorflowTreeTopology(
         parent_indices=tf.constant(parent_indices, dtype=dtype),
-        child_indices=tf.constant(child_indices, dtype=dtype),
-        preorder_indices=tf.constant(preorder_indices, dtype=dtype),
+        child_indices=child_indices_tf,
+        preorder_indices=preorder_indices,
         taxon_set=(
             None if topology.taxon_set is None else TupleTaxonSet(topology.taxon_set)
         ),
@@ -159,4 +262,5 @@ def numpy_topology_to_tensor(
 __all__ = [
     tensor_taxon_count.__name__,
     TensorflowTreeTopology.__name__,
+    compute_preorder_indices.__name__,
 ]

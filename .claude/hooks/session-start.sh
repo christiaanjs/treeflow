@@ -15,7 +15,7 @@ _fix_path() {
 
 # Fast path: if already installed (cached container), fix PATH and exit synchronously.
 # This avoids any race condition on subsequent sessions.
-if python -c "import treeflow, pytest, pandas, allpairspy" 2>/dev/null; then
+if /usr/local/bin/pytest --collect-only -q >/dev/null 2>&1; then
   _fix_path
   exit 0
 fi

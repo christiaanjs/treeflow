@@ -135,12 +135,14 @@ class RootedTreeDistribution(BaseTreeDistribution[TensorflowRootedTree]):
             shape_func(event_shape.node_heights, batch_shape), sampling_times_b.dtype
         )
         if self.support_topology_batch_dims:
-            raise NotImplemented(
-                "Dummy topology sampling with batch dims not implemented"
+            topology = tf.nest.map_structure(
+                lambda es, dt: tf.zeros(shape_func(es, batch_shape), dt),
+                event_shape.topology,
+                dtype.topology,
             )
         else:
             topology = tf.nest.map_structure(  # No topology batch dims
-                lambda event_shape, dtype: tf.zeros(event_shape, dtype),
+                lambda es, dt: tf.zeros(es, dt),
                 event_shape.topology,
                 dtype.topology,
             )
