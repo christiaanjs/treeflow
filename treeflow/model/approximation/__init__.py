@@ -14,3 +14,7 @@ from .root_full_rank import (
     get_root_full_rank_approximation,
     get_fixed_topology_root_full_rank_approximation,
 )
+from .tree_flow import (
+    get_tree_flow_approximation,
+    get_fixed_topology_tree_flow_approximation,
+)

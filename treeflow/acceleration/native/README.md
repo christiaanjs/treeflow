@@ -1,16 +1,18 @@
 # Native tree-traversal ops
 
-Compiled TensorFlow custom ops for treeflow's two performance-critical tree
+Compiled TensorFlow custom ops for treeflow's performance-critical tree
 traversals, each a drop-in replacement for a pure-TensorFlow `tf.TensorArray`
 reference with an **analytic** reverse-mode gradient:
 
 * the **phylogenetic likelihood** (Felsenstein pruning, a *postorder*
   traversal) — see below;
 * the **node-height ratio transform** (a *preorder* traversal) — see
-  [Node-height ratio transform op](#node-height-ratio-transform-op).
+  [Node-height ratio transform op](#node-height-ratio-transform-op);
+* the **affine tree maps** of the tree normalising flow (one *preorder*, one
+  *postorder*) — see [Affine tree map ops](#affine-tree-map-ops).
 
-Both ops describe the topology to the kernel as integer index tensors and share
-the host-side index helpers in
+All the ops describe the topology to the kernel as integer index tensors and
+share the host-side index helpers in
 [`cc/tree_traversal.h`](cc/tree_traversal.h).
 
 # Native phylogenetic likelihood op
@@ -108,6 +110,60 @@ heights = native_ratios_to_node_heights(
 )
 ```
 
+## Affine tree map ops
+
+The [tree normalising flow](../../bijectors/tree_normalizing_flow.py) sandwiches
+a learnable elementwise nonlinearity between two structured affine maps on the
+per-internal-node coordinates: a **preorder** (root-to-tip) map in which each
+node reads its parent's output, and a **postorder** (tip-to-root) map in which
+each node reads its children's outputs. These are the compiled counterparts of
+the reference traversals in
+[`treeflow/traversal/tree_affine.py`](../../traversal/tree_affine.py).
+
+* The forward ops `TreeAffinePreorder` and `TreeAffinePostorder` take the
+  traversal-order and parent/child index vectors, the coordinates, and the
+  per-node `scale`, `shift` and recursion weights, and output the transformed
+  coordinates.
+* The backward ops `TreeAffinePreorderGrad` / `TreeAffinePostorderGrad` reuse
+  the saved forward output and walk the nodes in the reverse of the forward
+  order — children before parents, and parents before children respectively —
+  accumulating exact gradients with respect to the coordinates *and* every
+  per-node parameter in one sweep, with no recomputation of the forward pass.
+* They are wired into autodiff with `@tf.RegisterGradient` and support arbitrary
+  leading (sample) batch dimensions, `float32`/`float64`.
+
+Only the forward direction is compiled: both maps are triangular in their own
+traversal order, so their log-det-Jacobian is `sum_i log scale[i]` (no traversal
+at all) and their inverses are a single `tf.gather` — see the module docstring
+of `treeflow/traversal/tree_affine.py`.
+
+They are consumed through `PreorderAffineBijector` / `PostorderAffineBijector`
+and hence `TreeNormalizingFlowBijector(..., use_native=...)`, which defaults to
+`"auto"` (native if built, else the pure-TensorFlow traversal).
+
+```python
+from treeflow.acceleration.native import (
+    native_preorder_affine,
+    native_postorder_affine,
+)
+from treeflow.traversal.tree_affine import node_child_indices, node_parent_indices
+
+y = native_preorder_affine(
+    topology.preorder_node_indices - topology.taxon_count,  # internal-node space
+    node_parent_indices(topology),
+    x,              # [..., internal_node]
+    scale, shift,   # [..., internal_node]
+    parent_weight,  # [..., internal_node]
+)
+w = native_postorder_affine(
+    topology.postorder_node_indices - topology.taxon_count,
+    node_child_indices(topology),  # leaf children are negative
+    x,
+    scale, shift,
+    child_weight,   # [..., internal_node, child]
+)
+```
+
 ## Building
 
 ```bash
@@ -118,7 +174,8 @@ python -m treeflow.acceleration.native.build
 ```
 
 This compiles each `cc/<op>.cc` into the matching `_<op>.so` (e.g.
-`_phylo_likelihood_op.so`, `_node_height_ratio_op.so`) using the compile/link
+`_phylo_likelihood_op.so`, `_node_height_ratio_op.so`, `_tree_affine_op.so`)
+using the compile/link
 flags reported by the installed TensorFlow (so the C++ ABI matches the running
 runtime). The `.so` files are intentionally git-ignored — they are
 environment-specific and must be built against the local TensorFlow.

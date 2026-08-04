@@ -7,8 +7,9 @@ Usage::
 This is a thin Python wrapper around ``build.sh`` so the ops can be compiled
 without leaving the Python toolchain (e.g. from setup hooks or CI). By default
 it builds every op; individual ops can be built via :func:`build` (the
-phylogenetic likelihood) and :func:`build_node_height_ratio` (the node-height
-ratio transform).
+phylogenetic likelihood), :func:`build_node_height_ratio` (the node-height
+ratio transform) and :func:`build_tree_affine` (the tree normalising flow's
+affine tree maps).
 
 Unlike ``build.sh`` invoked directly (which defaults to a portable instruction
 set), this wrapper defaults to ``TREEFLOW_NATIVE_ARCH=native``: this entry
@@ -41,6 +42,13 @@ def build_node_height_ratio() -> str:
     """Build the node-height ratio transform op and return its library path."""
     _run_build("node_height_ratio_op")
     return os.path.join(_HERE, "_node_height_ratio_op.so")
+
+
+def build_tree_affine() -> str:
+    """Build the affine tree map ops (tree normalising flow) and return the
+    library path."""
+    _run_build("tree_affine_op")
+    return os.path.join(_HERE, "_tree_affine_op.so")
 
 
 def build_all() -> None:

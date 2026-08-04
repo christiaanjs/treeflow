@@ -15,3 +15,4 @@ Submodules
    treeflow.acceleration.native.build
    treeflow.acceleration.native.node_height_ratio
    treeflow.acceleration.native.phylo_likelihood
+   treeflow.acceleration.native.tree_affine

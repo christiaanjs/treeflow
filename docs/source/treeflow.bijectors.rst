@@ -12,9 +12,12 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   treeflow.bijectors.elementwise_node_flow
    treeflow.bijectors.fixed_topology_bijector
    treeflow.bijectors.highway_flow
    treeflow.bijectors.highway_flow_node_bijector
    treeflow.bijectors.node_height_ratio_bijector
    treeflow.bijectors.preorder_node_bijector
+   treeflow.bijectors.tree_affine_bijector
+   treeflow.bijectors.tree_normalizing_flow
    treeflow.bijectors.tree_ratio_bijector

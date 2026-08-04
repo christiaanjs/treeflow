@@ -20,12 +20,13 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-ALL_OPS=(phylo_likelihood_op node_height_ratio_op)
+ALL_OPS=(phylo_likelihood_op node_height_ratio_op tree_affine_op)
 
 op_output() {
   case "$1" in
     phylo_likelihood_op)   echo "_phylo_likelihood_op.so" ;;
     node_height_ratio_op)  echo "_node_height_ratio_op.so" ;;
+    tree_affine_op)        echo "_tree_affine_op.so" ;;
     *) echo "" ;;
   esac
 }

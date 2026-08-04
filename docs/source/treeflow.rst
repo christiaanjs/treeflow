@@ -18,6 +18,7 @@ Subpackages
    treeflow.debug
    treeflow.distributions
    treeflow.evolution
+   treeflow.mcmc
    treeflow.model
    treeflow.tf_util
    treeflow.traversal
