@@ -12,4 +12,4 @@ tf_keras==2.20.1
 tqdm==4.67.3
 typing_extensions==4.15.0
 ipywidgets==8.1.8
-jupyterlab==4.4.1
+jupyterlab==4.4.8
