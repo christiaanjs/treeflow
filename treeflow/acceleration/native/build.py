@@ -43,6 +43,12 @@ def build_node_height_ratio() -> str:
     return os.path.join(_HERE, "_node_height_ratio_op.so")
 
 
+def build_sbn() -> str:
+    """Build the SBN topology sampler op and return its library path."""
+    _run_build("sbn_op")
+    return os.path.join(_HERE, "_sbn_op.so")
+
+
 def build_all() -> None:
     """Build every native op."""
     _run_build()
